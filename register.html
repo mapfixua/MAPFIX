@@ -1,0 +1,588 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Mapfix — Реєстрація</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: #f1f5f9;
+      color: #1e293b;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 24px 16px;
+    }
+    .wrap { width: 100%; max-width: 520px; }
+    h1 { font-size: 1.5rem; margin: 0 0 8px; text-align: center; }
+    .sub { color: #64748b; margin-bottom: 24px; font-size: 0.95rem; text-align: center; }
+    .card {
+      background: #fff;
+      border-radius: 12px;
+      padding: 24px;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.06);
+      border: 1px solid #e2e8f0;
+    }
+    label { display: block; font-weight: 600; font-size: 0.85rem; margin-bottom: 6px; }
+    input, select {
+      width: 100%;
+      padding: 10px 12px;
+      border: 1px solid #cbd5e1;
+      border-radius: 8px;
+      font-size: 1rem;
+      margin-bottom: 14px;
+      background: #fff;
+    }
+    button {
+      width: 100%;
+      padding: 12px;
+      background: #007bff;
+      color: #fff;
+      border: none;
+      border-radius: 8px;
+      font-size: 1rem;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    button:hover { background: #0069d9; }
+    button:disabled { opacity: 0.6; cursor: not-allowed; }
+    .msg { margin-top: 16px; padding: 12px; border-radius: 8px; font-size: 0.9rem; display: none; }
+    .msg.ok { display: block; background: #dcfce7; color: #166534; }
+    .msg.err { display: block; background: #fee2e2; color: #991b1b; }
+    .links { margin-top: 20px; text-align: center; }
+    .links a { color: #007bff; text-decoration: none; }
+    .hidden { display: none !important; }
+    .field-hint {
+      font-size: 0.8rem;
+      color: #64748b;
+      margin: -8px 0 10px;
+      line-height: 1.35;
+    }
+    .services-tree {
+      margin-bottom: 14px;
+      max-height: 360px;
+      overflow-y: auto;
+      padding: 10px;
+      border: 1px solid #e2e8f0;
+      border-radius: 8px;
+      background: #f8fafc;
+    }
+    .cat-block {
+      background: #fff;
+      border: 1px solid #e2e8f0;
+      border-radius: 10px;
+      margin-bottom: 10px;
+      overflow: hidden;
+    }
+    .cat-block:last-child { margin-bottom: 0; }
+    .cat-head {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 12px;
+      background: #f1f5f9;
+      border-bottom: 1px solid #e2e8f0;
+      cursor: pointer;
+      font-weight: 800;
+      font-size: 0.92rem;
+      margin: 0;
+    }
+    .cat-head input { width: auto; margin: 0; accent-color: #007bff; }
+    .sub-block { padding: 8px 12px 10px; border-bottom: 1px dashed #e2e8f0; }
+    .sub-block:last-child { border-bottom: none; }
+    .sub-title {
+      font-size: 0.82rem;
+      font-weight: 800;
+      color: #475569;
+      margin: 0 0 6px;
+      text-transform: uppercase;
+      letter-spacing: 0.3px;
+    }
+    .check-row {
+      display: flex;
+      align-items: flex-start;
+      gap: 8px;
+      padding: 6px 8px;
+      border-radius: 6px;
+      cursor: pointer;
+      user-select: none;
+      margin-bottom: 4px;
+    }
+    .check-row:hover { background: #f0f9ff; }
+    .check-row input {
+      width: auto;
+      margin: 3px 0 0;
+      accent-color: #007bff;
+      flex-shrink: 0;
+    }
+    .check-row span {
+      font-size: 0.88rem;
+      font-weight: 600;
+      line-height: 1.35;
+    }
+    .check-row.sub-pick {
+      background: #ecfdf5;
+      border: 1px solid #a7f3d0;
+      font-weight: 700;
+      margin-bottom: 8px;
+    }
+    .check-row.sub-all {
+      background: #eff6ff;
+      border: 1px solid #bfdbfe;
+      font-weight: 700;
+    }
+    .check-row.service-row span {
+      font-weight: 500;
+      color: #334155;
+      padding-left: 8px;
+    }
+    .loading-cats { font-size: 0.85rem; color: #64748b; margin-bottom: 14px; }
+    .custom-subs {
+      margin-bottom: 14px;
+      padding: 12px;
+      border: 1px dashed #cbd5e1;
+      border-radius: 10px;
+      background: #fffbeb;
+    }
+    .custom-subs h3 {
+      margin: 0 0 6px;
+      font-size: 0.92rem;
+    }
+    .custom-row {
+      background: #fff;
+      border: 1px solid #e2e8f0;
+      border-radius: 8px;
+      padding: 10px;
+      margin-bottom: 10px;
+    }
+    .custom-row:last-child { margin-bottom: 0; }
+    .custom-row label { margin-top: 4px; }
+    .custom-row input, .custom-row select, .custom-row textarea {
+      margin-bottom: 8px;
+    }
+    .custom-row textarea {
+      min-height: 56px;
+      resize: vertical;
+      font-family: inherit;
+    }
+    .btn-secondary {
+      width: auto;
+      padding: 8px 14px;
+      background: #fff;
+      color: #007bff;
+      border: 1px solid #007bff;
+      font-size: 0.88rem;
+      margin-top: 4px;
+    }
+    .btn-secondary:hover { background: #eff6ff; }
+    .btn-remove {
+      width: auto;
+      padding: 6px 10px;
+      background: #fee2e2;
+      color: #991b1b;
+      border: none;
+      font-size: 0.82rem;
+      margin: 4px 0 0;
+    }
+    .btn-remove:hover { background: #fecaca; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>Реєстрація Mapfix</h1>
+    <p class="sub">Створіть обліковий запис</p>
+    <div class="card">
+      <form id="registerForm">
+        <label for="login">Логін</label>
+        <input id="login" type="text" required autocomplete="username">
+
+        <label for="password">Пароль</label>
+        <input id="password" type="password" required minlength="6" autocomplete="new-password">
+
+        <label for="role">Роль</label>
+        <select id="role" required>
+          <option value="client">Клієнт (замовлення послуг)</option>
+          <option value="provider">Майстер / бізнес (провайдер)</option>
+        </select>
+
+        <div id="providerFields" class="hidden">
+          <label for="companyName">Назва компанії або ПІБ майстра</label>
+          <input id="companyName" type="text" placeholder="напр. Nail Art Студія">
+
+          <label for="phone">Телефон</label>
+          <input id="phone" type="text" placeholder="+38 (0__) ___-__-__">
+
+          <label>Категорії та послуги</label>
+          <p class="field-hint">
+            Оберіть категорію, існуючу підкатегорію з каталогу або окремі послуги.
+            Можна також додати власну підкатегорію, якої ще немає в списку.
+          </p>
+          <p id="catalogLoading" class="loading-cats">Завантаження каталогу…</p>
+          <div id="servicesTree" class="services-tree hidden" role="group" aria-label="Категорії та послуги"></div>
+
+          <div id="customSubsSection" class="custom-subs hidden">
+            <h3>Своя підкатегорія</h3>
+            <p class="field-hint" style="margin-bottom: 10px;">
+              Якщо вашої ніші немає в каталозі — вкажіть категорію, назву підкатегорії
+              та послуги (через кому, необовʼязково).
+            </p>
+            <div id="customSubsList"></div>
+            <button type="button" id="addCustomSubBtn" class="btn-secondary">+ Додати підкатегорію</button>
+          </div>
+        </div>
+
+        <button type="submit" id="submitBtn">Зареєструватися</button>
+      </form>
+      <div id="message" class="msg"></div>
+    </div>
+    <p class="links">
+      <a href="/login.html">Вже є акаунт? Увійти</a> · <a href="/">На карту</a>
+    </p>
+  </div>
+  <script>
+    const roleSel = document.getElementById('role');
+    const providerFields = document.getElementById('providerFields');
+    const servicesTree = document.getElementById('servicesTree');
+    const catalogLoading = document.getElementById('catalogLoading');
+    const message = document.getElementById('message');
+    const submitBtn = document.getElementById('submitBtn');
+    const customSubsSection = document.getElementById('customSubsSection');
+    const customSubsList = document.getElementById('customSubsList');
+    const addCustomSubBtn = document.getElementById('addCustomSubBtn');
+    let masterCatalog = {};
+
+    function categoryLabel(name) {
+      return String(name || '').replace(/^[\p{Extended_Pictographic}\p{Emoji_Presentation}\s]+/u, '').trim() || name;
+    }
+
+    function subSelector(catKey, subKey) {
+      return `.service-cb[data-cat="${catKey}"][data-sub="${subKey}"]`;
+    }
+
+    function subPickCb(catKey, subKey) {
+      return document.querySelector(`.sub-pick-cb[data-cat="${catKey}"][data-sub="${subKey}"]`);
+    }
+
+    function syncSubPick(catKey, subKey) {
+      const pickCb = subPickCb(catKey, subKey);
+      const serviceCbs = [...document.querySelectorAll(subSelector(catKey, subKey))];
+      if (!pickCb || !serviceCbs.length) return;
+      const checkedCount = serviceCbs.filter((cb) => cb.checked).length;
+      pickCb.checked = checkedCount === serviceCbs.length;
+      pickCb.indeterminate = checkedCount > 0 && checkedCount < serviceCbs.length;
+    }
+
+    function syncSubSelectAll(catKey, subKey) {
+      const allCb = document.querySelector(
+        `.sub-all-cb[data-cat="${catKey}"][data-sub="${subKey}"]`
+      );
+      const serviceCbs = [...document.querySelectorAll(subSelector(catKey, subKey))];
+      if (!allCb || !serviceCbs.length) return;
+      const checkedCount = serviceCbs.filter((cb) => cb.checked).length;
+      allCb.checked = checkedCount === serviceCbs.length;
+      allCb.indeterminate = checkedCount > 0 && checkedCount < serviceCbs.length;
+      syncSubPick(catKey, subKey);
+    }
+
+    function setSubServices(catKey, subKey, checked) {
+      document.querySelectorAll(subSelector(catKey, subKey)).forEach((cb) => {
+        cb.checked = checked;
+      });
+      syncSubSelectAll(catKey, subKey);
+    }
+
+    function makeCheckRow(className, inputAttrs, text) {
+      const row = document.createElement('label');
+      row.className = 'check-row ' + (className || '');
+      const input = document.createElement('input');
+      input.type = 'checkbox';
+      Object.entries(inputAttrs).forEach(([k, v]) => input.setAttribute(k, v));
+      const span = document.createElement('span');
+      span.textContent = text;
+      row.appendChild(input);
+      row.appendChild(span);
+      return { row, input };
+    }
+
+    function renderServicesTree() {
+      const entries = Object.entries(masterCatalog);
+      servicesTree.innerHTML = '';
+      if (!entries.length) {
+        catalogLoading.textContent = 'Каталог недоступний. Перезапустіть сервер.';
+        return;
+      }
+      catalogLoading.classList.add('hidden');
+      servicesTree.classList.remove('hidden');
+
+      entries.forEach(([catKey, cat]) => {
+        const catBlock = document.createElement('div');
+        catBlock.className = 'cat-block';
+
+        const { row: catHead, input: catCb } = makeCheckRow(
+          'cat-head',
+          { 'data-cat-check': catKey, class: 'cat-cb' },
+          categoryLabel(cat.name)
+        );
+        catHead.className = 'cat-head';
+        catBlock.appendChild(catHead);
+
+        const subList = document.createElement('div');
+        Object.entries(cat.subcats || {}).forEach(([subKey, sub]) => {
+          const subBlock = document.createElement('div');
+          subBlock.className = 'sub-block';
+
+          const { row: pickRow, input: pickCb } = makeCheckRow(
+            'sub-pick',
+            {
+              class: 'sub-pick-cb',
+              'data-cat': catKey,
+              'data-sub': subKey,
+            },
+            'Підкатегорія: ' + sub.name
+          );
+          pickCb.addEventListener('change', () => {
+            setSubServices(catKey, subKey, pickCb.checked);
+            if (pickCb.checked) catCb.checked = true;
+          });
+          subBlock.appendChild(pickRow);
+
+          const { row: allRow, input: allCb } = makeCheckRow(
+            'sub-all',
+            {
+              class: 'sub-all-cb',
+              'data-cat': catKey,
+              'data-sub': subKey,
+            },
+            'Всі послуги в підкатегорії'
+          );
+          allCb.addEventListener('change', () => setSubServices(catKey, subKey, allCb.checked));
+          subBlock.appendChild(allRow);
+
+          (sub.items || []).forEach((item) => {
+            const { row: svcRow, input: svcCb } = makeCheckRow(
+              'service-row',
+              {
+                class: 'service-cb',
+                'data-cat': catKey,
+                'data-sub': subKey,
+                'data-service': item.name,
+              },
+              item.name
+            );
+            svcCb.addEventListener('change', () => {
+              syncSubSelectAll(catKey, subKey);
+              if (svcCb.checked) catCb.checked = true;
+            });
+            subBlock.appendChild(svcRow);
+          });
+
+          subList.appendChild(subBlock);
+        });
+
+        catBlock.appendChild(subList);
+        servicesTree.appendChild(catBlock);
+      });
+    }
+
+    function categoryOptionsHtml(selectedKey) {
+      return Object.entries(masterCatalog)
+        .map(([key, cat]) => {
+          const label = categoryLabel(cat.name);
+          const sel = key === selectedKey ? ' selected' : '';
+          return `<option value="${key}"${sel}>${label}</option>`;
+        })
+        .join('');
+    }
+
+    function addCustomSubRow(prefill) {
+      const row = document.createElement('div');
+      row.className = 'custom-row';
+      row.innerHTML = `
+        <label>Категорія</label>
+        <select class="custom-cat" required>
+          <option value="">— оберіть —</option>
+          ${categoryOptionsHtml(prefill?.category || '')}
+        </select>
+        <label>Назва підкатегорії</label>
+        <input class="custom-name" type="text" placeholder="напр. Ламинування вій" required minlength="2">
+        <label>Послуги (через кому, необовʼязково)</label>
+        <textarea class="custom-services" placeholder="напр. Ламинування, Фарбування вій"></textarea>
+        <button type="button" class="btn-remove">Видалити</button>
+      `;
+      if (prefill?.name) row.querySelector('.custom-name').value = prefill.name;
+      if (prefill?.services?.length) {
+        row.querySelector('.custom-services').value = prefill.services.join(', ');
+      }
+      row.querySelector('.btn-remove').addEventListener('click', () => row.remove());
+      customSubsList.appendChild(row);
+    }
+
+    function showCustomSubsSection() {
+      customSubsSection.classList.remove('hidden');
+      if (!customSubsList.children.length) addCustomSubRow();
+    }
+
+    addCustomSubBtn.addEventListener('click', () => addCustomSubRow());
+
+    async function loadCatalog() {
+      try {
+        const res = await fetch('/api/data?t=' + Date.now(), { cache: 'no-store' });
+        const data = await res.json();
+        if (!res.ok) throw new Error('Не вдалося завантажити каталог');
+        masterCatalog = data.masterCatalog || {};
+        renderServicesTree();
+        showCustomSubsSection();
+      } catch (err) {
+        catalogLoading.textContent = err.message;
+      }
+    }
+
+    function toggleProviderFields() {
+      providerFields.classList.toggle('hidden', roleSel.value !== 'provider');
+    }
+
+    roleSel.onchange = toggleProviderFields;
+    if (new URLSearchParams(window.location.search).get('role') === 'provider') {
+      roleSel.value = 'provider';
+      toggleProviderFields();
+    }
+
+    function redirectByRole(role) {
+      if (role === 'admin' || role === 'provider') location.href = '/admin';
+      else if (role === 'client') location.href = '/client';
+      else location.href = '/';
+    }
+
+    function parseServicesList(text) {
+      return String(text || '')
+        .split(/[,;\n]+/)
+        .map((s) => s.trim())
+        .filter(Boolean);
+    }
+
+    function collectProviderServices() {
+      const serviceCategories = [...document.querySelectorAll('.cat-cb:checked')].map(
+        (el) => el.getAttribute('data-cat-check')
+      );
+      const subMap = new Map();
+
+      document.querySelectorAll('.sub-pick-cb:checked').forEach((cb) => {
+        const cat = cb.getAttribute('data-cat');
+        const sub = cb.getAttribute('data-sub');
+        const key = cat + ':' + sub;
+        if (!subMap.has(key)) {
+          subMap.set(key, {
+            category: cat,
+            subcategory: sub,
+            wholeSubcategory: true,
+            services: [],
+          });
+        }
+      });
+
+      document.querySelectorAll('.service-cb:checked').forEach((cb) => {
+        const cat = cb.getAttribute('data-cat');
+        const sub = cb.getAttribute('data-sub');
+        const service = cb.getAttribute('data-service');
+        const key = cat + ':' + sub;
+        const entry = subMap.get(key);
+        if (entry?.wholeSubcategory) return;
+        if (!subMap.has(key)) {
+          subMap.set(key, { category: cat, subcategory: sub, services: [] });
+        }
+        subMap.get(key).services.push(service);
+      });
+
+      const customSubcategories = [...customSubsList.querySelectorAll('.custom-row')]
+        .map((row) => {
+          const category = row.querySelector('.custom-cat')?.value?.trim();
+          const name = row.querySelector('.custom-name')?.value?.trim();
+          const services = parseServicesList(row.querySelector('.custom-services')?.value);
+          if (!category || !name) return null;
+          return { category, name, services };
+        })
+        .filter(Boolean);
+
+      return {
+        serviceCategories: [...new Set(serviceCategories)],
+        serviceSubcategories: [...subMap.values()],
+        customSubcategories,
+      };
+    }
+
+    document.getElementById('registerForm').onsubmit = async (e) => {
+      e.preventDefault();
+      message.className = 'msg';
+      submitBtn.disabled = true;
+
+      const body = {
+        login: document.getElementById('login').value.trim(),
+        password: document.getElementById('password').value,
+        role: roleSel.value,
+      };
+
+      if (body.role === 'provider') {
+        body.companyName = document.getElementById('companyName').value.trim();
+        body.phone = document.getElementById('phone').value.trim();
+        const picked = collectProviderServices();
+        body.serviceCategories = picked.serviceCategories;
+        body.serviceSubcategories = picked.serviceSubcategories;
+        body.customSubcategories = picked.customSubcategories;
+
+        const hasCategories = body.serviceCategories.length > 0;
+        const hasServices = body.serviceSubcategories.some(
+          (s) => s.services.length > 0 || s.wholeSubcategory
+        );
+        const hasCustom = body.customSubcategories.length > 0;
+        if (!hasCategories && !hasServices && !hasCustom) {
+          message.textContent =
+            'Оберіть категорію, підкатегорію з каталогу або додайте свою підкатегорію';
+          message.className = 'msg err';
+          submitBtn.disabled = false;
+          return;
+        }
+        if (hasCustom) {
+          const incomplete = [...customSubsList.querySelectorAll('.custom-row')].some((row) => {
+            const cat = row.querySelector('.custom-cat')?.value?.trim();
+            const name = row.querySelector('.custom-name')?.value?.trim();
+            const hasAny = cat || name || row.querySelector('.custom-services')?.value?.trim();
+            return hasAny && (!cat || !name || name.length < 2);
+          });
+          if (incomplete) {
+            message.textContent =
+              'У блоці «Своя підкатегорія» вкажіть категорію та назву (мін. 2 символи)';
+            message.className = 'msg err';
+            submitBtn.disabled = false;
+            return;
+          }
+        }
+      }
+
+      try {
+        const res = await fetch('/api/register', {
+          method: 'POST',
+          credentials: 'same-origin',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Помилка реєстрації');
+        message.textContent = 'Реєстрація успішна! Перенаправлення…';
+        message.className = 'msg ok';
+        setTimeout(() => redirectByRole(data.user.role), 800);
+      } catch (err) {
+        message.textContent = err.message;
+        message.className = 'msg err';
+        submitBtn.disabled = false;
+      }
+    };
+
+    loadCatalog();
+    toggleProviderFields();
+  </script>
+</body>
+</html>

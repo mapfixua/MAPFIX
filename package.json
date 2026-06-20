@@ -1,0 +1,15 @@
+{
+  "name": "mapfix",
+  "version": "1.0.0",
+  "description": "Mapfix — веб-додаток з картою та каталогом послуг",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "check": "node scripts/architecture-check.js"
+  },
+  "dependencies": {
+    "bcryptjs": "^2.4.3",
+    "express": "^4.21.2",
+    "express-session": "^1.18.1"
+  }
+}

@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Mapfix — Кабінет клієнта</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: #f1f5f9;
+      color: #1e293b;
+      min-height: 100vh;
+      padding: 24px 16px;
+    }
+    .wrap { max-width: 640px; margin: 0 auto; }
+    h1 { font-size: 1.5rem; margin: 0; }
+    h2 { font-size: 1.1rem; margin: 0 0 12px; }
+    .topbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex-wrap: wrap; gap: 12px; }
+    .sub { color: #64748b; font-size: 0.9rem; }
+    .card { background: #fff; border-radius: 12px; padding: 20px; border: 1px solid #e2e8f0; margin-bottom: 16px; }
+    .item { border: 1px solid #e2e8f0; border-radius: 10px; padding: 14px; margin-bottom: 10px; background: #f8fafc; }
+    .item-title { font-weight: 700; margin-bottom: 4px; }
+    .item-meta { font-size: 0.85rem; color: #64748b; }
+    .status { display: inline-block; padding: 3px 10px; border-radius: 6px; font-size: 0.75rem; font-weight: 700; margin-top: 8px; }
+    .status-wait { background: #fef3c7; color: #92400e; }
+    .status-work { background: #dbeafe; color: #1e40af; }
+    .status-done { background: #dcfce7; color: #166534; }
+    button, .btn-link {
+      padding: 8px 14px;
+      border-radius: 8px;
+      font-weight: 600;
+      font-size: 0.85rem;
+      cursor: pointer;
+      border: none;
+      background: #007bff;
+      color: #fff;
+      text-decoration: none;
+      display: inline-block;
+      margin-top: 8px;
+    }
+    .btn-secondary { background: #64748b; }
+    .btn-outline { background: #fff; color: #007bff; border: 1px solid #007bff; }
+    .empty { color: #94a3b8; text-align: center; padding: 20px; font-size: 0.9rem; }
+    .links { text-align: center; margin-top: 20px; }
+    .links a { color: #007bff; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="topbar">
+      <div>
+        <h1>Кабінет клієнта</h1>
+        <p class="sub" id="userInfo"></p>
+      </div>
+      <button type="button" class="btn-secondary" id="logoutBtn">Вийти</button>
+    </div>
+
+    <div class="card">
+      <h2>📋 Історія замовлень</h2>
+      <div id="ordersList"><p class="empty">Завантаження…</p></div>
+    </div>
+
+    <div class="card">
+      <h2>⭐ Обране</h2>
+      <p class="sub" style="margin-top:-8px;margin-bottom:12px">Збережені точки для швидкого доступу з карти</p>
+      <div id="favoritesList"><p class="empty">Завантаження…</p></div>
+    </div>
+
+    <p class="links">
+      <a href="/">🗺️ Відкрити карту</a>
+    </p>
+  </div>
+
+  <script>
+    function statusClass(s) {
+      if (s === 'Виконано') return 'status-done';
+      if (s === 'В роботі') return 'status-work';
+      return 'status-wait';
+    }
+
+    function formatDate(iso) {
+      try {
+        return new Date(iso).toLocaleString('uk-UA');
+      } catch (_) {
+        return iso;
+      }
+    }
+
+    document.getElementById('logoutBtn').onclick = async () => {
+      await fetch('/api/logout', { method: 'POST' }).catch(() => {});
+      location.href = '/login.html';
+    };
+
+    async function load() {
+      const meRes = await fetch('/api/me');
+      const me = await meRes.json();
+      if (!me.loggedIn || me.user.role !== 'client') {
+        location.href = '/login.html';
+        return;
+      }
+      document.getElementById('userInfo').textContent = me.user.login;
+
+      const res = await fetch('/api/client/dashboard');
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+
+      const ordersEl = document.getElementById('ordersList');
+      if (!data.orders.length) {
+        ordersEl.innerHTML = '<p class="empty">Замовлень ще немає. Оберіть послугу на карті та натисніть «Замовити».</p>';
+      } else {
+        ordersEl.innerHTML = data.orders
+          .map(
+            (o) => `
+          <div class="item">
+            <div class="item-title">${escapeHtml(o.serviceName)}</div>
+            <div class="item-meta">${escapeHtml(o.locationTitle)} · ${escapeHtml(o.price)}</div>
+            <div class="item-meta">${escapeHtml(o.locationAddress)}</div>
+            <div class="item-meta">${formatDate(o.createdAt)}</div>
+            <span class="status ${statusClass(o.status)}">${escapeHtml(o.status)}</span>
+          </div>`
+          )
+          .join('');
+      }
+
+      const favEl = document.getElementById('favoritesList');
+      if (!data.favorites.length) {
+        favEl.innerHTML =
+          '<p class="empty">Додайте точки в обране з картки закладу (кнопка «В обране»).</p>';
+      } else {
+        favEl.innerHTML = data.favorites
+          .map(
+            (f) => `
+          <div class="item">
+            <div class="item-title">${escapeHtml(f.title)}</div>
+            <div class="item-meta">${escapeHtml(f.address)}</div>
+            <a class="btn-link btn-outline" href="/?loc=${encodeURIComponent(f.id)}">Відкрити на карті</a>
+            <button type="button" class="btn-secondary" data-unfav="${f.id}">Прибрати</button>
+          </div>`
+          )
+          .join('');
+
+        favEl.querySelectorAll('[data-unfav]').forEach((btn) => {
+          btn.onclick = async () => {
+            await fetch('/api/client/favorites/' + btn.dataset.unfav, { method: 'DELETE' });
+            load();
+          };
+        });
+      }
+    }
+
+    function escapeHtml(s) {
+      const d = document.createElement('div');
+      d.textContent = s || '';
+      return d.innerHTML;
+    }
+
+    load().catch((e) => alert(e.message));
+  </script>
+</body>
+</html>

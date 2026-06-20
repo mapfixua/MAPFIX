@@ -1,0 +1,26 @@
+[
+  {
+    "id": "ce38b4f7-77d7-4a8f-a20a-233c438f3733",
+    "login": "provider1",
+    "passwordHash": "$2a$10$heCYJ6kywOmJJ9gzC7DUUutxvjhWFFXBpyvM.hgFDfBGXKKED5VGq",
+    "role": "provider"
+  },
+  {
+    "id": "a0000000-0000-4000-8000-000000000001",
+    "login": "admin",
+    "passwordHash": "$2a$10$P8pUw4uSgMBIoJn7J5p/0.JzBNrfOOKNCN501mm0315L6WyVxuGj6",
+    "role": "admin"
+  },
+  {
+    "id": "a93b5836-8743-4c3b-ba1e-b70f75651597",
+    "login": "саша шиномонтаж",
+    "passwordHash": "$2a$10$qDUNdaA.pQiFsDq8j5Lh/OHB9cquS2x2rPDmKAdDG899V1iyQIvxq",
+    "role": "provider"
+  },
+  {
+    "id": "9cec9a8b-6890-4d2d-bb5e-7f33aa03a691",
+    "login": "саша",
+    "passwordHash": "$2a$10$YohCb3AaOGKjoHYW/OkWp.Scguq5113XGQ4Vq3AqU.m5MTSY.yWf.",
+    "role": "provider"
+  }
+]

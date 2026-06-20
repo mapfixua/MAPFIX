@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Mapfix — Вхід</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: #f1f5f9;
+      color: #1e293b;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 24px 16px;
+    }
+    .wrap { width: 100%; max-width: 400px; }
+    h1 { font-size: 1.5rem; margin: 0 0 8px; text-align: center; }
+    .sub { color: #64748b; margin-bottom: 24px; font-size: 0.95rem; text-align: center; }
+    .card {
+      background: #fff;
+      border-radius: 12px;
+      padding: 24px;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.06);
+      border: 1px solid #e2e8f0;
+    }
+    label {
+      display: block;
+      font-weight: 600;
+      font-size: 0.85rem;
+      margin-bottom: 6px;
+    }
+    input {
+      width: 100%;
+      padding: 10px 12px;
+      border: 1px solid #cbd5e1;
+      border-radius: 8px;
+      font-size: 1rem;
+      margin-bottom: 16px;
+    }
+    input:focus {
+      outline: none;
+      border-color: #007bff;
+      box-shadow: 0 0 0 3px rgba(0,123,255,0.15);
+    }
+    button {
+      width: 100%;
+      padding: 12px;
+      background: #007bff;
+      color: #fff;
+      border: none;
+      border-radius: 8px;
+      font-size: 1rem;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    button:hover { background: #0069d9; }
+    button:disabled { opacity: 0.6; cursor: not-allowed; }
+    .msg {
+      margin-top: 16px;
+      padding: 12px;
+      border-radius: 8px;
+      font-size: 0.9rem;
+      display: none;
+    }
+    .msg.err { display: block; background: #fee2e2; color: #991b1b; }
+    .links { margin-top: 20px; text-align: center; font-size: 0.9rem; }
+    .links a { color: #007bff; text-decoration: none; margin: 0 6px; }
+    .links a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>Mapfix</h1>
+    <p class="sub">Вхід для клієнтів, провайдерів та адміністраторів</p>
+
+    <div class="card">
+      <form id="loginForm">
+        <label for="login">Логін</label>
+        <input id="login" name="login" type="text" autocomplete="username" required>
+
+        <label for="password">Пароль</label>
+        <input id="password" name="password" type="password" autocomplete="current-password" required>
+
+        <button type="submit" id="submitBtn">Увійти</button>
+      </form>
+      <div id="message" class="msg" role="alert"></div>
+    </div>
+
+    <p class="links">
+      <a href="/register.html">Реєстрація</a>
+      <a href="/">На карту</a>
+    </p>
+  </div>
+
+  <script>
+    const form = document.getElementById('loginForm');
+    const message = document.getElementById('message');
+    const submitBtn = document.getElementById('submitBtn');
+
+    function redirectByRole(role) {
+      if (role === 'admin' || role === 'provider') window.location.href = '/admin';
+      else if (role === 'client') window.location.href = '/client';
+      else window.location.href = '/';
+    }
+
+    function showError(text) {
+      message.textContent = text;
+      message.className = 'msg err';
+    }
+
+    async function checkAlreadyLoggedIn() {
+      try {
+        const res = await fetch('/api/me', { credentials: 'same-origin', cache: 'no-store' });
+        const data = await res.json();
+        if (data.loggedIn) redirectByRole(data.user.role);
+      } catch (_) {}
+    }
+
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      submitBtn.disabled = true;
+      message.className = 'msg';
+
+      try {
+        const res = await fetch('/api/login', {
+          method: 'POST',
+          credentials: 'same-origin',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            login: form.login.value.trim().toLowerCase(),
+            password: form.password.value,
+          }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Помилка входу');
+        redirectByRole(data.user.role);
+      } catch (err) {
+        showError(err.message);
+      } finally {
+        submitBtn.disabled = false;
+      }
+    });
+
+    checkAlreadyLoggedIn();
+  </script>
+</body>
+</html>

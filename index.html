@@ -1,0 +1,1608 @@
+<html lang="uk"><head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+    <meta http-equiv="Pragma" content="no-cache">
+    <meta http-equiv="Expires" content="0">
+    <title>Mapfix — Карта послуг</title>
+
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" crossorigin="anonymous" referrerpolicy="no-referrer">
+    
+    <style>
+        :root {
+            --primary: #007bff;
+            --primary-light: #e0f2fe;
+            --success: #2e7d32;
+            --danger: #d32f2f;
+            --dark: #1e293b;
+            --border: #e2e8f0;
+            --sidebar-width: 420px;
+            --desktop-max: 100%;
+            --ease-sheet: cubic-bezier(0.32, 0.72, 0, 1);
+        }
+
+        * { -webkit-tap-highlight-color: transparent; }
+
+        body {
+            margin: 0; padding: 0;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            overflow: hidden;
+            background: #f1f5f9;
+            height: 100vh;
+            height: 100dvh;
+        }
+
+        #app-shell {
+            display: flex;
+            height: 100vh;
+            height: 100dvh;
+            width: 100%;
+            background: #f1f5f9;
+        }
+
+        #map-container {
+            position: relative;
+            z-index: 1;
+            min-width: 0;
+        }
+
+        #map { width: 100%; height: 100%; z-index: 1; }
+
+        #sidebar {
+            background: white;
+            display: flex;
+            flex-direction: column;
+            flex-shrink: 0;
+            position: relative;
+            overflow: hidden;
+            z-index: 5;
+        }
+
+        .sheet-drag-handle { display: none; }
+
+        .category-strip-wrap {
+            flex-shrink: 0;
+            border-bottom: 1px solid var(--border);
+            background: #fff;
+        }
+        .category-strip {
+            display: flex;
+            overflow-x: auto;
+            overflow-y: hidden;
+            scroll-behavior: smooth;
+            -webkit-overflow-scrolling: touch;
+            scrollbar-width: none;
+        }
+        .category-strip::-webkit-scrollbar { display: none; }
+        .category-card {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            border: 2px solid transparent;
+            background: #f8fafc;
+            cursor: pointer;
+            transition: transform 0.2s var(--ease-sheet), border-color 0.2s, background 0.2s;
+            touch-action: manipulation;
+        }
+        .category-card:active { transform: scale(0.95); }
+        .category-card.active {
+            border-color: var(--primary);
+            background: var(--primary-light);
+        }
+        .category-card-icon {
+            border-radius: 50%;
+            background: white;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: var(--primary);
+            transition: transform 0.2s var(--ease-sheet), color 0.2s, background 0.2s;
+        }
+        .category-card.active .category-card-icon {
+            background: var(--primary);
+            color: #fff;
+        }
+        .category-card-label {
+            font-weight: 800;
+            text-align: center;
+            color: var(--dark);
+        }
+
+        .sheet-panel {
+            flex: 1;
+            min-height: 0;
+            display: flex;
+            flex-direction: column;
+            opacity: 1;
+            transition: opacity 0.28s ease, transform 0.32s var(--ease-sheet);
+        }
+        .sheet-panel.sheet-content-enter {
+            animation: sheetContentIn 0.32s var(--ease-sheet);
+        }
+        @keyframes sheetContentIn {
+            from { opacity: 0; transform: translateY(12px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .sidebar-view {
+            display: flex;
+            flex-direction: column;
+            height: 100%;
+            width: 100%;
+            background: white;
+            box-sizing: border-box;
+        }
+
+        .sheet-body-host {
+            flex: 1;
+            min-height: 0;
+            position: relative;
+            overflow: hidden;
+            background: #f8fafc;
+        }
+        #sidebar-list-view { position: relative; z-index: 2; }
+        #sidebar-detail-view {
+            position: absolute;
+            inset: 0;
+            z-index: 3;
+            pointer-events: none;
+            transition: transform 0.32s var(--ease-sheet);
+        }
+        #sidebar-detail-view.show {
+            transform: translateX(0);
+            pointer-events: auto;
+        }
+
+        /* ШАПКА СПИСКУ */
+        .sidebar-header {
+            padding: 14px 16px;
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            background: white;
+            flex-shrink: 0;
+        }
+        .sort-panel {
+            background: #f8fafc;
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 10px 12px;
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            margin: 0;
+        }
+        .sort-label { font-size: 11px; font-weight: 800; color: var(--dark); text-transform: uppercase; letter-spacing: 0.4px; margin: 0; }
+        .sort-select { width: 100%; height: 34px; border: 1px solid var(--border); border-radius: 8px; background-color: white; padding: 0 10px; font-size: 13px; font-weight: 700; color: #475569; outline: none; cursor: pointer; margin: 0; }
+        .hotline-filter-bar { display: flex; align-items: center; gap: 8px; font-size: 12px; font-weight: 700; color: #475569; margin: 0; }
+        .hotline-filter-bar input[type="checkbox"] { width: 15px; height: 15px; cursor: pointer; accent-color: var(--primary); margin: 0; }
+
+        .sidebar-content {
+            flex-grow: 1;
+            min-height: 0;
+            overflow-y: auto;
+            -webkit-overflow-scrolling: touch;
+            scroll-behavior: smooth;
+            padding: 0 12px 12px;
+            margin: 0;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            background: #f8fafc;
+        }
+
+        .nav-title { font-size: 15px; font-weight: 800; color: var(--dark); margin: 0; line-height: 1.3; }
+        .sidebar-header .back-btn { margin: 0; padding: 0; font-size: 13px; }
+        .nav-item {
+            background: white;
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 12px 14px;
+            margin: 0;
+            cursor: pointer;
+            transition: background 0.15s, border-color 0.15s;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 8px;
+            font-weight: 700;
+            font-size: 14px;
+            color: var(--dark);
+        }
+        .nav-item:hover { background: #f1f5f9; border-color: #cbd5e1; }
+        .nav-item.active { background: #e0f2fe; color: var(--primary); border-color: var(--primary); }
+        .nav-item-arrow { color: #94a3b8; font-size: 13px; flex-shrink: 0; margin: 0; }
+        .nav-item-meta { font-size: 11px; font-weight: 600; color: #64748b; margin: 2px 0 0; line-height: 1.25; }
+        .nav-hint {
+            font-size: 12px;
+            color: #94a3b8;
+            text-align: center;
+            padding: 14px 12px;
+            margin: 0;
+            line-height: 1.4;
+        }
+
+        .provider-card {
+            background: white;
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 12px 14px;
+            margin: 0;
+            cursor: pointer;
+            transition: background 0.15s, border-color 0.15s;
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+        }
+        .provider-card:hover { background: #f8fafc; border-color: #cbd5e1; }
+        .provider-card.active { background: #f0f7ff; border-color: var(--primary); }
+        .provider-top { display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; margin: 0; }
+        .provider-title { font-weight: 700; font-size: 14px; color: var(--dark); margin: 0; line-height: 1.25; }
+        .rating-block { display: flex; align-items: center; gap: 3px; font-size: 12px; font-weight: 700; margin: 0; }
+        .star-icon { color: #ffb703; }
+        .reviews-count { color: #94a3b8; font-weight: 500; }
+        .provider-desc { font-size: 12px; color: #64748b; margin: 0; line-height: 1.3; }
+        .provider-meta { display: flex; align-items: center; gap: 6px; font-size: 11px; margin: 0; }
+        .status-badge { padding: 2px 6px; border-radius: 4px; font-weight: 700; font-size: 9px; text-transform: uppercase; margin: 0; }
+        .status-badge.open { background: #dcfce7; color: #166534; }
+        .status-badge.closed { background: #fee2e2; color: #991b1b; }
+        .distance-badge { background: #f1f5f9; color: #475569; padding: 2px 6px; border-radius: 4px; font-weight: 600; margin: 0; }
+        .provider-price-row { display: flex; justify-content: space-between; align-items: center; margin: 0; padding-top: 6px; border-top: 1px dashed var(--border); }
+        .provider-badge { font-size: 10px; font-weight: 700; color: #475569; background: #f1f5f9; padding: 3px 6px; border-radius: 4px; margin: 0; }
+        .provider-card-price { font-size: 14px; font-weight: 800; color: var(--success); margin: 0; }
+
+        /* ДЕТАЛЬНА КАРТКА */
+        .detail-header { padding: 15px 20px; border-bottom: 1px solid var(--border); display: flex; flex-direction: column; gap: 12px; background: white; }
+        .back-btn { background: none; border: none; color: var(--primary); font-size: 13px; font-weight: 700; cursor: pointer; display: flex; align-items: center; gap: 4px; padding: 0; width: fit-content; }
+        .detail-main-title { font-size: 18px; font-weight: 800; color: var(--dark); margin: 0; }
+        
+        .detail-actions-row { display: flex; gap: 8px; margin-top: 4px; }
+        .action-btn { flex: 1; height: 38px; border-radius: 8px; border: none; font-weight: 700; font-size: 13px; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 6px; text-decoration: none; }
+        .btn-call { background: var(--success); color: white; }
+        .btn-route { background: var(--primary); color: white; }
+
+        .detail-scroll-body { flex-grow: 1; overflow-y: auto; padding: 20px; background: #f8fafc; display: flex; flex-direction: column; gap: 16px; }
+        .detail-section { background: white; border: 1px solid var(--border); border-radius: 12px; padding: 14px; display: flex; flex-direction: column; gap: 10px; }
+        .section-title { font-size: 12px; font-weight: 800; color: #64748b; text-transform: uppercase; border-bottom: 1px solid var(--border); padding-bottom: 4px; margin: 0; }
+        
+        .info-item { display: flex; gap: 8px; font-size: 13px; color: var(--dark); font-weight: 600; }
+        .schedule-table { display: flex; flex-direction: column; gap: 4px; font-size: 12px; width: 100%; color: #475569; }
+        .schedule-row { display: flex; justify-content: space-between; padding: 2px 0; }
+
+        .detail-price-row { display: flex; justify-content: space-between; align-items: center; padding: 8px 0; border-bottom: 1px dashed var(--border); font-size: 13px; font-weight: 700; }
+        .detail-price-row:last-child { border-bottom: none; }
+        .detail-price-val { color: var(--success); font-weight: 800; }
+
+        .review-item { display: flex; flex-direction: column; gap: 4px; border-bottom: 1px solid var(--border); padding-bottom: 8px; }
+        .review-item:last-child { border-bottom: none; padding-bottom: 0; }
+        .review-top-line { display: flex; justify-content: space-between; font-size: 11px; font-weight: 700; color: #64748b; }
+        .review-stars { color: #ffb703; letter-spacing: 1px; }
+        .review-text { font-size: 12px; color: var(--dark); font-weight: 500; line-height: 1.4; }
+
+        /* ФОРМА ВІДГУКУ */
+        .review-form { display: flex; flex-direction: column; gap: 10px; margin-top: 5px; }
+        .rating-stars-input { display: flex; gap: 6px; font-size: 24px; cursor: pointer; color: #cbd5e1; user-select: none; }
+        .rating-stars-input span:hover,
+        .rating-stars-input span.active { color: #ffb703; }
+        .review-textarea { width: 100%; height: 60px; border: 1px solid var(--border); border-radius: 8px; padding: 8px; font-size: 12px; font-family: inherit; outline: none; resize: none; box-sizing: border-box; }
+        .review-textarea:focus { border-color: var(--primary); }
+        .submit-review-btn { background: var(--dark); color: white; border: none; height: 34px; border-radius: 8px; font-weight: 700; font-size: 12px; cursor: pointer; }
+
+        .detail-price-row { position: relative; }
+        .detail-price-actions { display: flex; gap: 6px; align-items: center; flex-shrink: 0; }
+        .btn-order {
+            background: var(--success);
+            color: white;
+            border: none;
+            padding: 6px 12px;
+            border-radius: 6px;
+            font-size: 11px;
+            font-weight: 700;
+            cursor: pointer;
+            white-space: nowrap;
+        }
+        .btn-order:hover { filter: brightness(1.05); }
+        .btn-fav-header {
+            background: #fff;
+            border: 2px solid #fbbf24;
+            color: #b45309;
+            padding: 6px 12px;
+            border-radius: 8px;
+            font-size: 12px;
+            font-weight: 700;
+            cursor: pointer;
+        }
+        .btn-fav-header.active { background: #fef3c7; }
+
+        .top-header {
+            position: absolute; top: 12px; left: 12px; right: 12px; z-index: 10;
+            display: flex; gap: 8px; align-items: center; pointer-events: none;
+        }
+        .search-container { flex-grow: 1; background: white; border-radius: 30px; padding: 5px 10px 5px 18px; display: flex; align-items: center; box-shadow: 0 4px 20px rgba(0,0,0,0.08); height: 48px; pointer-events: auto; position: relative; }
+        .search-container input { border: none; width: 100%; outline: none; font-size: 15px; margin-left: 8px; flex: 1; min-width: 0; }
+        .voice-mic-btn {
+            width: 36px; height: 36px; border: none; border-radius: 50%; background: var(--primary-light);
+            color: var(--primary); cursor: pointer; display: flex; align-items: center; justify-content: center;
+            font-size: 16px; flex-shrink: 0; transition: background 0.2s, transform 0.15s;
+        }
+        .voice-mic-btn:hover { background: #bae6fd; }
+        .voice-mic-btn.listening { background: #fee2e2; color: #dc2626; animation: mic-pulse 1s ease-in-out infinite; }
+        .voice-mic-btn.processing { background: #fef3c7; color: #b45309; }
+        @keyframes mic-pulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.08); } }
+        .voice-status {
+            position: absolute; top: calc(100% + 8px); left: 0; right: 0;
+            background: #1e293b; color: #fff; font-size: 13px; font-weight: 600;
+            padding: 10px 14px; border-radius: 12px; display: flex; align-items: center; gap: 10px;
+            box-shadow: 0 8px 24px rgba(0,0,0,0.18); z-index: 20; pointer-events: none;
+        }
+        .voice-status.hidden { display: none; }
+        .voice-pulse {
+            width: 10px; height: 10px; border-radius: 50%; background: #ef4444; flex-shrink: 0;
+            animation: voice-dot 1s ease-in-out infinite;
+        }
+        @keyframes voice-dot { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.4; transform: scale(0.7); } }
+        .brand-logo { font-weight: 900; color: var(--primary); font-size: 20px; }
+        .header-btn { height: 48px; background: white; border-radius: 25px; border: none; box-shadow: 0 4px 20px rgba(0,0,0,0.08); cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 14px; font-weight: 700; pointer-events: auto; }
+        .profile-wrap { position: relative; pointer-events: auto; }
+        .profile-btn { width: 48px; height: 48px; border-radius: 50%; font-size: 18px; padding: 0; flex-shrink: 0; }
+        .profile-btn.logged-in { background: #e0f2fe; border: 2px solid var(--primary); }
+        .add-business-btn { padding: 0 20px; color: white; background: var(--success); white-space: nowrap; }
+        .user-menu {
+            display: none;
+            position: absolute;
+            top: calc(100% + 8px);
+            right: 0;
+            min-width: 200px;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.12);
+            border: 1px solid var(--border);
+            overflow: hidden;
+            z-index: 1000;
+        }
+        .user-menu.show { display: block; }
+        .user-menu-header {
+            padding: 12px 14px;
+            background: #f8fafc;
+            border-bottom: 1px solid var(--border);
+            font-size: 12px;
+            font-weight: 700;
+            color: #64748b;
+        }
+        .user-menu-header strong { display: block; color: var(--dark); font-size: 14px; margin-top: 2px; }
+        .user-menu-item {
+            display: block;
+            width: 100%;
+            padding: 12px 14px;
+            border: none;
+            background: none;
+            text-align: left;
+            font-size: 14px;
+            font-weight: 600;
+            color: var(--dark);
+            cursor: pointer;
+            text-decoration: none;
+        }
+        .user-menu-item:hover { background: #f1f5f9; }
+        .user-menu-item.danger { color: #dc2626; }
+
+        #geo-btn {
+            position: absolute; bottom: 14px; right: 14px; z-index: 10;
+            width: 46px; height: 46px; background: white; border-radius: 50%; border: none;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.15); cursor: pointer;
+            display: flex; align-items: center; justify-content: center; font-size: 18px;
+            touch-action: manipulation;
+        }
+        .user-location-marker { width: 14px; height: 14px; background: #007bff; border: 3px solid white; border-radius: 50%; box-shadow: 0 0 8px rgba(0,123,255,0.5); }
+
+        /* МАРКЕРИ */
+        .mapfix-marker-category { width: 36px; height: 36px; background: white; border: 3px solid var(--primary); border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 16px; box-shadow: 0 4px 10px rgba(0,0,0,0.15); }
+        .mapfix-marker-price { background: white; border: 2px solid var(--primary); color: var(--dark); font-weight: 800; font-size: 11px; padding: 4px 8px; border-radius: 6px; box-shadow: 0 4px 10px rgba(0,0,0,0.15); white-space: nowrap; position: relative; }
+        .mapfix-marker-price::after { content: ''; position: absolute; bottom: -6px; left: 50%; transform: translateX(-50%); border-width: 6px 6px 0; border-style: solid; border-color: var(--primary) transparent; }
+
+        /* ========== DESKTOP (≥769px) — повноцінний сервіс: широка карта + sidebar-сітка ========== */
+        @media (min-width: 769px) {
+            body { background: #f1f5f9; }
+
+            #app-shell {
+                flex-direction: row;
+                width: 100%;
+                max-width: none;
+                margin: 0;
+                box-shadow: none;
+            }
+
+            #sidebar {
+                order: -1;
+                width: var(--sidebar-width);
+                min-width: var(--sidebar-width);
+                max-width: var(--sidebar-width);
+                height: 100vh;
+                height: 100dvh;
+                border-right: 1px solid var(--border);
+                border-top: none;
+                border-radius: 0;
+                box-shadow: 2px 0 16px rgba(0,0,0,0.05);
+            }
+
+            #map-container {
+                flex: 1 1 auto;
+                width: auto;
+                min-width: 0;
+                max-width: none;
+                height: 100vh;
+                height: 100dvh;
+            }
+
+            #sidebar-detail-view {
+                transform: translateX(-100%);
+            }
+
+            /* Категорії: сітка 2 колонки в sidebar (не горизонтальна стрічка) */
+            .category-strip-wrap {
+                padding: 10px 12px 8px;
+                background: #f8fafc;
+            }
+            .category-strip {
+                display: grid;
+                grid-template-columns: repeat(2, minmax(0, 1fr));
+                gap: 8px;
+                overflow: visible;
+                padding: 0;
+            }
+            .category-card {
+                flex: none;
+                width: 100%;
+                min-width: 0;
+                flex-direction: row;
+                align-items: center;
+                justify-content: flex-start;
+                gap: 10px;
+                padding: 8px 10px;
+                border-radius: 10px;
+                border-width: 1.5px;
+            }
+            .category-card-icon {
+                width: 36px;
+                height: 36px;
+                min-width: 36px;
+                font-size: 15px;
+                box-shadow: none;
+                flex-shrink: 0;
+            }
+            .category-card.active .category-card-icon {
+                transform: none;
+            }
+            .category-card-label {
+                font-size: 11px;
+                font-weight: 700;
+                line-height: 1.2;
+                text-align: left;
+                max-width: none;
+                flex: 1;
+            }
+
+            #geo-btn { bottom: 28px; right: 28px; }
+            .top-header { top: 18px; left: 18px; right: 18px; max-width: 720px; }
+        }
+
+        @media (min-width: 1200px) {
+            :root { --sidebar-width: 440px; }
+            .top-header { max-width: 800px; }
+        }
+
+        /* ========== MOBILE (≤768px) — карта 65% + bottom sheet 35%, max-width 520px ========== */
+        @media (max-width: 768px) {
+            body { background: #e2e8f0; }
+
+            #app-shell {
+                flex-direction: column;
+                width: 100%;
+                max-width: 520px;
+                margin: 0 auto;
+                box-shadow: 0 0 40px rgba(0,0,0,0.08);
+                --map-h: 65vh;
+                --sheet-h: 35vh;
+                transition: --map-h 0.38s var(--ease-sheet), --sheet-h 0.38s var(--ease-sheet);
+            }
+
+            #app-shell.sheet-expanded {
+                --map-h: 52vh;
+                --sheet-h: 48vh;
+            }
+
+            #map-container {
+                height: var(--map-h);
+                flex-shrink: 0;
+                transition: height 0.38s var(--ease-sheet);
+            }
+
+            #sidebar {
+                height: var(--sheet-h);
+                border-top: 1px solid var(--border);
+                border-top-left-radius: 22px;
+                border-top-right-radius: 22px;
+                box-shadow: 0 -8px 32px rgba(0,0,0,0.08);
+                transition: height 0.38s var(--ease-sheet);
+            }
+
+            #sidebar-detail-view {
+                transform: translateX(100%);
+            }
+
+            .sheet-drag-handle {
+                display: flex;
+                width: 100%;
+                height: 14px;
+                align-items: center;
+                justify-content: center;
+                background: white;
+                cursor: grab;
+                flex-shrink: 0;
+                user-select: none;
+            }
+            .sheet-drag-handle::before {
+                content: '';
+                width: 36px;
+                height: 4px;
+                background: #cbd5e1;
+                border-radius: 2px;
+                transition: background 0.2s;
+            }
+            #app-shell.sheet-expanded .sheet-drag-handle::before { background: #94a3b8; }
+
+            .category-strip-wrap {
+                padding: 2px 0 4px;
+                margin: 0;
+            }
+            .category-strip {
+                gap: 6px;
+                padding: 2px 10px;
+                margin: 0;
+            }
+            .category-card {
+                flex: 0 0 64px;
+                min-width: 64px;
+                gap: 3px;
+                padding: 4px 2px;
+                margin: 0;
+                border-radius: 12px;
+                border-width: 1.5px;
+                box-shadow: none;
+            }
+            .category-card-icon {
+                width: 38px;
+                height: 38px;
+                font-size: 16px;
+                box-shadow: 0 2px 6px rgba(0,123,255,0.1);
+            }
+            .category-card.active .category-card-icon { transform: scale(1.04); }
+            .category-card-label {
+                font-size: 9px;
+                line-height: 1.15;
+                max-width: 62px;
+            }
+
+            #geo-btn { bottom: 14px; right: 14px; }
+
+            /* Compact mode — тільки мобільний */
+            .sidebar-header {
+                padding: 6px 10px;
+                gap: 4px;
+            }
+            .sort-panel { padding: 6px 8px; gap: 4px; border-radius: 8px; }
+            .sort-label { font-size: 10px; }
+            .sort-select { height: 30px; font-size: 12px; }
+            .hotline-filter-bar { font-size: 11px; gap: 6px; }
+
+            .sidebar-content {
+                padding: 0;
+                gap: 4px;
+            }
+            .nav-title { font-size: 13px; }
+            .sidebar-header .back-btn { font-size: 12px; }
+            .nav-item {
+                border: none;
+                border-bottom: 1px solid var(--border);
+                border-radius: 0;
+                padding: 8px 10px;
+                font-size: 13px;
+            }
+            .nav-item:first-child { border-top: 1px solid var(--border); }
+            .nav-item-meta { font-size: 10px; }
+            .nav-hint { font-size: 11px; padding: 8px 10px; }
+
+            .provider-card {
+                border: none;
+                border-bottom: 1px solid var(--border);
+                border-radius: 0;
+                padding: 8px 10px;
+                gap: 3px;
+            }
+            .provider-card:first-child { border-top: 1px solid var(--border); }
+            .provider-title { font-size: 13px; }
+            .provider-desc { font-size: 11px; }
+            .rating-block { font-size: 11px; }
+            .provider-meta { font-size: 10px; }
+            .provider-card-price { font-size: 13px; }
+        }
+
+        @media (max-width: 380px) {
+            .add-business-btn span.btn-label { display: none; }
+            .category-card { flex: 0 0 58px; min-width: 58px; }
+            .category-card-icon { width: 34px; height: 34px; font-size: 14px; }
+            .category-card-label { font-size: 8px; max-width: 56px; }
+        }
+    </style>
+</head>
+<body>
+
+    <div id="app-shell">
+    <div id="map-container">
+        <div class="top-header">
+            <div class="search-container">
+                <span class="brand-logo">Mapfix</span>
+                <input type="text" id="searchInput" placeholder="Пошук послуг чи майстрів поруч..." autocomplete="off">
+                <button type="button" class="voice-mic-btn" id="voiceSearchBtn" title="Голосовий пошук" aria-label="Голосовий пошук">🎤</button>
+                <div id="voiceStatus" class="voice-status hidden" role="status" aria-live="polite">
+                    <span class="voice-pulse"></span>
+                    <span id="voiceStatusText">Слухаю...</span>
+                </div>
+            </div>
+            <button type="button" class="header-btn add-business-btn" id="addBusinessBtn"><span class="btn-label">Додати </span><i class="fa-solid fa-plus"></i></button>
+            <div class="profile-wrap">
+                <button type="button" class="header-btn profile-btn" id="profileBtn" title="Профіль" aria-haspopup="true" aria-expanded="false">👤</button>
+                <div class="user-menu" id="userMenu" role="menu"></div>
+            </div>
+        </div>
+
+        <button id="geo-btn" type="button" aria-label="Моє місцезнаходження"><i class="fa-solid fa-location-crosshairs"></i></button>
+        <div id="map"></div>
+    </div>
+
+    <div id="sidebar" class="bottom-sheet">
+        <div class="sheet-drag-handle" id="sheetHandle" aria-label="Розгорнути панель"></div>
+
+        <div class="category-strip-wrap">
+            <div id="categoryStrip" class="category-strip" aria-label="Категорії послуг"></div>
+        </div>
+
+        <div class="sheet-body-host">
+            <div id="sidebar-list-view" class="sidebar-view sheet-panel">
+                <div class="sidebar-header">
+                    <button type="button" class="back-btn" id="navBackBtn" style="display:none"><i class="fa-solid fa-arrow-left"></i> Назад</button>
+                    <h2 class="nav-title" id="navTitle">Оберіть категорію</h2>
+                    <div id="sortPanelWrap" style="display:none">
+                        <div class="sort-panel">
+                            <div class="sort-label"><i class="fa-solid fa-sliders"></i> Сортування виконавців</div>
+                            <select id="sortSelect" class="sort-select">
+                                <option value="distance">За відстаню (найближчі)</option>
+                                <option value="rating">За рейтингом (найвищий)</option>
+                                <option value="price" id="optPrice">За ціною (від дешевих)</option>
+                                <option value="alphabet">За алфавітом (А-Я)</option>
+                            </select>
+                        </div>
+                        <div class="hotline-filter-bar">
+                            <input type="checkbox" id="onlyOpenCheckbox">
+                            <label for="onlyOpenCheckbox" style="cursor:pointer; user-select:none;">Тільки відчинені зараз</label>
+                        </div>
+                    </div>
+                </div>
+                <div class="sidebar-content" id="catalogNav"></div>
+                <div class="sidebar-content" id="sidebarContent" style="display:none"></div>
+            </div>
+
+            <div id="sidebar-detail-view" class="sidebar-view sheet-panel">
+                <div class="detail-header" id="detailHeaderContent"></div>
+                <div class="detail-scroll-body" id="detailBodyContent"></div>
+            </div>
+        </div>
+    </div>
+    </div>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="/mapfix-sync.js"></script>
+
+    <script>
+        async function loadCatalogData() {
+            const res = await fetch(`/api/data?t=${Date.now()}`, {
+                cache: 'no-store',
+                credentials: 'same-origin',
+                headers: { 'Cache-Control': 'no-cache', Pragma: 'no-cache' },
+            });
+            if (!res.ok) throw new Error('Не вдалося завантажити каталог');
+            const data = await res.json();
+            window.masterCatalog = data.masterCatalog || {};
+            window.mockLocations = data.mockLocations || [];
+        }
+
+        document.addEventListener("DOMContentLoaded", async () => {
+            try {
+                await loadCatalogData();
+            } catch (err) {
+                console.error(err);
+                alert('Помилка завантаження даних. Перевірте, що сервер запущено.');
+                return;
+            }
+
+            const map = L.map('map', { zoomControl: false }).setView([50.4501, 30.5234], 11);
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+
+            const State = { 
+                category: null, 
+                subcategory: null, 
+                service: null, 
+                selectedLocation: null, 
+                userCoords: { lat: 50.4501, lng: 30.5234 },
+                onlyOpen: false,
+                sortType: 'distance',
+                formRatingScore: 5,
+                currentUser: null,
+                favoriteIds: new Set()
+            };
+            
+            let userMarkerInstance = null;
+
+            function calculateDistance(lat1, lon1, lat2, lon2) {
+                const R = 6371;
+                const dLat = (lat2 - lat1) * Math.PI / 180;
+                const dLon = (lon2 - lon1) * Math.PI / 180;
+                const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
+                          Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLon/2) * Math.sin(dLon/2);
+                return R * (2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a)));
+            }
+
+            function drawUserMarker() {
+                if (userMarkerInstance) map.removeLayer(userMarkerInstance);
+                userMarkerInstance = L.marker([State.userCoords.lat, State.userCoords.lng], { icon: L.divIcon({ className: 'user-location-marker', iconSize: [0,0] }) }).addTo(map);
+            }
+            drawUserMarker();
+
+            async function refreshMapData() {
+                await loadCatalogData();
+                syncUI();
+                if (State.service) {
+                    renderLocationList();
+                }
+                syncMapMarkers();
+            }
+
+            async function loadSession() {
+                try {
+                    const meRes = await fetch('/api/me', { credentials: 'same-origin', cache: 'no-store' });
+                    const me = await meRes.json();
+                    if (me.loggedIn) {
+                        State.currentUser = me.user;
+                        if (me.user.role === 'client') {
+                            const favRes = await fetch('/api/client/favorites', { credentials: 'same-origin', cache: 'no-store' });
+                            const favData = await favRes.json();
+                            if (favRes.ok) {
+                                State.favoriteIds = new Set(favData.locationIds || []);
+                            }
+                        }
+                    }
+                } catch (_) {}
+            }
+            await loadSession();
+
+            const userMenu = document.getElementById('userMenu');
+            const profileBtn = document.getElementById('profileBtn');
+
+            function closeUserMenu() {
+                userMenu.classList.remove('show');
+                profileBtn.setAttribute('aria-expanded', 'false');
+            }
+
+            function openUserMenu() {
+                userMenu.classList.add('show');
+                profileBtn.setAttribute('aria-expanded', 'true');
+            }
+
+            function updateHeaderAuthUI() {
+                const u = State.currentUser;
+                profileBtn.classList.toggle('logged-in', !!u);
+                profileBtn.title = u ? u.login : 'Увійти або зареєструватись';
+
+                if (!u) {
+                    userMenu.innerHTML = `
+                        <div class="user-menu-header">Гість</div>
+                        <a class="user-menu-item" href="/login.html">Увійти</a>
+                        <a class="user-menu-item" href="/register.html">Реєстрація</a>
+                        <a class="user-menu-item" href="/register.html?role=provider">Реєстрація провайдера</a>`;
+                    return;
+                }
+
+                let cabinetLabel = 'Мій кабінет';
+                let cabinetHref = '/client';
+                if (u.role === 'provider') {
+                    cabinetLabel = 'Кабінет бізнесу';
+                    cabinetHref = '/admin';
+                } else if (u.role === 'admin') {
+                    cabinetLabel = 'Адмін-панель';
+                    cabinetHref = '/admin';
+                }
+
+                userMenu.innerHTML = `
+                    <div class="user-menu-header">
+                        Ви в системі
+                        <strong>${u.login}</strong>
+                    </div>
+                    <a class="user-menu-item" href="${cabinetHref}">${cabinetLabel}</a>
+                    <button type="button" class="user-menu-item danger" id="logoutMenuBtn">Вийти</button>`;
+
+                document.getElementById('logoutMenuBtn').onclick = async () => {
+                    await fetch('/api/logout', { method: 'POST' }).catch(() => {});
+                    State.currentUser = null;
+                    State.favoriteIds = new Set();
+                    closeUserMenu();
+                    updateHeaderAuthUI();
+                };
+            }
+
+            updateHeaderAuthUI();
+
+            profileBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                if (userMenu.classList.contains('show')) closeUserMenu();
+                else openUserMenu();
+            });
+
+            document.addEventListener('click', (e) => {
+                if (!e.target.closest('.profile-wrap')) closeUserMenu();
+            });
+
+            document.getElementById('addBusinessBtn').addEventListener('click', () => {
+                const u = State.currentUser;
+                if (!u) {
+                    if (confirm('Щоб додати бізнес на карту, потрібен акаунт провайдера.\n\nПерейти до реєстрації?')) {
+                        window.location.href = '/register.html';
+                    }
+                    return;
+                }
+                if (u.role === 'client') {
+                    alert('Додавати бізнес можуть лише провайдери.\n\nЗареєструйте окремий акаунт з роллю «Провайдер» або увійдіть як існуючий бізнес.');
+                    return;
+                }
+                if (u.role === 'admin') {
+                    window.location.href = '/admin?newLocation=1';
+                    return;
+                }
+                if (u.role === 'provider') {
+                    window.location.href = '/admin?newLocation=1';
+                }
+            });
+
+            const urlLoc = new URLSearchParams(window.location.search).get('loc');
+            if (urlLoc) {
+                setTimeout(() => openMasterDetail(urlLoc), 400);
+            }
+
+            window.placeOrder = async function(locationId, serviceName) {
+                if (!State.currentUser) {
+                    if (confirm('Увійдіть як клієнт, щоб замовити послугу. Перейти до входу?')) {
+                        window.location.href = '/login.html';
+                    }
+                    return;
+                }
+                if (State.currentUser.role !== 'client') {
+                    alert('Замовлення доступне лише для ролі клієнта');
+                    return;
+                }
+                try {
+                    const res = await fetch('/api/orders', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ locationId, serviceName }),
+                    });
+                    const data = await res.json();
+                    if (!res.ok) throw new Error(data.error);
+                    alert('Замовлення створено! Статус: Очікує. Переглянути в кабінеті клієнта.');
+                } catch (err) {
+                    alert(err.message);
+                }
+            };
+
+            window.toggleFavorite = async function(locationId) {
+                if (!State.currentUser || State.currentUser.role !== 'client') {
+                    if (confirm('Увійдіть як клієнт. Перейти до реєстрації?')) {
+                        window.location.href = '/register.html';
+                    }
+                    return;
+                }
+                const isFav = State.favoriteIds.has(locationId);
+                const url = isFav
+                    ? `/api/client/favorites/${locationId}`
+                    : '/api/client/favorites';
+                const res = await fetch(url, {
+                    method: isFav ? 'DELETE' : 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: isFav ? undefined : JSON.stringify({ locationId }),
+                });
+                const data = await res.json();
+                if (!res.ok) return alert(data.error || 'Помилка');
+                if (isFav) State.favoriteIds.delete(locationId);
+                else State.favoriteIds.add(locationId);
+                if (State.selectedLocation?.id === locationId) {
+                    openMasterDetail(locationId);
+                }
+            };
+
+            const appShell = document.getElementById('app-shell');
+            const categoryStrip = document.getElementById('categoryStrip');
+            const catalogNav = document.getElementById('catalogNav');
+            const sidebarContent = document.getElementById('sidebarContent');
+            const navBackBtn = document.getElementById('navBackBtn');
+            const navTitle = document.getElementById('navTitle');
+            const sortPanelWrap = document.getElementById('sortPanelWrap');
+            const sidebarListView = document.getElementById('sidebar-list-view');
+
+            const CATEGORY_ICONS = {
+                beauty: 'fa-scissors',
+                auto: 'fa-car',
+                repair: 'fa-wrench',
+                pets: 'fa-paw',
+                home: 'fa-house',
+                education: 'fa-graduation-cap',
+                sport: 'fa-dumbbell',
+            };
+
+            function categoryLabel(name) {
+                return String(name || '').replace(/^[\p{Extended_Pictographic}\p{Emoji_Presentation}\s]+/u, '').trim() || name;
+            }
+
+            function isMobileLayout() {
+                return window.matchMedia('(max-width: 768px)').matches;
+            }
+
+            function expandBottomSheet() {
+                if (isMobileLayout()) appShell.classList.add('sheet-expanded');
+                setTimeout(() => map.invalidateSize(), 400);
+            }
+
+            function collapseBottomSheet() {
+                if (isMobileLayout()) appShell.classList.remove('sheet-expanded');
+                setTimeout(() => map.invalidateSize(), 400);
+            }
+
+            function pulseSheetContent() {
+                sidebarListView.classList.remove('sheet-content-enter');
+                void sidebarListView.offsetWidth;
+                sidebarListView.classList.add('sheet-content-enter');
+            }
+
+            function renderCategoryStrip() {
+                categoryStrip.innerHTML = '';
+                const cats = Object.entries(window.masterCatalog || {});
+                if (!cats.length) {
+                    categoryStrip.innerHTML = '<p class="nav-hint" style="padding:8px 16px">Каталог порожній</p>';
+                    return;
+                }
+
+                cats.forEach(([catKey, catData]) => {
+                    const card = document.createElement('button');
+                    card.type = 'button';
+                    card.className = 'category-card' + (State.category === catKey ? ' active' : '');
+                    const iconClass = CATEGORY_ICONS[catKey] || 'fa-map-location-dot';
+                    card.innerHTML = `
+                        <div class="category-card-icon"><i class="fa-solid ${iconClass}"></i></div>
+                        <span class="category-card-label">${categoryLabel(catData.name)}</span>`;
+                    card.addEventListener('click', () => {
+                        if (State.category === catKey && !State.subcategory && !State.service) return;
+                        handleL1Click(catKey);
+                    });
+                    categoryStrip.appendChild(card);
+                });
+
+                const activeCard = categoryStrip.querySelector('.category-card.active');
+                if (activeCard) {
+                    activeCard.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
+                }
+            }
+
+            document.getElementById('sortSelect').addEventListener('change', (e) => { State.sortType = e.target.value; renderLocationList(); });
+            document.getElementById('onlyOpenCheckbox').addEventListener('change', (e) => { State.onlyOpen = e.target.checked; syncUI(); });
+            navBackBtn.addEventListener('click', handleNavBack);
+
+            function createNavItem(label, meta, onClick) {
+                const el = document.createElement('div');
+                el.className = 'nav-item';
+                el.innerHTML = `
+                    <div>
+                        <div>${label}</div>
+                        ${meta ? `<div class="nav-item-meta">${meta}</div>` : ''}
+                    </div>
+                    <span class="nav-item-arrow"><i class="fa-solid fa-chevron-right"></i></span>`;
+                el.addEventListener('click', onClick);
+                return el;
+            }
+
+            function locationOffersService(loc, serviceName) {
+                return loc.prices && Object.prototype.hasOwnProperty.call(loc.prices, serviceName);
+            }
+
+            function renderCatalogNav() {
+                renderCategoryStrip();
+
+                catalogNav.innerHTML = '';
+                catalogNav.style.display = 'flex';
+                sidebarContent.style.display = 'none';
+                sortPanelWrap.style.display = 'none';
+
+                if (State.service) {
+                    expandBottomSheet();
+                    navBackBtn.style.display = 'flex';
+                    navTitle.textContent = State.service.name;
+                    catalogNav.style.display = 'none';
+                    sidebarContent.style.display = 'flex';
+                    sortPanelWrap.style.display = 'flex';
+                    sortPanelWrap.style.flexDirection = 'column';
+                    sortPanelWrap.style.gap = '10px';
+                    renderLocationList();
+                    syncMapMarkers();
+                    return;
+                }
+
+                if (!State.category) {
+                    collapseBottomSheet();
+                    navBackBtn.style.display = 'none';
+                    navTitle.textContent = 'Оберіть категорію';
+                    catalogNav.innerHTML = `
+                        <p class="nav-hint">
+                            <i class="fa-solid fa-hand-pointer" style="color:var(--primary);margin-right:6px"></i>
+                            Проведіть стрічкою категорій і торкніться потрібної іконки
+                        </p>`;
+                    syncMapMarkers();
+                    return;
+                }
+
+                expandBottomSheet();
+                navBackBtn.style.display = 'flex';
+                const catData = window.masterCatalog[State.category];
+
+                if (!State.subcategory) {
+                    navTitle.textContent = categoryLabel(catData.name);
+                    const subs = Object.entries(catData.subcats || {});
+                    if (subs.length === 0) {
+                        catalogNav.innerHTML = '<p class="nav-hint">Немає підкатегорій</p>';
+                    } else {
+                        subs.forEach(([subKey, subData]) => {
+                            const itemCount = (subData.items || []).length;
+                            catalogNav.appendChild(
+                                createNavItem(
+                                    subData.name,
+                                    `${itemCount} послуг`,
+                                    () => handleL2Click(subKey)
+                                )
+                            );
+                        });
+                    }
+                    pulseSheetContent();
+                    syncMapMarkers();
+                    return;
+                }
+
+                const subData = catData.subcats[State.subcategory];
+                navTitle.textContent = subData.name;
+                const items = subData.items || [];
+                if (items.length === 0) {
+                    catalogNav.innerHTML = '<p class="nav-hint">Немає послуг у цій підкатегорії</p>';
+                } else {
+                    items.forEach((srv) => {
+                        const providersCount = window.mockLocations.filter(
+                            (loc) => loc.cat === State.category && locationOffersService(loc, srv.name)
+                        ).length;
+                        const el = document.createElement('div');
+                        el.className = 'nav-item';
+                        el.innerHTML = `
+                            <div>
+                                <div>${srv.name}</div>
+                                <div class="nav-item-meta">від ${srv.price} · ${providersCount} виконавців</div>
+                            </div>
+                            <span class="nav-item-arrow"><i class="fa-solid fa-chevron-right"></i></span>`;
+                        el.addEventListener('click', () => handleL3Click(srv));
+                        catalogNav.appendChild(el);
+                    });
+                }
+                pulseSheetContent();
+                syncMapMarkers();
+            }
+
+            function handleNavBack() {
+                if (State.service) {
+                    State.service = null;
+                } else if (State.subcategory) {
+                    State.subcategory = null;
+                } else if (State.category) {
+                    State.category = null;
+                    collapseBottomSheet();
+                }
+                closeMasterDetail();
+                syncUI();
+            }
+
+            // ВІДКРИТТЯ ДЕТАЛЬНОЇ КАРТКИ ОБ'ЄКТА
+            window.openMasterDetail = function(locId) {
+                const loc = window.mockLocations.find(l => l.id === locId);
+                if (!loc) return;
+                
+                State.selectedLocation = loc;
+                State.formRatingScore = 5;
+                
+                const isFav = State.favoriteIds.has(loc.id);
+                const headerBox = document.getElementById('detailHeaderContent');
+                headerBox.innerHTML = `
+                    <button class="back-btn" onclick="closeMasterDetail()">⬅️ Назад до списку</button>
+                    <h2 class="detail-main-title">${loc.title}</h2>
+                    <div class="provider-meta">
+                        <span class="status-badge ${loc.openStatus}">${loc.openStatus === 'open' ? 'Відкрито' : 'Зачинено'}</span>
+                        <span class="rating-block"><span class="star-icon">★</span><b>${loc.rating.toFixed(1)}</b> <span class="reviews-count">(${loc.reviewsCount})</span></span>
+                    </div>
+                    <div class="detail-actions-row">
+                        <a href="tel:${loc.phone}" class="action-btn btn-call">📞 Зателефонувати</a>
+                        <button class="action-btn btn-route" onclick="panToMaster(${loc.lat}, ${loc.lng})">🗺️ На карті</button>
+                        <button type="button" class="btn-fav-header ${isFav ? 'active' : ''}" onclick="toggleFavorite('${loc.id}')">${isFav ? '★ В обраному' : '☆ В обране'}</button>
+                    </div>
+                `;
+
+                renderDetailBody(loc);
+
+                document.getElementById('sidebar-detail-view').classList.add('show');
+                expandBottomSheet();
+
+                map.panTo([loc.lat, loc.lng]);
+                openPopupForLocation(loc);
+            };
+
+            function renderDetailBody(loc) {
+                const bodyBox = document.getElementById('detailBodyContent');
+                
+                const pricesBox = document.createElement('div');
+                for (const [srvName, srvPrice] of Object.entries(loc.prices)) {
+                    const row = document.createElement('div');
+                    row.className = 'detail-price-row';
+                    row.innerHTML = `
+                        <span></span>
+                        <div class="detail-price-actions">
+                            <span class="detail-price-val"></span>
+                            <button type="button" class="btn-order">Замовити</button>
+                        </div>`;
+                    row.querySelector('span').textContent = srvName;
+                    row.querySelector('.detail-price-val').textContent = srvPrice;
+                    row.querySelector('.btn-order').onclick = () => placeOrder(loc.id, srvName);
+                    pricesBox.appendChild(row);
+                }
+                let priceRowsHtml = pricesBox.outerHTML;
+
+                let scheduleRowsHtml = '';
+                for (const [days, hours] of Object.entries(loc.schedule || {})) {
+                    scheduleRowsHtml += `<div class="schedule-row"><span>${days}</span><b>${hours}</b></div>`;
+                }
+
+                let reviewsHtml = '';
+                if (loc.reviews && loc.reviews.length > 0) {
+                    loc.reviews.forEach(rev => {
+                        reviewsHtml += `
+                            <div class="review-item">
+                                <div class="review-top-line">
+                                    <span class="review-stars">${'★'.repeat(rev.rating)}${'☆'.repeat(5-rev.rating)}</span>
+                                    <span>${rev.date}</span>
+                                </div>
+                                <div class="review-text">"${rev.text}"</div>
+                            </div>`;
+                    });
+                } else {
+                    reviewsHtml = '<div style="font-size:12px; color:#94a3b8; padding:5px 0;">Відгуків ще немає. Будьте першим!</div>';
+                }
+
+                bodyBox.innerHTML = `
+                    <div class="detail-section">
+                        <h4 class="section-title">📍 Контакти та Адреса</h4>
+                        <div class="info-item">🏢 ${loc.address}</div>
+                        <div class="info-item">📞 ${loc.phone}</div>
+                    </div>
+                    <div class="detail-section">
+                        <h4 class="section-title">🕒 Графік роботи</h4>
+                        <div class="schedule-table">${scheduleRowsHtml}</div>
+                    </div>
+                    <div class="detail-section">
+                        <h4 class="section-title">💰 Повний прайс-лист</h4>
+                        <div>${priceRowsHtml}</div>
+                    </div>
+                    
+                    <div class="detail-section" style="background: #fdfdfd; border-color: #cbd5e1;">
+                        <h4 class="section-title" style="color: var(--dark);">✍️ Залишити відгук</h4>
+                        <div class="review-form">
+                            <div class="rating-stars-input" id="formStarsContainer">
+                                <span data-score="1" class="active">★</span>
+                                <span data-score="2" class="active">★</span>
+                                <span data-score="3" class="active">★</span>
+                                <span data-score="4" class="active">★</span>
+                                <span data-score="5" class="active">★</span>
+                            </div>
+                            <textarea class="review-textarea" id="reviewTextarea" placeholder="Поділіться враженнями від послуги..."></textarea>
+                            <button class="submit-review-btn" onclick="addNewReviewClick('${loc.id}')">Надіслати відгук</button>
+                        </div>
+                    </div>
+
+                    <div class="detail-section">
+                        <h4 class="section-title">⭐ Відгуки користувачів (${loc.reviewsCount})</h4>
+                        <div style="display:flex; flex-direction:column; gap:10px;">${reviewsHtml}</div>
+                    </div>
+                `;
+
+                setupFormStars();
+            }
+
+            function setupFormStars() {
+                const stars = document.querySelectorAll('#formStarsContainer span');
+                stars.forEach(star => {
+                    star.onclick = () => {
+                        const score = parseInt(star.getAttribute('data-score'));
+                        State.formRatingScore = score;
+                        stars.forEach(s => {
+                            const sScore = parseInt(s.getAttribute('data-score'));
+                            s.classList.toggle('active', sScore <= score);
+                        });
+                    };
+                });
+            }
+
+            window.addNewReviewClick = function(locId) {
+                const text = document.getElementById('reviewTextarea').value.trim();
+                if (!text) { alert('Будь ласка, введіть текст вашого відгуку.'); return; }
+
+                const loc = window.mockLocations.find(l => l.id === locId);
+                if (!loc) return;
+
+                const today = new Date();
+                const formattedDate = `${String(today.getDate()).padStart(2, '0')}.${String(today.getMonth() + 1).padStart(2, '0')}.${today.getFullYear()}`;
+                
+                const newReview = { text: text, rating: State.formRatingScore, date: formattedDate };
+                if (!loc.reviews) loc.reviews = [];
+                loc.reviews.unshift(newReview);
+
+                const totalScore = loc.reviews.reduce((sum, r) => sum + r.rating, 0);
+                loc.reviewsCount = loc.reviews.length;
+                loc.rating = totalScore / loc.reviewsCount;
+
+                openMasterDetail(loc.id);
+            };
+
+            window.closeMasterDetail = function() {
+                document.getElementById('sidebar-detail-view').classList.remove('show');
+                State.selectedLocation = null;
+                if (State.service) {
+                    renderLocationList();
+                    syncMapMarkers();
+                }
+            };
+
+            window.panToMaster = function(lat, lng) { 
+                map.setView([lat, lng], 14); 
+                // Якщо людина тисне "На карті" на мобілці, згортаємо шторку на половину, щоб звільнити огляд мапи
+                if (window.innerWidth <= 768) {
+                    document.getElementById('sidebar').className = 'half';
+                }
+            };
+
+            function renderLocationList() {
+                const contentContainer = sidebarContent;
+                contentContainer.innerHTML = '';
+
+                if (!State.service) return;
+
+                let filtered = window.mockLocations.filter(loc => {
+                    if (State.category && loc.cat !== State.category) return false;
+                    if (State.subcategory && !loc.subcats.includes(State.subcategory)) return false;
+                    if (!locationOffersService(loc, State.service.name)) return false;
+                    if (State.onlyOpen && loc.openStatus !== 'open') return false;
+                    return true;
+                });
+
+                filtered.forEach(loc => { loc.currentDistance = calculateDistance(State.userCoords.lat, State.userCoords.lng, loc.lat, loc.lng); });
+
+                if (State.sortType === 'distance') filtered.sort((a, b) => a.currentDistance - b.currentDistance);
+                else if (State.sortType === 'rating') filtered.sort((a, b) => b.rating - a.rating);
+                else if (State.sortType === 'alphabet') filtered.sort((a, b) => a.title.localeCompare(b.title, 'uk'));
+                else if (State.sortType === 'price' && State.service) {
+                    const parsePrice = (pStr) => pStr ? parseInt(pStr.replace(/[^0-9]/g, '')) || Infinity : Infinity;
+                    filtered.sort((a, b) => parsePrice(a.prices[State.service.name]) - parsePrice(b.prices[State.service.name]));
+                }
+
+                if (filtered.length === 0) {
+                    contentContainer.innerHTML = '<div style="color:#64748b; font-size:12px; text-align:center; padding:20px;">Нічого не знайдено.</div>';
+                    return;
+                }
+
+                filtered.forEach(loc => {
+                    const card = document.createElement('div');
+                    card.className = `provider-card ${State.selectedLocation?.id === loc.id ? 'active' : ''}`;
+                    let priceText = State.service ? (loc.prices[State.service.name] || '---') : 'Прайс-лист';
+
+                    card.innerHTML = `
+                        <div class="provider-top">
+                            <div class="provider-title">${loc.title}</div>
+                            <div class="rating-block"><span class="star-icon">★</span><span>${loc.rating.toFixed(1)}</span><span class="reviews-count">(${loc.reviewsCount})</span></div>
+                        </div>
+                        <div class="provider-desc">${loc.text}</div>
+                        <div class="provider-meta">
+                            <span class="status-badge ${loc.openStatus}">${loc.openStatus === 'open' ? 'Відкрито' : 'Зачинено'}</span>
+                            <span class="distance-badge">📍 ${loc.currentDistance.toFixed(1)} км</span>
+                        </div>
+                        <div class="provider-price-row">
+                            <span class="provider-badge">${State.service ? 'Послуга' : 'Послуг: ' + Object.keys(loc.prices).length}</span>
+                            <span class="provider-card-price">${priceText}</span>
+                        </div>`;
+
+                    card.onclick = () => openMasterDetail(loc.id);
+                    contentContainer.appendChild(card);
+                });
+            }
+
+            function syncUI() {
+                renderCatalogNav();
+            }
+
+            function syncMapMarkers() {
+                window.mockLocations.forEach(loc => {
+                    if (loc.markerInstance) {
+                        map.removeLayer(loc.markerInstance);
+                        loc.markerInstance = null;
+                    }
+                });
+
+                window.mockLocations.forEach(loc => {
+                    if (State.category && loc.cat !== State.category) return;
+                    if (State.subcategory && !loc.subcats.includes(State.subcategory)) return;
+                    if (State.service && !locationOffersService(loc, State.service.name)) return;
+                    if (State.onlyOpen && loc.openStatus !== 'open') return;
+
+                    let iconHTML = '';
+                    if (State.service) {
+                        iconHTML = `<div class="mapfix-marker-price">${loc.prices[State.service.name]}</div>`;
+                    } else {
+                        iconHTML = `<div class="mapfix-marker-category">${window.masterCatalog[loc.cat]?.icon || '📍'}</div>`;
+                    }
+
+                    loc.markerInstance = L.marker([loc.lat, loc.lng], {
+                        icon: L.divIcon({ className: '', html: iconHTML, iconSize: [0, 0] }),
+                    }).addTo(map);
+                    loc.markerInstance.on('click', (e) => {
+                        L.DomEvent.stopPropagation(e);
+                        openMasterDetail(loc.id);
+                    });
+                });
+
+                if (State.service) {
+                    const visible = window.mockLocations.filter(
+                        (loc) =>
+                            (!State.category || loc.cat === State.category) &&
+                            (!State.subcategory || loc.subcats.includes(State.subcategory)) &&
+                            locationOffersService(loc, State.service.name) &&
+                            (!State.onlyOpen || loc.openStatus === 'open')
+                    );
+                    if (visible.length > 0) {
+                        const bounds = L.latLngBounds(visible.map((l) => [l.lat, l.lng]));
+                        map.fitBounds(bounds, { padding: [60, 60], maxZoom: 13 });
+                    }
+                }
+            }
+
+            function openPopupForLocation(loc) {
+                const content = `<div style="font-family: sans-serif; width: 160px;"><div style="font-weight:800; font-size:12px;">${loc.title}</div><div style="font-size:11px; color:var(--primary); font-weight:700; margin-top:2px;">📍 Відстань: ${loc.currentDistance.toFixed(1)} км</div></div>`;
+                loc.markerInstance.bindPopup(content).openPopup();
+            }
+
+            function handleL1Click(catId) {
+                State.category = catId;
+                State.subcategory = null;
+                State.service = null;
+                State.selectedLocation = null;
+                expandBottomSheet();
+                syncUI();
+            }
+
+            function handleL2Click(subId) {
+                State.subcategory = subId;
+                State.service = null;
+                State.selectedLocation = null;
+                expandBottomSheet();
+                syncUI();
+            }
+
+            function handleL3Click(srv) {
+                State.service = { name: srv.name, price: srv.price };
+                State.selectedLocation = null;
+                expandBottomSheet();
+                syncUI();
+            }
+
+            function applyVoiceSearchFilter(result) {
+                const { category, subcategory, service } = result;
+                if (!category || !window.masterCatalog[category]) {
+                    throw new Error('Категорію не знайдено в каталозі');
+                }
+
+                handleL1Click(category);
+
+                if (subcategory && window.masterCatalog[category].subcats?.[subcategory]) {
+                    handleL2Click(subcategory);
+
+                    if (service) {
+                        const items = window.masterCatalog[category].subcats[subcategory].items || [];
+                        const srv = items.find((i) => i.name === service);
+                        if (srv) handleL3Click(srv);
+                    }
+                }
+
+                closeMasterDetail();
+            }
+
+            /* ---- Голосовий пошук (Web Speech API + /api/search-ai) ---- */
+            const voiceSearchBtn = document.getElementById('voiceSearchBtn');
+            const voiceStatus = document.getElementById('voiceStatus');
+            const voiceStatusText = document.getElementById('voiceStatusText');
+            const searchInput = document.getElementById('searchInput');
+            const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+            let voiceRecognition = null;
+            let voiceBusy = false;
+
+            function setVoiceUI(mode, text) {
+                voiceSearchBtn.classList.remove('listening', 'processing');
+                if (mode === 'listening') {
+                    voiceSearchBtn.classList.add('listening');
+                    voiceStatus.classList.remove('hidden');
+                    voiceStatusText.textContent = text || 'Слухаю...';
+                } else if (mode === 'processing') {
+                    voiceSearchBtn.classList.add('processing');
+                    voiceStatus.classList.remove('hidden');
+                    voiceStatusText.textContent = text || 'Аналізую запит...';
+                } else {
+                    voiceStatus.classList.add('hidden');
+                }
+            }
+
+            async function runAiSearch(transcript) {
+                setVoiceUI('processing', 'Аналізую запит...');
+                searchInput.value = transcript;
+
+                const res = await fetch('/api/search-ai', {
+                    method: 'POST',
+                    credentials: 'same-origin',
+                    cache: 'no-store',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ text: transcript }),
+                });
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.error || 'Помилка AI-пошуку');
+
+                applyVoiceSearchFilter(data);
+
+                const catName = window.masterCatalog[data.category]?.name || data.category;
+                const subName = data.subcategory
+                    ? window.masterCatalog[data.category]?.subcats?.[data.subcategory]?.name
+                    : '';
+                setVoiceUI('listening', `Знайдено: ${subName || catName}`);
+                setTimeout(() => setVoiceUI('idle'), 1800);
+            }
+
+            function startVoiceSearch() {
+                if (voiceBusy) return;
+                if (!SpeechRecognition) {
+                    alert('Голосовий пошук не підтримується у цьому браузері. Спробуйте Chrome.');
+                    return;
+                }
+
+                voiceRecognition = new SpeechRecognition();
+                voiceRecognition.lang = 'uk-UA';
+                voiceRecognition.interimResults = false;
+                voiceRecognition.maxAlternatives = 1;
+                voiceRecognition.continuous = false;
+
+                voiceBusy = true;
+                let gotVoiceResult = false;
+                setVoiceUI('listening', 'Слухаю...');
+
+                voiceRecognition.onresult = async (event) => {
+                    gotVoiceResult = true;
+                    const transcript = event.results[0][0].transcript.trim();
+                    if (!transcript) {
+                        setVoiceUI('idle');
+                        voiceBusy = false;
+                        return;
+                    }
+                    try {
+                        await runAiSearch(transcript);
+                    } catch (err) {
+                        alert(err.message);
+                        setVoiceUI('idle');
+                    } finally {
+                        voiceBusy = false;
+                    }
+                };
+
+                voiceRecognition.onerror = (event) => {
+                    voiceBusy = false;
+                    setVoiceUI('idle');
+                    if (event.error !== 'aborted' && event.error !== 'no-speech') {
+                        alert('Помилка розпізнавання: ' + event.error);
+                    }
+                };
+
+                voiceRecognition.onend = () => {
+                    if (!gotVoiceResult && voiceBusy) {
+                        voiceBusy = false;
+                        setVoiceUI('idle');
+                    }
+                };
+
+                try {
+                    voiceRecognition.start();
+                } catch (err) {
+                    voiceBusy = false;
+                    setVoiceUI('idle');
+                    alert('Не вдалося запустити мікрофон');
+                }
+            }
+
+            voiceSearchBtn.addEventListener('click', startVoiceSearch);
+
+            searchInput.addEventListener('keydown', async (e) => {
+                if (e.key !== 'Enter') return;
+                e.preventDefault();
+                const text = searchInput.value.trim();
+                if (!text || voiceBusy) return;
+                voiceBusy = true;
+                try {
+                    await runAiSearch(text);
+                } catch (err) {
+                    alert(err.message);
+                    setVoiceUI('idle');
+                } finally {
+                    voiceBusy = false;
+                }
+            });
+
+            const sheetHandle = document.getElementById('sheetHandle');
+            let sheetDragStartY = 0;
+
+            sheetHandle.addEventListener('click', () => {
+                if (!isMobileLayout()) return;
+                appShell.classList.toggle('sheet-expanded');
+                setTimeout(() => map.invalidateSize(), 400);
+            });
+
+            sheetHandle.addEventListener('touchstart', (e) => {
+                if (!isMobileLayout()) return;
+                sheetDragStartY = e.touches[0].clientY;
+            }, { passive: true });
+
+            sheetHandle.addEventListener('touchend', (e) => {
+                if (!isMobileLayout()) return;
+                const diff = e.changedTouches[0].clientY - sheetDragStartY;
+                if (Math.abs(diff) < 40) return;
+                if (diff < 0) expandBottomSheet();
+                else collapseBottomSheet();
+            }, { passive: true });
+
+            window.addEventListener('resize', () => {
+                if (!isMobileLayout()) appShell.classList.remove('sheet-expanded');
+                map.invalidateSize();
+            });
+
+            syncUI();
+            setTimeout(() => map.invalidateSize(), 300);
+
+            window.__mapfixRefreshMap = refreshMapData;
+
+            if (window.MapfixDataSync) {
+                MapfixDataSync.subscribe(() => {
+                    refreshMapData().catch((err) => console.warn('refreshMapData:', err));
+                });
+            }
+        });
+    </script>
+
+</body></html>

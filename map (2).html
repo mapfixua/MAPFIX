@@ -1,0 +1,720 @@
+<html lang="uk"><head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Mapfix — Мобільна адаптивність (BottomSheet)</title>
+
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+    <script src="catalog-data.js"></script>
+    
+    <style>
+        :root {
+            --primary: #007bff;
+            --primary-light: #e0f2fe;
+            --success: #2e7d32;
+            --danger: #d32f2f;
+            --dark: #1e293b;
+            --border: #e2e8f0;
+            --sidebar-width: 380px;
+            --sheet-height: 85vh; /* Максимальна висота шторки на мобільних */
+        }
+
+        body { margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; overflow: hidden; display: flex; background: #f1f5f9; height: 100vh; }
+        
+        /* SIDEBAR / BOTTOM SHEET CONFIG */
+        #sidebar { 
+            width: var(--sidebar-width); 
+            height: 100vh; 
+            background: white; 
+            box-shadow: 5px 0 20px rgba(0,0,0,0.05); 
+            z-index: 5; 
+            display: flex; 
+            flex-direction: column; 
+            flex-shrink: 0; 
+            border-right: 1px solid var(--border); 
+            position: relative; 
+            transition: transform 0.3s cubic-bezier(0.1, 0.76, 0.55, 0.94);
+        }
+        
+        /* РУЧКА ДЛЯ ШТОРКИ (Потрібна тільки на мобільних, на десктопі прихована) */
+        .sheet-drag-handle {
+            display: none;
+            width: 100%;
+            height: 24px;
+            align-items: center;
+            justify-content: center;
+            background: white;
+            cursor: grab;
+            border-top-left-radius: 20px;
+            border-top-right-radius: 20px;
+            user-select: none;
+        }
+        .sheet-drag-handle::before {
+            content: '';
+            width: 40px;
+            height: 4px;
+            background: #cbd5e1;
+            border-radius: 2px;
+        }
+
+        .sidebar-view { display: flex; flex-direction: column; height: 100%; width: 100%; position: absolute; top:0; left:0; background: white; transition: transform 0.3s ease; box-sizing: border-box; }
+        #sidebar-list-view { z-index: 2; }
+        #sidebar-detail-view { z-index: 3; transform: translateX(-100%); }
+        #sidebar-detail-view.show { transform: translateX(0); }
+
+        /* ШАПКА СПИСКУ */
+        .sidebar-header { padding: 16px 20px; border-bottom: 1px solid var(--border); display: flex; flex-direction: column; gap: 10px; background: white; }
+        .sort-panel { background: #f8fafc; border: 1px solid var(--border); border-radius: 12px; padding: 12px; display: flex; flex-direction: column; gap: 8px; }
+        .sort-label { font-size: 13px; font-weight: 800; color: var(--dark); text-transform: uppercase; letter-spacing: 0.5px; }
+        .sort-select { width: 100%; height: 36px; border: 1px solid var(--border); border-radius: 8px; background-color: white; padding: 0 10px; font-size: 13px; font-weight: 700; color: #475569; outline: none; cursor: pointer; }
+        .hotline-filter-bar { display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 700; color: #475569; }
+        .hotline-filter-bar input[type="checkbox"] { width: 16px; height: 16px; cursor: pointer; accent-color: var(--primary); }
+        
+        .sidebar-content { flex-grow: 1; overflow-y: auto; padding: 15px 20px; display: flex; flex-direction: column; gap: 12px; background: #f8fafc; }
+
+        /* КАРТКИ В СПИСКУ */
+        .provider-card { background: white; border: 1px solid var(--border); border-radius: 14px; padding: 14px; cursor: pointer; transition: all 0.2s; display: flex; flex-direction: column; gap: 6px; }
+        .provider-card:hover { border-color: var(--primary); }
+        .provider-card.active { border-color: var(--primary); background: #f0f7ff; }
+        .provider-top { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; }
+        .provider-title { font-weight: 700; font-size: 14px; color: var(--dark); }
+        .rating-block { display: flex; align-items: center; gap: 3px; font-size: 12px; font-weight: 700; }
+        .star-icon { color: #ffb703; }
+        .reviews-count { color: #94a3b8; font-weight: 500; }
+        .provider-desc { font-size: 12px; color: #64748b; }
+        .provider-meta { display: flex; align-items: center; gap: 6px; font-size: 11px; }
+        .status-badge { padding: 2px 6px; border-radius: 4px; font-weight: 700; font-size: 9px; text-transform: uppercase; }
+        .status-badge.open { background: #dcfce7; color: #166534; }
+        .status-badge.closed { background: #fee2e2; color: #991b1b; }
+        .distance-badge { background: #f1f5f9; color: #475569; padding: 2px 6px; border-radius: 4px; font-weight: 600; }
+        .provider-price-row { display: flex; justify-content: space-between; align-items: center; margin-top: 2px; padding-top: 8px; border-top: 1px dashed var(--border); }
+        .provider-badge { font-size: 10px; font-weight: 700; color: #475569; background: #f1f5f9; padding: 3px 6px; border-radius: 4px; }
+        .provider-card-price { font-size: 14px; font-weight: 800; color: var(--success); }
+
+        /* ДЕТАЛЬНА КАРТКА */
+        .detail-header { padding: 15px 20px; border-bottom: 1px solid var(--border); display: flex; flex-direction: column; gap: 12px; background: white; }
+        .back-btn { background: none; border: none; color: var(--primary); font-size: 13px; font-weight: 700; cursor: pointer; display: flex; align-items: center; gap: 4px; padding: 0; width: fit-content; }
+        .detail-main-title { font-size: 18px; font-weight: 800; color: var(--dark); margin: 0; }
+        
+        .detail-actions-row { display: flex; gap: 8px; margin-top: 4px; }
+        .action-btn { flex: 1; height: 38px; border-radius: 8px; border: none; font-weight: 700; font-size: 13px; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 6px; text-decoration: none; }
+        .btn-call { background: var(--success); color: white; }
+        .btn-route { background: var(--primary); color: white; }
+
+        .detail-scroll-body { flex-grow: 1; overflow-y: auto; padding: 20px; background: #f8fafc; display: flex; flex-direction: column; gap: 16px; }
+        .detail-section { background: white; border: 1px solid var(--border); border-radius: 12px; padding: 14px; display: flex; flex-direction: column; gap: 10px; }
+        .section-title { font-size: 12px; font-weight: 800; color: #64748b; text-transform: uppercase; border-bottom: 1px solid var(--border); padding-bottom: 4px; margin: 0; }
+        
+        .info-item { display: flex; gap: 8px; font-size: 13px; color: var(--dark); font-weight: 600; }
+        .schedule-table { display: flex; flex-direction: column; gap: 4px; font-size: 12px; width: 100%; color: #475569; }
+        .schedule-row { display: flex; justify-content: space-between; padding: 2px 0; }
+
+        .detail-price-row { display: flex; justify-content: space-between; align-items: center; padding: 8px 0; border-bottom: 1px dashed var(--border); font-size: 13px; font-weight: 700; }
+        .detail-price-row:last-child { border-bottom: none; }
+        .detail-price-val { color: var(--success); font-weight: 800; }
+
+        .review-item { display: flex; flex-direction: column; gap: 4px; border-bottom: 1px solid var(--border); padding-bottom: 8px; }
+        .review-item:last-child { border-bottom: none; padding-bottom: 0; }
+        .review-top-line { display: flex; justify-content: space-between; font-size: 11px; font-weight: 700; color: #64748b; }
+        .review-stars { color: #ffb703; letter-spacing: 1px; }
+        .review-text { font-size: 12px; color: var(--dark); font-weight: 500; line-height: 1.4; }
+
+        /* ФОРМА ВІДГУКУ */
+        .review-form { display: flex; flex-direction: column; gap: 10px; margin-top: 5px; }
+        .rating-stars-input { display: flex; gap: 6px; font-size: 24px; cursor: pointer; color: #cbd5e1; user-select: none; }
+        .rating-stars-input span:hover,
+        .rating-stars-input span.active { color: #ffb703; }
+        .review-textarea { width: 100%; height: 60px; border: 1px solid var(--border); border-radius: 8px; padding: 8px; font-size: 12px; font-family: inherit; outline: none; resize: none; box-sizing: border-box; }
+        .review-textarea:focus { border-color: var(--primary); }
+        .submit-review-btn { background: var(--dark); color: white; border: none; height: 34px; border-radius: 8px; font-weight: 700; font-size: 12px; cursor: pointer; }
+
+        /* КАРТА ТА КОНТЕЙНЕРИ */
+        #map-container { flex-grow: 1; height: 100vh; position: relative; }
+        #map { width: 100%; height: 100%; z-index: 1; }
+        
+        .top-header { position: absolute; top: 15px; left: 15px; right: 15px; z-index: 10; display: flex; gap: 10px; align-items: center; pointer-events: none; }
+        .search-container { flex-grow: 1; background: white; border-radius: 30px; padding: 5px 18px; display: flex; align-items: center; box-shadow: 0 4px 20px rgba(0,0,0,0.08); height: 48px; pointer-events: auto; }
+        .search-container input { border: none; width: 100%; outline: none; font-size: 15px; margin-left: 8px; }
+        .brand-logo { font-weight: 900; color: var(--primary); font-size: 20px; }
+        .header-btn { height: 48px; background: white; border-radius: 25px; border: none; box-shadow: 0 4px 20px rgba(0,0,0,0.08); cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 14px; font-weight: 700; pointer-events: auto; }
+        .profile-btn { width: 48px; border-radius: 50%; font-size: 18px; }
+        .add-business-btn { padding: 0 20px; color: white; background: var(--success); white-space: nowrap; }
+
+        .l1-wrapper-full { position: absolute; top: 78px; left: 15px; right: 15px; z-index: 10; pointer-events: none; display: flex; flex-direction: column; gap: 8px; }
+        .categories-container { display: flex; gap: 8px; overflow-x: auto; scrollbar-width: none; pointer-events: auto; width: 100%; padding-bottom: 4px; }
+        .categories-container::-webkit-scrollbar { display: none; }
+        
+        .cat-card { background: white; padding: 8px 16px; border-radius: 20px; box-shadow: 0 4px 12px rgba(0,0,0,0.06); cursor: pointer; display: flex; align-items: center; gap: 6px; font-weight: 700; font-size: 13px; white-space: nowrap; border: 2px solid transparent; color: #475569; }
+        .cat-card.active { border-color: var(--primary); background: #e0f2fe; color: var(--primary); }
+        .cat-clear { display: inline-flex; align-items: center; justify-content: center; width: 15px; height: 15px; border-radius: 50%; background-color: #cbd5e1; color: #475569; font-size: 9px; margin-left: 4px; }
+
+        .sub-and-services-box { position: absolute; top: 130px; left: 15px; z-index: 10; display: flex; flex-direction: column; gap: 8px; width: fit-content; }
+        .dropdown-menu { background: white; border-radius: 14px; box-shadow: 0 10px 25px rgba(0,0,0,0.08); display: none; padding: 10px; border: 1px solid var(--border); flex-direction: column; gap: 6px; width: fit-content; min-width: 260px; max-width: 360px; }
+        .dropdown-menu.show { display: flex; }
+        .sub-btn { background: #f8fafc; border: 2px solid transparent; padding: 8px 14px; border-radius: 20px; font-weight: 700; font-size: 12px; cursor: pointer; display: flex; align-items: center; justify-content: space-between; color: #475569; }
+        .sub-btn.selected { border-color: var(--primary); background: #e0f2fe; color: var(--primary); }
+
+        .services-table-container { background: white; border-radius: 14px; border: 1px solid var(--border); padding: 14px; display: none; box-shadow: 0 10px 25px rgba(0,0,0,0.05); width: fit-content; max-width: 400px; min-width: 280px; max-height: 200px; overflow-y: auto; }
+        .services-table-container.show { display: block; }
+        .table-title { font-size: 12px; font-weight: 800; color: #475569; margin-bottom: 8px; border-bottom: 2px solid var(--border); padding-bottom: 4px; text-transform: uppercase; }
+        .service-row { display: flex; align-items: center; justify-content: space-between; padding: 8px 6px; border-bottom: 1px dashed var(--border); cursor: pointer; border-radius: 6px; gap: 20px; }
+        .service-row:hover { background-color: #f8fafc; }
+        .service-row.highlighted { background-color: #e0f2fe; color: #0369a1; }
+        .service-info { font-size: 12px; font-weight: 700; }
+        .service-price { font-size: 12px; font-weight: 800; color: var(--primary); }
+
+        #geo-btn { position: absolute; bottom: 30px; right: 30px; z-index: 10; width: 48px; height: 48px; background: white; border-radius: 50%; border: none; box-shadow: 0 4px 15px rgba(0,0,0,0.15); cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 20px; }
+        .user-location-marker { width: 14px; height: 14px; background: #007bff; border: 3px solid white; border-radius: 50%; box-shadow: 0 0 8px rgba(0,123,255,0.5); }
+
+        /* МАРКЕРИ */
+        .mapfix-marker-category { width: 36px; height: 36px; background: white; border: 3px solid var(--primary); border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 16px; box-shadow: 0 4px 10px rgba(0,0,0,0.15); }
+        .mapfix-marker-price { background: white; border: 2px solid var(--primary); color: var(--dark); font-weight: 800; font-size: 11px; padding: 4px 8px; border-radius: 6px; box-shadow: 0 4px 10px rgba(0,0,0,0.15); white-space: nowrap; position: relative; }
+        .mapfix-marker-price::after { content: ''; position: absolute; bottom: -6px; left: 50%; transform: translateX(-50%); border-width: 6px 6px 0; border-style: solid; border-color: var(--primary) transparent; }
+
+        /* ========================================== */
+        /* 📱 МЕДІА-ЗАПИТИ ДЛЯ СМАРТФОНІВ (НОВЕ)     */
+        /* ========================================== */
+        @media (max-width: 768px) {
+            body { flex-direction: column-reverse; } /* Сайдбар падає вниз екрана */
+
+            /* ТРАНСФОРМАЦІЯ САЙДБАРУ В BOTTOM SHEET */
+            #sidebar { 
+                width: 100vw; 
+                height: var(--sheet-height); 
+                position: fixed; 
+                bottom: 0; 
+                left: 0; 
+                right: 0; 
+                border-right: none;
+                border-top: 1px solid var(--border);
+                border-top-left-radius: 20px;
+                border-top-right-radius: 20px;
+                transform: translateY(calc(var(--sheet-height) - 100px)); /* Початковий стан: згорнуто (видно 100px) */
+                box-shadow: 0 -10px 30px rgba(0,0,0,0.1);
+            }
+            .sheet-drag-handle { display: flex; } /* Показуємо ручку */
+
+            /* Стан розгорнутої шторки */
+            #sidebar.expanded { transform: translateY(0) !important; }
+            /* Стан напіввідкритої шторки */
+            #sidebar.half { transform: translateY(calc(var(--sheet-height) - 45vh)) !important; }
+
+            .sidebar-view { border-top-left-radius: 20px; border-top-right-radius: 20px; height: calc(100% - 24px); top: 24px; }
+            #sidebar-detail-view { transform: translateX(100%); } /* Анімація картки справа наліво */
+            #sidebar-detail-view.show { transform: translateX(0); }
+
+            /* Коригування мапи та кнопок на телефонах */
+            #map-container { width: 100vw; height: 100vh; position: absolute; top: 0; left: 0; }
+            #geo-btn { bottom: 120px; right: 16px; } /* Піднімаємо кнопку геолокації, щоб не перекривалась */
+
+            /* Ховаємо великі кнопки та напис з лого на мобільних для економії місця */
+            .brand-logo { font-size: 16px; }
+            .add-business-btn { display: none; } 
+            
+            .sub-and-services-box { width: calc(100% - 30px); right: 15px; }
+            .dropdown-menu { min-width: 100%; max-width: 100%; box-sizing: border-box; }
+            .services-table-container { max-width: 100%; box-sizing: border-box; }
+        }
+    </style>
+</head>
+<body>
+
+    <div id="sidebar" class="half">
+        <div class="sheet-drag-handle" id="sheetHandle"></div>
+        
+        <div id="sidebar-list-view" class="sidebar-view">
+            <div class="sidebar-header">
+                <div class="sort-panel">
+                    <div class="sort-label">⚙️ Сортування виконавців</div>
+                    <select id="sortSelect" class="sort-select">
+                        <option value="distance">📏 За відстаню (найближчі)</option>
+                        <option value="rating">⭐ За рейтингом (найвищий)</option>
+                        <option value="price" id="optPrice" disabled="true">💰 За ціною (оберіть послугу)</option>
+                        <option value="alphabet">🔤 За алфавітом (А-Я)</option>
+                    </select>
+                </div>
+                <div class="hotline-filter-bar">
+                    <input type="checkbox" id="onlyOpenCheckbox">
+                    <label for="onlyOpenCheckbox" style="cursor:pointer; user-select:none;">🟢 Тільки відчинені зараз</label>
+                </div>
+            </div>
+            <div class="sidebar-content" id="sidebarContent"><div class="provider-card ">
+                        <div class="provider-top">
+                            <div class="provider-title">TopTyres Шиномонтаж на Подолі</div>
+                            <div class="rating-block"><span class="star-icon">★</span><span>4.9</span><span class="reviews-count">(3)</span></div>
+                        </div>
+                        <div class="provider-desc">Сучасне обладнання, швидке ТО</div>
+                        <div class="provider-meta">
+                            <span class="status-badge open">Відкрито</span>
+                            <span class="distance-badge">📍 1.3 км</span>
+                        </div>
+                        <div class="provider-price-row">
+                            <span class="provider-badge">Послуг: 3</span>
+                            <span class="provider-card-price">Прайс-лист</span>
+                        </div></div><div class="provider-card ">
+                        <div class="provider-top">
+                            <div class="provider-title">Nail Art Студія</div>
+                            <div class="rating-block"><span class="star-icon">★</span><span>4.8</span><span class="reviews-count">(2)</span></div>
+                        </div>
+                        <div class="provider-desc">Манікюр та якісний педикюр</div>
+                        <div class="provider-meta">
+                            <span class="status-badge open">Відкрито</span>
+                            <span class="distance-badge">📍 2.4 км</span>
+                        </div>
+                        <div class="provider-price-row">
+                            <span class="provider-badge">Послуг: 2</span>
+                            <span class="provider-card-price">Прайс-лист</span>
+                        </div></div><div class="provider-card ">
+                        <div class="provider-top">
+                            <div class="provider-title">Заміський Автосервіс Кільцева</div>
+                            <div class="rating-block"><span class="star-icon">★</span><span>4.6</span><span class="reviews-count">(1)</span></div>
+                        </div>
+                        <div class="provider-desc">Найдешевші ціни на околиці міста</div>
+                        <div class="provider-meta">
+                            <span class="status-badge open">Відкрито</span>
+                            <span class="distance-badge">📍 13.4 км</span>
+                        </div>
+                        <div class="provider-price-row">
+                            <span class="provider-badge">Послуг: 2</span>
+                            <span class="provider-card-price">Прайс-лист</span>
+                        </div></div><div class="provider-card ">
+                        <div class="provider-top">
+                            <div class="provider-title">Aquashine Детейлінг центр</div>
+                            <div class="rating-block"><span class="star-icon">★</span><span>4.5</span><span class="reviews-count">(2)</span></div>
+                        </div>
+                        <div class="provider-desc">Мийка, хімчистка та шиномонтаж</div>
+                        <div class="provider-meta">
+                            <span class="status-badge open">Відкрито</span>
+                            <span class="distance-badge">📍 1.1 км</span>
+                        </div>
+                        <div class="provider-price-row">
+                            <span class="provider-badge">Послуг: 3</span>
+                            <span class="provider-card-price">Прайс-лист</span>
+                        </div></div></div>
+        </div>
+
+        <div id="sidebar-detail-view" class="sidebar-view">
+            <div class="detail-header" id="detailHeaderContent"></div>
+            <div class="detail-scroll-body" id="detailBodyContent"></div>
+        </div>
+
+    </div>
+
+    <div id="map-container">
+        <div class="top-header">
+            <div class="search-container">
+                <span class="brand-logo">Mapfix</span>
+                <input type="text" id="searchInput" placeholder="Пошук послуг чи майстрів поруч...">
+            </div>
+            <button class="header-btn add-business-btn">Додати бізнес ➕</button>
+            <button class="header-btn profile-btn">👤</button>
+        </div>
+
+        <div class="l1-wrapper-full">
+            <div class="categories-container" id="l1-container"><div class="cat-card" id="cat-auto"><span>🚗 Авто</span><span class="cat-clear" data-cat="auto">✕</span></div><div class="cat-card" id="cat-beauty"><span>✂️ Краса</span><span class="cat-clear" data-cat="beauty">✕</span></div><div class="cat-card" id="cat-education"><span>📚 Навчання</span><span class="cat-clear" data-cat="education">✕</span></div><div class="cat-card" id="cat-sport"><span>💪 Спорт</span><span class="cat-clear" data-cat="sport">✕</span></div><div class="cat-card" id="cat-repair"><span>🛠️ Ремонт речей</span><span class="cat-clear" data-cat="repair">✕</span></div><div class="cat-card" id="cat-home"><span>🏠 Дім</span><span class="cat-clear" data-cat="home">✕</span></div><div class="cat-card" id="cat-pets"><span>🐾 Тварини</span><span class="cat-clear" data-cat="pets">✕</span></div></div>
+        </div>
+
+        <div class="sub-and-services-box">
+            <div class="dropdown-menu" id="dropdownMenu"><button class="sub-btn"><span>Шиномонтаж та Балансування</span></button><button class="sub-btn"><span>Автомийка та Детейлінг</span></button><button class="sub-btn"><span>Планове ТО</span></button></div>
+            <div class="services-table-container" id="servicesTableBlock">
+                <div class="table-title" id="tableTitleText">📋 Послуги</div>
+                <div id="servicesTableRows"><div class="service-row "><span class="service-info">🔹 Заміна мастила двигуна</span><span class="service-price">400 грн</span></div></div>
+            </div>
+        </div>
+
+        <button id="geo-btn">🎯</button>
+        <div id="map" class="leaflet-container leaflet-touch leaflet-fade-anim leaflet-grab leaflet-touch-drag leaflet-touch-zoom" tabindex="0" style="position: relative; outline-style: none;"><div class="leaflet-pane leaflet-map-pane" style="transform: translate3d(-278px, 0px, 0px);"><div class="leaflet-pane leaflet-tile-pane"><div class="leaflet-layer " style="z-index: 1; opacity: 1;"><div class="leaflet-tile-container leaflet-zoom-animated" style="z-index: 16; transform: translate3d(-651px, -1482px, 0px) scale(4);"></div><div class="leaflet-tile-container leaflet-zoom-animated" style="z-index: 18; transform: translate3d(0px, 0px, 0px) scale(1);"><img alt="" src="https://a.tile.openstreetmap.org/10/598/344.png" class="leaflet-tile leaflet-tile-loaded" style="width: 256px; height: 256px; transform: translate3d(597px, 186px, 0px); opacity: 1;"><img alt="" src="https://b.tile.openstreetmap.org/10/598/345.png" class="leaflet-tile leaflet-tile-loaded" style="width: 256px; height: 256px; transform: translate3d(597px, 442px, 0px); opacity: 1;"><img alt="" src="https://c.tile.openstreetmap.org/10/597/344.png" class="leaflet-tile leaflet-tile-loaded" style="width: 256px; height: 256px; transform: translate3d(341px, 186px, 0px); opacity: 1;"><img alt="" src="https://b.tile.openstreetmap.org/10/599/344.png" class="leaflet-tile leaflet-tile-loaded" style="width: 256px; height: 256px; transform: translate3d(853px, 186px, 0px); opacity: 1;"><img alt="" src="https://a.tile.openstreetmap.org/10/597/345.png" class="leaflet-tile leaflet-tile-loaded" style="width: 256px; height: 256px; transform: translate3d(341px, 442px, 0px); opacity: 1;"><img alt="" src="https://c.tile.openstreetmap.org/10/599/345.png" class="leaflet-tile leaflet-tile-loaded" style="width: 256px; height: 256px; transform: translate3d(853px, 442px, 0px); opacity: 1;"><img alt="" src="https://c.tile.openstreetmap.org/10/598/343.png" class="leaflet-tile leaflet-tile-loaded" style="width: 256px; height: 256px; transform: translate3d(597px, -70px, 0px); opacity: 1;"><img alt="" src="https://c.tile.openstreetmap.org/10/598/346.png" class="leaflet-tile leaflet-tile-loaded" style="width: 256px; height: 256px; transform: translate3d(597px, 698px, 0px); opacity: 1;"><img alt="" src="https://b.tile.openstreetmap.org/10/597/343.png" class="leaflet-tile leaflet-tile-loaded" style="width: 256px; height: 256px; transform: translate3d(341px, -70px, 0px); opacity: 1;"><img alt="" src="https://a.tile.openstreetmap.org/10/599/343.png" class="leaflet-tile leaflet-tile-loaded" style="width: 256px; height: 256px; transform: translate3d(853px, -70px, 0px); opacity: 1;"><img alt="" src="https://b.tile.openstreetmap.org/10/597/346.png" class="leaflet-tile leaflet-tile-loaded" style="width: 256px; height: 256px; transform: translate3d(341px, 698px, 0px); opacity: 1;"><img alt="" src="https://a.tile.openstreetmap.org/10/599/346.png" class="leaflet-tile leaflet-tile-loaded" style="width: 256px; height: 256px; transform: translate3d(853px, 698px, 0px); opacity: 1;"><img alt="" src="https://b.tile.openstreetmap.org/10/596/344.png" class="leaflet-tile leaflet-tile-loaded" style="width: 256px; height: 256px; transform: translate3d(85px, 186px, 0px); opacity: 1;"><img alt="" src="https://c.tile.openstreetmap.org/10/600/344.png" class="leaflet-tile leaflet-tile-loaded" style="width: 256px; height: 256px; transform: translate3d(1109px, 186px, 0px); opacity: 1;"><img alt="" src="https://c.tile.openstreetmap.org/10/596/345.png" class="leaflet-tile leaflet-tile-loaded" style="width: 256px; height: 256px; transform: translate3d(85px, 442px, 0px); opacity: 1;"><img alt="" src="https://a.tile.openstreetmap.org/10/600/345.png" class="leaflet-tile leaflet-tile-loaded" style="width: 256px; height: 256px; transform: translate3d(1109px, 442px, 0px); opacity: 1;"><img alt="" src="https://a.tile.openstreetmap.org/10/596/343.png" class="leaflet-tile leaflet-tile-loaded" style="width: 256px; height: 256px; transform: translate3d(85px, -70px, 0px); opacity: 1;"><img alt="" src="https://b.tile.openstreetmap.org/10/600/343.png" class="leaflet-tile leaflet-tile-loaded" style="width: 256px; height: 256px; transform: translate3d(1109px, -70px, 0px); opacity: 1;"><img alt="" src="https://a.tile.openstreetmap.org/10/596/346.png" class="leaflet-tile leaflet-tile-loaded" style="width: 256px; height: 256px; transform: translate3d(85px, 698px, 0px); opacity: 1;"><img alt="" src="https://b.tile.openstreetmap.org/10/600/346.png" class="leaflet-tile leaflet-tile-loaded" style="width: 256px; height: 256px; transform: translate3d(1109px, 698px, 0px); opacity: 1;"><img alt="" src="https://a.tile.openstreetmap.org/10/595/344.png" class="leaflet-tile leaflet-tile-loaded" style="width: 256px; height: 256px; transform: translate3d(-171px, 186px, 0px); opacity: 1;"><img alt="" src="https://a.tile.openstreetmap.org/10/601/344.png" class="leaflet-tile leaflet-tile-loaded" style="width: 256px; height: 256px; transform: translate3d(1365px, 186px, 0px); opacity: 1;"><img alt="" src="https://b.tile.openstreetmap.org/10/595/345.png" class="leaflet-tile leaflet-tile-loaded" style="width: 256px; height: 256px; transform: translate3d(-171px, 442px, 0px); opacity: 1;"><img alt="" src="https://b.tile.openstreetmap.org/10/601/345.png" class="leaflet-tile leaflet-tile-loaded" style="width: 256px; height: 256px; transform: translate3d(1365px, 442px, 0px); opacity: 1;"><img alt="" src="https://c.tile.openstreetmap.org/10/595/343.png" class="leaflet-tile leaflet-tile-loaded" style="width: 256px; height: 256px; transform: translate3d(-171px, -70px, 0px); opacity: 1;"><img alt="" src="https://c.tile.openstreetmap.org/10/601/343.png" class="leaflet-tile leaflet-tile-loaded" style="width: 256px; height: 256px; transform: translate3d(1365px, -70px, 0px); opacity: 1;"><img alt="" src="https://c.tile.openstreetmap.org/10/595/346.png" class="leaflet-tile leaflet-tile-loaded" style="width: 256px; height: 256px; transform: translate3d(-171px, 698px, 0px); opacity: 1;"><img alt="" src="https://c.tile.openstreetmap.org/10/601/346.png" class="leaflet-tile leaflet-tile-loaded" style="width: 256px; height: 256px; transform: translate3d(1365px, 698px, 0px); opacity: 1;"></div></div></div><div class="leaflet-pane leaflet-overlay-pane"></div><div class="leaflet-pane leaflet-shadow-pane"></div><div class="leaflet-pane leaflet-marker-pane"><div class="leaflet-marker-icon user-location-marker leaflet-zoom-animated leaflet-interactive" tabindex="0" role="button" style="margin-left: 0px; margin-top: 0px; width: 0px; height: 0px; transform: translate3d(807px, 514px, 0px); z-index: 514;"></div><div class="leaflet-marker-icon leaflet-zoom-animated leaflet-interactive" tabindex="0" role="button" style="margin-left: 0px; margin-top: 0px; width: 0px; height: 0px; transform: translate3d(802px, 502px, 0px); z-index: 502;"><div class="mapfix-marker-category">🚗</div></div><div class="leaflet-marker-icon leaflet-zoom-animated leaflet-interactive" tabindex="0" role="button" style="margin-left: 0px; margin-top: 0px; width: 0px; height: 0px; transform: translate3d(812px, 525px, 0px); z-index: 525;"><div class="mapfix-marker-category">🚗</div></div><div class="leaflet-marker-icon leaflet-zoom-animated leaflet-interactive" tabindex="0" role="button" style="margin-left: 0px; margin-top: 0px; width: 0px; height: 0px; transform: translate3d(794px, 535px, 0px); z-index: 535;"><div class="mapfix-marker-category">✂️</div></div><div class="leaflet-marker-icon leaflet-zoom-animated leaflet-interactive" tabindex="0" role="button" style="margin-left: 0px; margin-top: 0px; width: 0px; height: 0px; transform: translate3d(685px, 577px, 0px); z-index: 577;"><div class="mapfix-marker-category">🚗</div></div></div><div class="leaflet-pane leaflet-tooltip-pane"></div><div class="leaflet-pane leaflet-popup-pane"></div><div class="leaflet-proxy leaflet-zoom-animated" style="transform: translate3d(153261px, 88337.5px, 0px) scale(512);"></div></div><div class="leaflet-control-container"><div class="leaflet-top leaflet-left"></div><div class="leaflet-top leaflet-right"></div><div class="leaflet-bottom leaflet-left"></div><div class="leaflet-bottom leaflet-right"><div class="leaflet-control-attribution leaflet-control"><a href="https://leafletjs.com" title="A JavaScript library for interactive maps"><svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="12" height="8" viewBox="0 0 12 8" class="leaflet-attribution-flag"><path fill="#4C7BE1" d="M0 0h12v4H0z"></path><path fill="#FFD500" d="M0 4h12v3H0z"></path><path fill="#E0BC00" d="M0 7h12v1H0z"></path></svg> Leaflet</a></div></div></div></div>
+    </div>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+    <script>
+        document.addEventListener("DOMContentLoaded", () => {
+            const map = L.map('map', { zoomControl: false }).setView([50.4501, 30.5234], 11);
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+
+            const State = { 
+                category: null, 
+                subcategory: null, 
+                service: null, 
+                selectedLocation: null, 
+                userCoords: { lat: 50.4501, lng: 30.5234 },
+                onlyOpen: false,
+                sortType: 'distance',
+                formRatingScore: 5
+            };
+            
+            let userMarkerInstance = null;
+
+            function calculateDistance(lat1, lon1, lat2, lon2) {
+                const R = 6371;
+                const dLat = (lat2 - lat1) * Math.PI / 180;
+                const dLon = (lon2 - lon1) * Math.PI / 180;
+                const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
+                          Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLon/2) * Math.sin(dLon/2);
+                return R * (2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a)));
+            }
+
+            function drawUserMarker() {
+                if (userMarkerInstance) map.removeLayer(userMarkerInstance);
+                userMarkerInstance = L.marker([State.userCoords.lat, State.userCoords.lng], { icon: L.divIcon({ className: 'user-location-marker', iconSize: [0,0] }) }).addTo(map);
+            }
+            drawUserMarker();
+
+            document.getElementById('sortSelect').addEventListener('change', (e) => { State.sortType = e.target.value; renderLocationList(); });
+            document.getElementById('onlyOpenCheckbox').addEventListener('change', (e) => { State.onlyOpen = e.target.checked; syncUI(); });
+
+            function buildL1Html() {
+                const container = document.getElementById('l1-container'); container.innerHTML = '';
+                for (const [catKey, catData] of Object.entries(window.masterCatalog)) {
+                    container.innerHTML += `<div class="cat-card" id="cat-${catKey}"><span>${catData.name}</span><span class="cat-clear" data-cat="${catKey}">✕</span></div>`;
+                }
+                document.querySelectorAll('.cat-card').forEach(card => {
+                    card.addEventListener('click', (e) => {
+                        if (e.target.classList.contains('cat-clear')) { e.stopPropagation(); handleResetAll(); return; }
+                        handleL1Click(card.id.replace('cat-', ''));
+                    });
+                });
+            }
+
+            // ВІДКРИТТЯ ДЕТАЛЬНОЇ КАРТКИ ОБ'ЄКТА
+            window.openMasterDetail = function(locId) {
+                const loc = window.mockLocations.find(l => l.id === locId);
+                if (!loc) return;
+                
+                State.selectedLocation = loc;
+                State.formRatingScore = 5;
+                
+                const headerBox = document.getElementById('detailHeaderContent');
+                headerBox.innerHTML = `
+                    <button class="back-btn" onclick="closeMasterDetail()">⬅️ Назад до списку</button>
+                    <h2 class="detail-main-title">${loc.title}</h2>
+                    <div class="provider-meta">
+                        <span class="status-badge ${loc.openStatus}">${loc.openStatus === 'open' ? 'Відкрито' : 'Зачинено'}</span>
+                        <span class="rating-block"><span class="star-icon">★</span><b>${loc.rating.toFixed(1)}</b> <span class="reviews-count">(${loc.reviewsCount})</span></span>
+                    </div>
+                    <div class="detail-actions-row">
+                        <a href="tel:${loc.phone}" class="action-btn btn-call">📞 Зателефонувати</a>
+                        <button class="action-btn btn-route" onclick="panToMaster(${loc.lat}, ${loc.lng})">🗺️ На карті</button>
+                    </div>
+                `;
+
+                renderDetailBody(loc);
+
+                document.getElementById('sidebar-detail-view').classList.add('show');
+                
+                // На мобільних автоматично повністю розгортаємо шторку вгору при відкритті детальної картки
+                if (window.innerWidth <= 768) {
+                    const sheet = document.getElementById('sidebar');
+                    sheet.className = 'expanded';
+                }
+
+                map.panTo([loc.lat, loc.lng]);
+                openPopupForLocation(loc);
+            };
+
+            function renderDetailBody(loc) {
+                const bodyBox = document.getElementById('detailBodyContent');
+                
+                let priceRowsHtml = '';
+                for (const [srvName, srvPrice] of Object.entries(loc.prices)) {
+                    priceRowsHtml += `<div class="detail-price-row"><span>${srvName}</span><span class="detail-price-val">${srvPrice}</span></div>`;
+                }
+
+                let scheduleRowsHtml = '';
+                for (const [days, hours] of Object.entries(loc.schedule || {})) {
+                    scheduleRowsHtml += `<div class="schedule-row"><span>${days}</span><b>${hours}</b></div>`;
+                }
+
+                let reviewsHtml = '';
+                if (loc.reviews && loc.reviews.length > 0) {
+                    loc.reviews.forEach(rev => {
+                        reviewsHtml += `
+                            <div class="review-item">
+                                <div class="review-top-line">
+                                    <span class="review-stars">${'★'.repeat(rev.rating)}${'☆'.repeat(5-rev.rating)}</span>
+                                    <span>${rev.date}</span>
+                                </div>
+                                <div class="review-text">"${rev.text}"</div>
+                            </div>`;
+                    });
+                } else {
+                    reviewsHtml = '<div style="font-size:12px; color:#94a3b8; padding:5px 0;">Відгуків ще немає. Будьте першим!</div>';
+                }
+
+                bodyBox.innerHTML = `
+                    <div class="detail-section">
+                        <h4 class="section-title">📍 Контакти та Адреса</h4>
+                        <div class="info-item">🏢 ${loc.address}</div>
+                        <div class="info-item">📞 ${loc.phone}</div>
+                    </div>
+                    <div class="detail-section">
+                        <h4 class="section-title">🕒 Графік роботи</h4>
+                        <div class="schedule-table">${scheduleRowsHtml}</div>
+                    </div>
+                    <div class="detail-section">
+                        <h4 class="section-title">💰 Повний прайс-лист</h4>
+                        <div>${priceRowsHtml}</div>
+                    </div>
+                    
+                    <div class="detail-section" style="background: #fdfdfd; border-color: #cbd5e1;">
+                        <h4 class="section-title" style="color: var(--dark);">✍️ Залишити відгук</h4>
+                        <div class="review-form">
+                            <div class="rating-stars-input" id="formStarsContainer">
+                                <span data-score="1" class="active">★</span>
+                                <span data-score="2" class="active">★</span>
+                                <span data-score="3" class="active">★</span>
+                                <span data-score="4" class="active">★</span>
+                                <span data-score="5" class="active">★</span>
+                            </div>
+                            <textarea class="review-textarea" id="reviewTextarea" placeholder="Поділіться враженнями від послуги..."></textarea>
+                            <button class="submit-review-btn" onclick="addNewReviewClick('${loc.id}')">Надіслати відгук</button>
+                        </div>
+                    </div>
+
+                    <div class="detail-section">
+                        <h4 class="section-title">⭐ Відгуки користувачів (${loc.reviewsCount})</h4>
+                        <div style="display:flex; flex-direction:column; gap:10px;">${reviewsHtml}</div>
+                    </div>
+                `;
+
+                setupFormStars();
+            }
+
+            function setupFormStars() {
+                const stars = document.querySelectorAll('#formStarsContainer span');
+                stars.forEach(star => {
+                    star.onclick = () => {
+                        const score = parseInt(star.getAttribute('data-score'));
+                        State.formRatingScore = score;
+                        stars.forEach(s => {
+                            const sScore = parseInt(s.getAttribute('data-score'));
+                            s.classList.toggle('active', sScore <= score);
+                        });
+                    };
+                });
+            }
+
+            window.addNewReviewClick = function(locId) {
+                const text = document.getElementById('reviewTextarea').value.trim();
+                if (!text) { alert('Будь ласка, введіть текст вашого відгуку.'); return; }
+
+                const loc = window.mockLocations.find(l => l.id === locId);
+                if (!loc) return;
+
+                const today = new Date();
+                const formattedDate = `${String(today.getDate()).padStart(2, '0')}.${String(today.getMonth() + 1).padStart(2, '0')}.${today.getFullYear()}`;
+                
+                const newReview = { text: text, rating: State.formRatingScore, date: formattedDate };
+                if (!loc.reviews) loc.reviews = [];
+                loc.reviews.unshift(newReview);
+
+                const totalScore = loc.reviews.reduce((sum, r) => sum + r.rating, 0);
+                loc.reviewsCount = loc.reviews.length;
+                loc.rating = totalScore / loc.reviewsCount;
+
+                openMasterDetail(loc.id);
+            };
+
+            window.closeMasterDetail = function() {
+                document.getElementById('sidebar-detail-view').classList.remove('show');
+                State.selectedLocation = null;
+                // При поверненні до списку повертаємо шторку на половину екрана
+                if (window.innerWidth <= 768) {
+                    document.getElementById('sidebar').className = 'half';
+                }
+                syncUI();
+            };
+
+            window.panToMaster = function(lat, lng) { 
+                map.setView([lat, lng], 14); 
+                // Якщо людина тисне "На карті" на мобілці, згортаємо шторку на половину, щоб звільнити огляд мапи
+                if (window.innerWidth <= 768) {
+                    document.getElementById('sidebar').className = 'half';
+                }
+            };
+
+            function renderLocationList() {
+                const contentContainer = document.getElementById('sidebarContent');
+                const optPrice = document.getElementById('optPrice');
+                contentContainer.innerHTML = '';
+
+                if (State.service) {
+                    optPrice.removeAttribute('disabled');
+                    optPrice.innerText = "💰 За ціною (від дешевих)";
+                } else {
+                    optPrice.setAttribute('disabled', 'true');
+                    optPrice.innerText = "💰 За ціною (оберіть послугу)";
+                    if (State.sortType === 'price') { State.sortType = 'distance'; document.getElementById('sortSelect').value = 'distance'; }
+                }
+
+                let filtered = window.mockLocations.filter(loc => {
+                    if (State.category && loc.cat !== State.category) return false;
+                    if (State.subcategory && !loc.subcats.includes(State.subcategory)) return false;
+                    if (State.onlyOpen && loc.openStatus !== 'open') return false;
+                    return true;
+                });
+
+                filtered.forEach(loc => { loc.currentDistance = calculateDistance(State.userCoords.lat, State.userCoords.lng, loc.lat, loc.lng); });
+
+                if (State.sortType === 'distance') filtered.sort((a, b) => a.currentDistance - b.currentDistance);
+                else if (State.sortType === 'rating') filtered.sort((a, b) => b.rating - a.rating);
+                else if (State.sortType === 'alphabet') filtered.sort((a, b) => a.title.localeCompare(b.title, 'uk'));
+                else if (State.sortType === 'price' && State.service) {
+                    const parsePrice = (pStr) => pStr ? parseInt(pStr.replace(/[^0-9]/g, '')) || Infinity : Infinity;
+                    filtered.sort((a, b) => parsePrice(a.prices[State.service.name]) - parsePrice(b.prices[State.service.name]));
+                }
+
+                if (filtered.length === 0) {
+                    contentContainer.innerHTML = '<div style="color:#64748b; font-size:12px; text-align:center; padding:20px;">Нічого не знайдено.</div>';
+                    return;
+                }
+
+                filtered.forEach(loc => {
+                    const card = document.createElement('div');
+                    card.className = `provider-card ${State.selectedLocation?.id === loc.id ? 'active' : ''}`;
+                    let priceText = State.service ? (loc.prices[State.service.name] || '---') : 'Прайс-лист';
+
+                    card.innerHTML = `
+                        <div class="provider-top">
+                            <div class="provider-title">${loc.title}</div>
+                            <div class="rating-block"><span class="star-icon">★</span><span>${loc.rating.toFixed(1)}</span><span class="reviews-count">(${loc.reviewsCount})</span></div>
+                        </div>
+                        <div class="provider-desc">${loc.text}</div>
+                        <div class="provider-meta">
+                            <span class="status-badge ${loc.openStatus}">${loc.openStatus === 'open' ? 'Відкрито' : 'Зачинено'}</span>
+                            <span class="distance-badge">📍 ${loc.currentDistance.toFixed(1)} км</span>
+                        </div>
+                        <div class="provider-price-row">
+                            <span class="provider-badge">${State.service ? 'Послуга' : 'Послуг: ' + Object.keys(loc.prices).length}</span>
+                            <span class="provider-card-price">${priceText}</span>
+                        </div>`;
+
+                    card.onclick = () => openMasterDetail(loc.id);
+                    contentContainer.appendChild(card);
+                });
+            }
+
+            function syncUI() {
+                document.querySelectorAll('.cat-card').forEach(c => c.classList.toggle('active', c.id.replace('cat-', '') === State.category));
+                const menu = document.getElementById('dropdownMenu');
+                const tableBlock = document.getElementById('servicesTableBlock');
+
+                if (!State.category) { menu.classList.remove('show'); tableBlock.classList.remove('show'); } 
+                else {
+                    menu.innerHTML = '';
+                    for (const [subId, subData] of Object.entries(window.masterCatalog[State.category].subcats)) {
+                        const btn = document.createElement('button'); btn.className = 'sub-btn';
+                        if (subId === State.subcategory) btn.classList.add('selected');
+                        btn.innerHTML = `<span>${subData.name}</span>`;
+                        btn.onclick = (e) => { e.stopPropagation(); handleL2Click(subId); };
+                        menu.appendChild(btn);
+                    }
+                    menu.classList.add('show');
+
+                    if (State.subcategory) {
+                        document.getElementById('tableTitleText').innerText = `📋 Послуги`;
+                        const rowsContainer = document.getElementById('servicesTableRows'); rowsContainer.innerHTML = '';
+                        window.masterCatalog[State.category].subcats[State.subcategory].items.forEach((srv) => {
+                            const row = document.createElement('div');
+                            row.className = `service-row ${State.service?.name === srv.name ? 'highlighted' : ''}`;
+                            row.innerHTML = `<span class="service-info">🔹 ${srv.name}</span><span class="service-price">${srv.price}</span>`;
+                            row.onclick = (e) => { e.stopPropagation(); handleL3Click(srv); };
+                            rowsContainer.appendChild(row);
+                        });
+                        tableBlock.classList.add('show');
+                    } else { tableBlock.classList.remove('show'); }
+                }
+                syncMapMarkers(); renderLocationList();
+            }
+
+            function syncMapMarkers() {
+                window.mockLocations.forEach(loc => { if (loc.markerInstance) map.removeLayer(loc.markerInstance); });
+                window.mockLocations.forEach(loc => {
+                    if (State.category && loc.cat !== State.category) return;
+                    if (State.subcategory && !loc.subcats.includes(State.subcategory)) return;
+                    if (State.onlyOpen && loc.openStatus !== 'open') return;
+
+                    let iconHTML = '';
+                    if (State.service) iconHTML = `<div class="mapfix-marker-price">${loc.prices[State.service.name] || '---'}</div>`;
+                    else iconHTML = `<div class="mapfix-marker-category">${window.masterCatalog[loc.cat]?.icon || '📍'}</div>`;
+
+                    loc.markerInstance = L.marker([loc.lat, loc.lng], { icon: L.divIcon({ className: '', html: iconHTML, iconSize: [0,0] }) }).addTo(map);
+                    loc.markerInstance.on('click', (e) => { 
+                        L.DomEvent.stopPropagation(e); 
+                        openMasterDetail(loc.id); 
+                    });
+                });
+            }
+
+            function openPopupForLocation(loc) {
+                const content = `<div style="font-family: sans-serif; width: 160px;"><div style="font-weight:800; font-size:12px;">${loc.title}</div><div style="font-size:11px; color:var(--primary); font-weight:700; margin-top:2px;">📍 Відстань: ${loc.currentDistance.toFixed(1)} км</div></div>`;
+                loc.markerInstance.bindPopup(content).openPopup();
+            }
+
+            function handleL1Click(catId) { State.category = State.category === catId ? null : catId; State.subcategory = null; State.service = null; syncUI(); }
+            function handleL2Click(subId) { State.subcategory = State.subcategory === subId ? null : subId; State.service = null; syncUI(); }
+            function handleL3Click(srv) { State.service = State.service?.name === srv.name ? null : { name: srv.name, price: srv.price }; syncUI(); }
+            function handleResetAll() { State.category = null; State.subcategory = null; State.service = null; State.selectedLocation = null; syncUI(); }
+
+            // ==========================================
+            // 🛠️ ЛОГІКА ТАУЧ-ПОДІЙ ДЛЯ BOTTOM SHEET (НОВЕ)
+            // ==========================================
+            const sheet = document.getElementById('sidebar');
+            const handle = document.getElementById('sheetHandle');
+            let startY = 0;
+            let startHeight = 0;
+
+            handle.addEventListener('click', () => {
+                // Звичайний клік по ручці перемикає стани: згорнуто -> половина -> повний
+                if (sheet.classList.contains('half')) {
+                    sheet.className = 'expanded';
+                } else if (sheet.classList.contains('expanded')) {
+                    sheet.className = ''; // Згорнуто
+                } else {
+                    sheet.className = 'half';
+                }
+            });
+
+            handle.addEventListener('touchstart', (e) => {
+                startY = e.touches[0].clientY;
+                sheet.style.transition = 'none'; // Вимикаємо анімацію під час перетягування пальцем
+            });
+
+            handle.addEventListener('touchmove', (e) => {
+                let currentY = e.touches[0].clientY;
+                let deltaY = currentY - startY;
+                
+                // На мобільних рухаємо шторку за допомогою CSS трансляції
+                if (deltaY > 0) {
+                    // Рух вниз
+                    if (sheet.classList.contains('expanded')) {
+                        sheet.style.transform = `translateY(${deltaY}px)`;
+                    }
+                }
+            });
+
+            handle.addEventListener('touchend', (e) => {
+                sheet.style.transition = 'transform 0.3s ease';
+                sheet.style.transform = ''; // Скидаємо інлайн-стилі
+                
+                let endY = e.changedTouches[0].clientY;
+                let diff = endY - startY;
+
+                if (Math.abs(diff) > 50) {
+                    if (diff > 0) {
+                        // Свайп вниз
+                        if (sheet.classList.contains('expanded')) sheet.className = 'half';
+                        else sheet.className = '';
+                    } else {
+                        // Свайп вгору
+                        if (sheet.classList.contains('half')) sheet.className = 'expanded';
+                        else sheet.className = 'half';
+                    }
+                }
+            });
+
+            buildL1Html(); syncUI();
+        });
+    </script>
+
+</body></html>
