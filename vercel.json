@@ -1,0 +1,29 @@
+{
+  "version": 2,
+  "builds": [
+    {
+      "src": "api/index.js",
+      "use": "@vercel/node",
+      "config": {
+        "includeFiles": [
+          "*.html",
+          "data.json",
+          "orders.json",
+          "favorites.json",
+          "catalog-data.js",
+          "search-ai.js",
+          "mapfix-sync.js",
+          "auth-jwt.js",
+          "supabaseClient.js",
+          "server.js"
+        ]
+      }
+    }
+  ],
+  "routes": [
+    {
+      "src": "/(.*)",
+      "dest": "/api/index.js"
+    }
+  ]
+}

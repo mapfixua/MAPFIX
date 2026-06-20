@@ -1,42 +1,41 @@
 const express = require('express');
-const session = require('express-session');
+const cookieParser = require('cookie-parser');
 const bcrypt = require('bcryptjs');
 const path = require('path');
 const fs = require('fs').promises;
 const crypto = require('crypto');
 const { validateCatalogHierarchy } = require('./catalog-data.js');
 const { parseVoiceSearch } = require('./search-ai.js');
+const { attachAuth, setAuthCookie, clearAuthCookie } = require('./auth-jwt.js');
+const {
+  supabaseClient,
+  USERS_TABLE,
+  mapUserRow,
+  toUserRow,
+} = require('./supabaseClient.js');
 
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY || '';
+const IS_VERCEL = !!process.env.VERCEL;
 
 const app = express();
+if (IS_VERCEL) app.set('trust proxy', 1);
 const PORT = process.env.PORT || 3000;
 const ROOT = __dirname;
 const DATA_FILE = path.join(ROOT, 'data.json');
-const USERS_FILE = path.join(ROOT, 'users.json');
 const ORDERS_FILE = path.join(ROOT, 'orders.json');
 const FAVORITES_FILE = path.join(ROOT, 'favorites.json');
-const SESSION_SECRET = process.env.SESSION_SECRET || 'mapfix-dev-secret-change-in-production';
-const BCRYPT_ROUNDS = 10;
-const VALID_ROLES = ['client', 'provider'];
+const JWT_SECRET =
+  process.env.JWT_SECRET ||
+  process.env.SESSION_SECRET ||
+  'mapfix-dev-secret-change-in-production';
+const BCRYPT_ROUNDS = 10;const VALID_ROLES = ['client', 'provider'];
 const ADMIN_PANEL_ROLES = ['provider', 'admin'];
 const ALL_KNOWN_ROLES = ['client', 'provider', 'admin'];
 const ORDER_STATUSES = ['Очікує', 'В роботі', 'Виконано'];
 
 app.use(express.json());
-app.use(
-  session({
-    secret: SESSION_SECRET,
-    resave: false,
-    saveUninitialized: false,
-    cookie: {
-      httpOnly: true,
-      maxAge: 7 * 24 * 60 * 60 * 1000,
-      sameSite: 'lax',
-    },
-  })
-);
-
+app.use(cookieParser());
+app.use(attachAuth(JWT_SECRET));
 function makeKey(name, existingKeys) {
   let base = String(name)
     .trim()
@@ -63,20 +62,12 @@ function formatPrice(price) {
 }
 
 function getSessionUser(req) {
-  if (!req.session?.userId) return null;
-  return {
-    id: req.session.userId,
-    login: req.session.login,
-    role: req.session.role,
-  };
+  return req.authUser || null;
 }
 
-function setSessionUser(req, user) {
-  req.session.userId = user.id;
-  req.session.login = user.login;
-  req.session.role = user.role;
+function setSessionUser(res, user) {
+  setAuthCookie(res, user, JWT_SECRET);
 }
-
 function canAccessAdmin(req) {
   const user = getSessionUser(req);
   return user && ADMIN_PANEL_ROLES.includes(user.role);
@@ -285,18 +276,19 @@ async function writeData(data) {
 }
 
 async function readUsers() {
-  try {
-    const raw = await fs.readFile(USERS_FILE, 'utf8');
-    const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed : [];
-  } catch (err) {
-    if (err.code === 'ENOENT') return [];
-    throw err;
-  }
+  const { data, error } = await supabaseClient.from(USERS_TABLE).select('*');
+  if (error) throw new Error(error.message);
+  return (data || []).map(mapUserRow).filter(Boolean);
 }
 
-async function writeUsers(users) {
-  await fs.writeFile(USERS_FILE, JSON.stringify(users, null, 2), 'utf8');
+async function findUserByLogin(inputLogin) {
+  const { data, error } = await supabaseClient
+    .from(USERS_TABLE)
+    .select('*')
+    .eq('login', inputLogin)
+    .maybeSingle();
+  if (error) throw new Error(error.message);
+  return mapUserRow(data);
 }
 
 async function getUserProfile(userId, data) {
@@ -342,9 +334,30 @@ function defaultLocation(providerId, body) {
   };
 }
 
-app.get('/', (req, res) => {
+function sendPublicPage(res, filename) {
   res.set('Cache-Control', 'no-store');
-  res.sendFile(path.join(ROOT, 'index.html'));
+  res.sendFile(path.join(ROOT, filename));
+}
+
+app.get('/', (req, res) => {
+  sendPublicPage(res, 'index.html');
+});
+
+app.get('/login.html', (req, res) => {
+  sendPublicPage(res, 'login.html');
+});
+
+app.get('/login', (req, res) => {
+  const next = req.query.next ? `?next=${encodeURIComponent(req.query.next)}` : '';
+  res.redirect('/login.html' + next);
+});
+
+app.get('/register.html', (req, res) => {
+  sendPublicPage(res, 'register.html');
+});
+
+app.get('/register', (req, res) => {
+  res.redirect('/register.html');
 });
 
 app.get('/admin', (req, res) => {
@@ -436,8 +449,16 @@ app.post('/api/register', async (req, res) => {
       });
     }
 
-    const users = await readUsers();
-    if (users.some((u) => u.login === login)) {
+    const { data: existingUser, error: lookupError } = await supabaseClient
+      .from(USERS_TABLE)
+      .select('id')
+      .eq('login', login)
+      .maybeSingle();
+    if (lookupError) {
+      console.error(lookupError);
+      return res.status(500).json({ error: 'Помилка перевірки логіну' });
+    }
+    if (existingUser) {
       return res.status(409).json({ error: 'Користувач з таким логіном вже існує' });
     }
 
@@ -449,8 +470,13 @@ app.post('/api/register', async (req, res) => {
       role,
     };
 
-    users.push(newUser);
-    await writeUsers(users);
+    const { error: insertError } = await supabaseClient
+      .from(USERS_TABLE)
+      .insert(toUserRow(newUser));
+    if (insertError) {
+      console.error(insertError);
+      return res.status(500).json({ error: 'Помилка збереження користувача' });
+    }
 
     if (role === 'provider') {
       const data = await readData();
@@ -465,7 +491,7 @@ app.post('/api/register', async (req, res) => {
       await writeData(data);
     }
 
-    setSessionUser(req, newUser);
+    setSessionUser(res, newUser);
     const data = await readData();
     res.status(201).json({ ok: true, user: await toPublicUserWithProfile(newUser, data) });
   } catch (err) {
@@ -476,25 +502,23 @@ app.post('/api/register', async (req, res) => {
 
 app.post('/api/login', async (req, res) => {
   try {
-    const login = req.body.login?.trim().toLowerCase();
+    const inputLogin = req.body.login?.trim().toLowerCase();
     const password = req.body.password;
 
-    if (!login || !password) {
+    if (!inputLogin || !password) {
       return res.status(400).json({ error: 'Вкажіть логін і пароль' });
     }
 
-    const users = await readUsers();
-    const user = users.find((u) => u.login === login);
+    const user = await findUserByLogin(inputLogin);
     if (!user) {
-      return res.status(401).json({ error: 'Невірний логін або пароль' });
+      return res.status(401).json({ error: 'Користувача не знайдено' });
     }
-
     const match = await bcrypt.compare(String(password), user.passwordHash);
     if (!match) {
-      return res.status(401).json({ error: 'Невірний логін або пароль' });
+      return res.status(401).json({ error: 'Невірний пароль' });
     }
 
-    setSessionUser(req, user);
+    setSessionUser(res, user);
     const data = await readData();
     res.json({ ok: true, user: await toPublicUserWithProfile(user, data) });
   } catch (err) {
@@ -504,16 +528,9 @@ app.post('/api/login', async (req, res) => {
 });
 
 app.post('/api/logout', (req, res) => {
-  req.session.destroy((err) => {
-    if (err) {
-      console.error(err);
-      return res.status(500).json({ error: 'Помилка виходу' });
-    }
-    res.clearCookie('connect.sid');
-    res.json({ ok: true });
-  });
+  clearAuthCookie(res);
+  res.json({ ok: true });
 });
-
 app.get('/api/data', async (req, res) => {
   try {
     res.set('Cache-Control', 'no-store');
@@ -611,12 +628,26 @@ app.delete('/api/admin/locations/:id', requireAuth, requireAdmin, async (req, re
 app.delete('/api/admin/providers/:userId', requireAuth, requireAdmin, async (req, res) => {
   try {
     const userId = req.params.userId;
-    const users = await readUsers();
-    const idx = users.findIndex((u) => u.id === userId && u.role === 'provider');
-    if (idx === -1) return res.status(404).json({ error: 'Провайдера не знайдено' });
+    const { data: providerRow, error: findError } = await supabaseClient
+      .from(USERS_TABLE)
+      .select('id')
+      .eq('id', userId)
+      .eq('role', 'provider')
+      .maybeSingle();
+    if (findError) {
+      console.error(findError);
+      return res.status(500).json({ error: 'Помилка пошуку провайдера' });
+    }
+    if (!providerRow) return res.status(404).json({ error: 'Провайдера не знайдено' });
 
-    users.splice(idx, 1);
-    await writeUsers(users);
+    const { error: deleteError } = await supabaseClient
+      .from(USERS_TABLE)
+      .delete()
+      .eq('id', userId);
+    if (deleteError) {
+      console.error(deleteError);
+      return res.status(500).json({ error: 'Помилка видалення провайдера' });
+    }
 
     const data = await readData();
     data.mockLocations = data.mockLocations.filter((l) => l.providerId !== userId);
@@ -1087,19 +1118,36 @@ async function validateStartupData() {
   const users = await readUsers();
   const badUsers = users.filter((u) => !ALL_KNOWN_ROLES.includes(u.role));
   if (badUsers.length) {
-    console.warn('[startup] Невідомі ролі в users.json:', badUsers.map((u) => u.login).join(', '));
+    console.warn('[startup] Невідомі ролі в Supabase (usersІ):', badUsers.map((u) => u.login).join(', '));
   }
 }
 
-app.listen(PORT, async () => {
-  console.log(`Mapfix: http://localhost:${PORT}`);
-  console.log(`Вхід: http://localhost:${PORT}/login.html`);
-  console.log(`Реєстрація: http://localhost:${PORT}/register.html`);
-  console.log(`Кабінет клієнта: http://localhost:${PORT}/client`);
-  console.log(`Адмін-панель: http://localhost:${PORT}/admin`);
-  try {
-    await validateStartupData();
-  } catch (err) {
-    console.error('[startup] Помилка валідації:', err.message);
-  }
-});
+if (require.main === module) {
+  const server = app.listen(PORT, async () => {
+    console.log(`Mapfix: http://localhost:${PORT}`);
+    console.log(`Вхід: http://localhost:${PORT}/login.html`);
+    console.log(`Реєстрація: http://localhost:${PORT}/register.html`);
+    console.log(`Кабінет клієнта: http://localhost:${PORT}/client`);
+    console.log(`Адмін-панель: http://localhost:${PORT}/admin`);
+    try {
+      await validateStartupData();
+    } catch (err) {
+      console.error('[startup] Помилка валідації:', err.message);
+    }
+  });
+
+  server.on('error', (err) => {
+    if (err.code === 'EADDRINUSE') {
+      console.error(`\n[startup] Порт ${PORT} уже зайнятий іншим процесом.`);
+      console.error('Спробуйте: npm start  (скрипт автоматично звільнить порт)');
+      console.error(
+        `Або вручну (PowerShell): Get-NetTCPConnection -LocalPort ${PORT} | Stop-Process -Id {OwningProcess} -Force\n`
+      );
+      process.exit(1);
+    }
+    console.error('[startup] Помилка сервера:', err.message);
+    process.exit(1);
+  });
+}
+
+module.exports = app;
