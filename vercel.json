@@ -6,16 +6,16 @@
       "use": "@vercel/node",
       "config": {
         "includeFiles": [
-          "*.html",
+          "public/**",
           "data.json",
           "orders.json",
           "favorites.json",
-          "catalog-data.js",
-          "search-ai.js",
-          "mapfix-sync.js",
+          "server.js",
+          "paths.js",
           "auth-jwt.js",
           "supabaseClient.js",
-          "server.js"
+          "catalog-data.js",
+          "search-ai.js"
         ]
       }
     }

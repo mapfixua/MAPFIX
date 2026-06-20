@@ -51,11 +51,11 @@ function parseCookie(setCookie) {
 }
 
 async function checkMapStability() {
-  const indexHtml = read('index.html');
+  const indexHtml = read('public/index.html');
   const hasNoStore = /cache:\s*['"]no-store['"]/.test(indexHtml);
   const hasApiData = indexHtml.includes('/api/data');
   const hasBust = indexHtml.includes('Date.now()') && (indexHtml.includes('?t=') || indexHtml.includes('&t='));
-  const hasSync = indexHtml.includes('mapfix-sync.js') && fs.existsSync(path.join(ROOT, 'mapfix-sync.js'));
+  const hasSync = indexHtml.includes('mapfix-sync.js') && fs.existsSync(path.join(ROOT, 'public/mapfix-sync.js'));
 
   let liveOk = false;
   let cacheHeader = '';
@@ -106,7 +106,7 @@ function checkCatalogHierarchy() {
 
 function checkRolesAndBinding() {
   const serverJs = read('server.js');
-  const adminHtml = read('admin.html');
+  const adminHtml = read('public/admin.html');
 
   const checks = {
     requireAuth: serverJs.includes('function requireAuth'),
@@ -131,7 +131,7 @@ function checkRolesAndBinding() {
 
 async function checkLoginFlow() {
   const users = JSON.parse(read('users.json'));
-  const loginHtml = read('login.html');
+  const loginHtml = read('public/login.html');
   const serverJs = read('server.js');
 
   const hasLoginRoute = serverJs.includes("app.post('/api/login'");

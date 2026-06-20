@@ -2,11 +2,13 @@ const express = require('express');
 const cookieParser = require('cookie-parser');
 const bcrypt = require('bcryptjs');
 const path = require('path');
-const fs = require('fs').promises;
+const fs = require('fs');
+const fsPromises = require('fs').promises;
 const crypto = require('crypto');
 const { validateCatalogHierarchy } = require('./catalog-data.js');
 const { parseVoiceSearch } = require('./search-ai.js');
 const { attachAuth, setAuthCookie, clearAuthCookie } = require('./auth-jwt.js');
+const { resolveProjectRoot, resolvePublicDir } = require('./paths.js');
 const {
   supabaseClient,
   USERS_TABLE,
@@ -20,7 +22,12 @@ const IS_VERCEL = !!process.env.VERCEL;
 const app = express();
 if (IS_VERCEL) app.set('trust proxy', 1);
 const PORT = process.env.PORT || 3000;
-const ROOT = __dirname;
+const ROOT = resolveProjectRoot();
+const PUBLIC_DIR = resolvePublicDir(ROOT);
+if (IS_VERCEL) {
+  console.log('[vercel] ROOT:', ROOT, 'PUBLIC_DIR:', PUBLIC_DIR);
+  console.log('[vercel] login.html exists:', fs.existsSync(path.join(PUBLIC_DIR, 'login.html')));
+}
 const DATA_FILE = path.join(ROOT, 'data.json');
 const ORDERS_FILE = path.join(ROOT, 'orders.json');
 const FAVORITES_FILE = path.join(ROOT, 'favorites.json');
@@ -28,7 +35,8 @@ const JWT_SECRET =
   process.env.JWT_SECRET ||
   process.env.SESSION_SECRET ||
   'mapfix-dev-secret-change-in-production';
-const BCRYPT_ROUNDS = 10;const VALID_ROLES = ['client', 'provider'];
+const BCRYPT_ROUNDS = 10;
+const VALID_ROLES = ['client', 'provider'];
 const ADMIN_PANEL_ROLES = ['provider', 'admin'];
 const ALL_KNOWN_ROLES = ['client', 'provider', 'admin'];
 const ORDER_STATUSES = ['Очікує', 'В роботі', 'Виконано'];
@@ -132,7 +140,7 @@ function makeServiceId(locationId, serviceName) {
 
 async function readOrders() {
   try {
-    const raw = await fs.readFile(ORDERS_FILE, 'utf8');
+    const raw = await fsPromises.readFile(ORDERS_FILE, 'utf8');
     const parsed = JSON.parse(raw);
     return Array.isArray(parsed) ? parsed : [];
   } catch (err) {
@@ -142,12 +150,12 @@ async function readOrders() {
 }
 
 async function writeOrders(orders) {
-  await fs.writeFile(ORDERS_FILE, JSON.stringify(orders, null, 2), 'utf8');
+  await fsPromises.writeFile(ORDERS_FILE, JSON.stringify(orders, null, 2), 'utf8');
 }
 
 async function readFavorites() {
   try {
-    const raw = await fs.readFile(FAVORITES_FILE, 'utf8');
+    const raw = await fsPromises.readFile(FAVORITES_FILE, 'utf8');
     const parsed = JSON.parse(raw);
     return Array.isArray(parsed) ? parsed : [];
   } catch (err) {
@@ -157,7 +165,7 @@ async function readFavorites() {
 }
 
 async function writeFavorites(favorites) {
-  await fs.writeFile(FAVORITES_FILE, JSON.stringify(favorites, null, 2), 'utf8');
+  await fsPromises.writeFile(FAVORITES_FILE, JSON.stringify(favorites, null, 2), 'utf8');
 }
 
 function enrichOrder(order, data, users) {
@@ -264,14 +272,14 @@ function ensureDataShape(data) {
 }
 
 async function readData() {
-  const raw = await fs.readFile(DATA_FILE, 'utf8');
+  const raw = await fsPromises.readFile(DATA_FILE, 'utf8');
   return ensureDataShape(JSON.parse(raw));
 }
 
 async function writeData(data) {
   const payload = ensureDataShape(data);
   console.log('[writeData]', DATA_FILE, 'locations:', payload.mockLocations?.length ?? 0);
-  await fs.writeFile(DATA_FILE, JSON.stringify(payload, null, 2), 'utf8');
+  await fsPromises.writeFile(DATA_FILE, JSON.stringify(payload, null, 2), 'utf8');
   console.log('[writeData] OK');
 }
 
@@ -335,8 +343,16 @@ function defaultLocation(providerId, body) {
 }
 
 function sendPublicPage(res, filename) {
+  const filePath = path.resolve(PUBLIC_DIR, filename);
   res.set('Cache-Control', 'no-store');
-  res.sendFile(path.join(ROOT, filename));
+  res.sendFile(filePath, (err) => {
+    if (err) {
+      console.error('[sendPublicPage]', { filename, filePath, publicDir: PUBLIC_DIR, err: err.message });
+      if (!res.headersSent) {
+        res.status(err.statusCode || 404).send(`Cannot serve ${filename}`);
+      }
+    }
+  });
 }
 
 app.get('/', (req, res) => {
@@ -365,7 +381,7 @@ app.get('/admin', (req, res) => {
     return res.redirect('/login.html?next=/admin');
   }
   res.set('Cache-Control', 'no-store');
-  res.sendFile(path.join(ROOT, 'admin.html'));
+  res.sendFile(path.resolve(PUBLIC_DIR, 'admin.html'));
 });
 
 app.get('/admin.html', (req, res) => {
@@ -377,7 +393,7 @@ app.get('/client', (req, res) => {
   if (!user || user.role !== 'client') {
     return res.redirect('/login.html');
   }
-  res.sendFile(path.join(ROOT, 'client.html'));
+  res.sendFile(path.resolve(PUBLIC_DIR, 'client.html'));
 });
 
 app.get('/api/me', async (req, res) => {
@@ -1103,7 +1119,7 @@ app.put('/api/provider/profile', requireAuth, requireProvider, async (req, res) 
   }
 });
 
-app.use(express.static(ROOT));
+app.use(express.static(PUBLIC_DIR, { index: false, fallthrough: true }));
 
 async function validateStartupData() {
   const data = await readData();
