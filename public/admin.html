@@ -35,8 +35,28 @@
       border-radius: 8px;
       font-size: 1rem;
       margin-bottom: 10px;
-      background: #fff;
+      background-color: #fff;
+      color: #1e293b;
+      color-scheme: light;
       font-family: inherit;
+    }
+    select option {
+      color: #1e293b;
+      background-color: #fff;
+    }
+    select option:hover,
+    select option:focus,
+    select option:checked {
+      color: #1e293b;
+      background-color: #dbeafe;
+    }
+    select:disabled {
+      color: #64748b;
+      background-color: #f1f5f9;
+    }
+    select:disabled option {
+      color: #1e293b;
+      background-color: #fff;
     }
     textarea { min-height: 60px; resize: vertical; }
     .field-block { margin-bottom: 12px; }
