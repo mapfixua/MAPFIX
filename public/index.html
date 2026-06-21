@@ -258,10 +258,11 @@
         .back-btn { background: none; border: none; color: var(--primary); font-size: 13px; font-weight: 700; cursor: pointer; display: flex; align-items: center; gap: 4px; padding: 0; width: fit-content; }
         .detail-main-title { font-size: 18px; font-weight: 800; color: var(--dark); margin: 0; }
         
-        .detail-actions-row { display: flex; gap: 8px; margin-top: 4px; }
-        .action-btn { flex: 1; height: 38px; border-radius: 8px; border: none; font-weight: 700; font-size: 13px; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 6px; text-decoration: none; }
+        .detail-actions-row { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 4px; }
+        .action-btn { flex: 1 1 calc(50% - 4px); min-width: 120px; height: 38px; border-radius: 8px; border: none; font-weight: 700; font-size: 13px; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 6px; text-decoration: none; }
         .btn-call { background: var(--success); color: white; }
         .btn-route { background: var(--primary); color: white; }
+        .btn-directions { background: #0ea5e9; color: white; }
 
         .detail-scroll-body { flex-grow: 1; overflow-y: auto; padding: 20px; background: #f8fafc; display: flex; flex-direction: column; gap: 16px; }
         .detail-section { background: white; border: 1px solid var(--border); border-radius: 12px; padding: 14px; display: flex; flex-direction: column; gap: 10px; }
@@ -1131,6 +1132,12 @@
                 State.formRatingScore = 5;
                 
                 const isFav = State.favoriteIds.has(loc.id);
+                const hasCoords = Number.isFinite(Number(loc.lat)) && Number.isFinite(Number(loc.lng));
+                const hasAddress = Boolean(String(loc.address || '').trim());
+                const directionsBtn =
+                  hasCoords || hasAddress
+                    ? `<button type="button" class="action-btn btn-directions" onclick="openGoogleMapsDirections('${loc.id}')">🧭 Побудувати маршрут</button>`
+                    : '';
                 const headerBox = document.getElementById('detailHeaderContent');
                 headerBox.innerHTML = `
                     <button class="back-btn" onclick="closeMasterDetail()">⬅️ Назад до списку</button>
@@ -1141,7 +1148,8 @@
                     </div>
                     <div class="detail-actions-row">
                         <a href="tel:${loc.phone}" class="action-btn btn-call">📞 Зателефонувати</a>
-                        <button class="action-btn btn-route" onclick="panToMaster(${loc.lat}, ${loc.lng})">🗺️ На карті</button>
+                        <button type="button" class="action-btn btn-route" onclick="panToMaster(${loc.lat}, ${loc.lng})">🗺️ На карті</button>
+                        ${directionsBtn}
                         <button type="button" class="btn-fav-header ${isFav ? 'active' : ''}" onclick="toggleFavorite('${loc.id}')">${isFav ? '★ В обраному' : '☆ В обране'}</button>
                     </div>
                 `;
@@ -1285,6 +1293,26 @@
                 if (window.innerWidth <= 768) {
                     document.getElementById('sidebar').className = 'half';
                 }
+            };
+
+            window.openGoogleMapsDirections = function(locId) {
+                const loc = window.mockLocations.find((l) => l.id === locId);
+                if (!loc) return;
+
+                const lat = Number(loc.lat);
+                const lng = Number(loc.lng);
+                const address = String(loc.address || '').trim();
+                let url;
+
+                if (Number.isFinite(lat) && Number.isFinite(lng)) {
+                    url = `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}`;
+                } else if (address) {
+                    url = `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(address)}`;
+                } else {
+                    return;
+                }
+
+                window.open(url, '_blank', 'noopener,noreferrer');
             };
 
             function renderLocationList() {
