@@ -34,7 +34,7 @@ if (!supabaseUrl || !supabaseKey) {
 
 const supabaseClient = createClient(supabaseUrl, supabaseKey);
 
-const USERS_TABLE = process.env.SUPABASE_USERS_TABLE || 'usersІ';
+const USERS_TABLE = process.env.SUPABASE_USERS_TABLE || 'users';
 
 function mapUserRow(row) {
   if (!row) return null;
@@ -43,6 +43,9 @@ function mapUserRow(row) {
     login: row.login,
     passwordHash: row.password_hash ?? row.passwordHash,
     role: row.role,
+    phone: row.phone ?? null,
+    telegramId: row.telegram_id ?? null,
+    telegramLinkedAt: row.telegram_linked_at ?? null,
   };
 }
 

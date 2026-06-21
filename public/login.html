@@ -19,7 +19,7 @@
     }
     .wrap { width: 100%; max-width: 400px; }
     h1 { font-size: 1.5rem; margin: 0 0 8px; text-align: center; }
-    .sub { color: #64748b; margin-bottom: 24px; font-size: 0.95rem; text-align: center; }
+    .sub { color: #64748b; margin-bottom: 24px; font-size: 0.95rem; text-align: center; line-height: 1.45; }
     .card {
       background: #fff;
       border-radius: 12px;
@@ -27,11 +27,29 @@
       box-shadow: 0 4px 20px rgba(0,0,0,0.06);
       border: 1px solid #e2e8f0;
     }
+    .step-label {
+      display: inline-block;
+      font-size: 0.75rem;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      color: #007bff;
+      background: #eff6ff;
+      padding: 4px 10px;
+      border-radius: 999px;
+      margin-bottom: 12px;
+    }
     label {
       display: block;
       font-weight: 600;
       font-size: 0.85rem;
       margin-bottom: 6px;
+    }
+    .field-hint {
+      font-size: 0.8rem;
+      color: #64748b;
+      margin: -8px 0 14px;
+      line-height: 1.4;
     }
     input {
       width: 100%;
@@ -46,6 +64,13 @@
       border-color: #007bff;
       box-shadow: 0 0 0 3px rgba(0,123,255,0.15);
     }
+    #otpCode {
+      text-align: center;
+      letter-spacing: 0.35em;
+      font-size: 1.35rem;
+      font-weight: 600;
+      padding-left: 18px;
+    }
     button {
       width: 100%;
       padding: 12px;
@@ -56,17 +81,87 @@
       font-size: 1rem;
       font-weight: 600;
       cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      min-height: 46px;
     }
-    button:hover { background: #0069d9; }
-    button:disabled { opacity: 0.6; cursor: not-allowed; }
+    button:hover:not(:disabled) { background: #0069d9; }
+    button:disabled { opacity: 0.65; cursor: not-allowed; }
+    button.secondary {
+      background: #fff;
+      color: #334155;
+      border: 1px solid #cbd5e1;
+      margin-top: 10px;
+    }
+    button.secondary:hover:not(:disabled) { background: #f8fafc; }
+    button.linkish {
+      width: auto;
+      min-height: auto;
+      padding: 0;
+      background: none;
+      color: #007bff;
+      font-size: 0.9rem;
+      font-weight: 600;
+      margin-top: 12px;
+    }
+    button.linkish:hover:not(:disabled) { background: none; text-decoration: underline; }
     .msg {
       margin-top: 16px;
       padding: 12px;
       border-radius: 8px;
       font-size: 0.9rem;
       display: none;
+      line-height: 1.45;
     }
     .msg.err { display: block; background: #fee2e2; color: #991b1b; }
+    .msg.ok { display: block; background: #dcfce7; color: #166534; }
+    .msg a { color: #1d4ed8; font-weight: 600; }
+    .hidden { display: none !important; }
+    .phone-sent {
+      font-size: 0.9rem;
+      color: #475569;
+      margin-bottom: 14px;
+      padding: 10px 12px;
+      background: #f8fafc;
+      border-radius: 8px;
+      border: 1px solid #e2e8f0;
+    }
+    .phone-sent strong { color: #0f172a; }
+    .resend-row { margin-top: 8px; text-align: center; }
+    .spinner {
+      width: 18px;
+      height: 18px;
+      border: 2px solid rgba(255,255,255,0.35);
+      border-top-color: #fff;
+      border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+    }
+    button.secondary .spinner {
+      border-color: rgba(51,65,85,0.2);
+      border-top-color: #334155;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .divider {
+      margin: 22px 0 16px;
+      border: none;
+      border-top: 1px solid #e2e8f0;
+    }
+    .classic-toggle {
+      text-align: center;
+      margin-top: 4px;
+    }
+    .classic-toggle button {
+      width: auto;
+      min-height: auto;
+      padding: 0;
+      background: none;
+      color: #64748b;
+      font-size: 0.88rem;
+      font-weight: 500;
+    }
+    .classic-toggle button:hover { color: #007bff; background: none; text-decoration: underline; }
     .links { margin-top: 20px; text-align: center; font-size: 0.9rem; }
     .links a { color: #007bff; text-decoration: none; margin: 0 6px; }
     .links a:hover { text-decoration: underline; }
@@ -75,31 +170,101 @@
 <body>
   <div class="wrap">
     <h1>Mapfix</h1>
-    <p class="sub">Вхід для клієнтів, провайдерів та адміністраторів</p>
+    <p class="sub">Увійдіть за номером телефону — код надійде в Telegram</p>
 
     <div class="card">
-      <form id="loginForm">
+      <div id="stepPhone">
+        <span class="step-label">Крок 1 з 2</span>
+        <label for="phone">Номер телефону</label>
+        <input
+          id="phone"
+          name="phone"
+          type="tel"
+          inputmode="tel"
+          autocomplete="tel"
+          placeholder="050 123 45 67"
+          required
+        >
+        <p class="field-hint">Формат: 0501234567 або +380501234567</p>
+        <button type="button" id="requestBtn">
+          <span id="requestBtnText">Отримати код</span>
+        </button>
+      </div>
+
+      <div id="stepOtp" class="hidden">
+        <span class="step-label">Крок 2 з 2</span>
+        <p class="phone-sent">Код надіслано на номер <strong id="phoneDisplay"></strong></p>
+        <label for="otpCode">Код з Telegram</label>
+        <input
+          id="otpCode"
+          name="otpCode"
+          type="text"
+          inputmode="numeric"
+          autocomplete="one-time-code"
+          maxlength="6"
+          pattern="[0-9]{6}"
+          placeholder="000000"
+          required
+        >
+        <p class="field-hint">Введіть 6-значний код із повідомлення бота</p>
+        <button type="button" id="verifyBtn">
+          <span id="verifyBtnText">Увійти</span>
+        </button>
+        <div class="resend-row">
+          <button type="button" id="resendBtn" class="linkish" disabled>
+            Надіслати код повторно (<span id="resendCountdown">60</span> с)
+          </button>
+        </div>
+        <button type="button" id="changePhoneBtn" class="secondary">Змінити номер</button>
+      </div>
+
+      <form id="classicForm" class="hidden">
+        <hr class="divider">
         <label for="login">Логін</label>
-        <input id="login" name="login" type="text" autocomplete="username" required>
-
+        <input id="login" name="login" type="text" autocomplete="username">
         <label for="password">Пароль</label>
-        <input id="password" name="password" type="password" autocomplete="current-password" required>
-
-        <button type="submit" id="submitBtn">Увійти</button>
+        <input id="password" name="password" type="password" autocomplete="current-password">
+        <button type="submit" id="classicSubmitBtn">
+          <span id="classicSubmitText">Увійти за паролем</span>
+        </button>
       </form>
+
+      <div class="classic-toggle">
+        <button type="button" id="toggleClassicBtn">Класичний вхід (логін і пароль)</button>
+      </div>
+
       <div id="message" class="msg" role="alert"></div>
     </div>
 
     <p class="links">
       <a href="/register.html">Реєстрація</a>
+      <a href="/link-telegram.html">Підключити Telegram</a>
       <a href="/">На карту</a>
     </p>
   </div>
 
   <script>
-    const form = document.getElementById('loginForm');
+    const stepPhone = document.getElementById('stepPhone');
+    const stepOtp = document.getElementById('stepOtp');
+    const phoneInput = document.getElementById('phone');
+    const otpInput = document.getElementById('otpCode');
+    const phoneDisplay = document.getElementById('phoneDisplay');
+    const requestBtn = document.getElementById('requestBtn');
+    const requestBtnText = document.getElementById('requestBtnText');
+    const verifyBtn = document.getElementById('verifyBtn');
+    const verifyBtnText = document.getElementById('verifyBtnText');
+    const resendBtn = document.getElementById('resendBtn');
+    const changePhoneBtn = document.getElementById('changePhoneBtn');
     const message = document.getElementById('message');
-    const submitBtn = document.getElementById('submitBtn');
+    const classicForm = document.getElementById('classicForm');
+    const toggleClassicBtn = document.getElementById('toggleClassicBtn');
+    const classicSubmitBtn = document.getElementById('classicSubmitBtn');
+    const classicSubmitText = document.getElementById('classicSubmitText');
+
+    const RESEND_SECONDS = 60;
+    let savedPhone = '';
+    let resendTimerId = null;
+    let resendSecondsLeft = 0;
 
     function redirectByRole(role) {
       if (role === 'admin' || role === 'provider') window.location.href = '/admin';
@@ -107,9 +272,186 @@
       else window.location.href = '/';
     }
 
-    function showError(text) {
-      message.textContent = text;
+    function clearMessage() {
+      message.textContent = '';
+      message.className = 'msg';
+      message.innerHTML = '';
+    }
+
+    function showError(text, html) {
+      if (html) {
+        message.innerHTML = html;
+      } else {
+        message.textContent = text;
+      }
       message.className = 'msg err';
+    }
+
+    function showSuccess(text) {
+      message.textContent = text;
+      message.className = 'msg ok';
+    }
+
+    function setButtonLoading(button, textEl, loading, idleText, loadingText) {
+      button.disabled = loading;
+      if (loading) {
+        textEl.innerHTML = '<span class="spinner" aria-hidden="true"></span>' + loadingText;
+      } else {
+        textEl.textContent = idleText;
+      }
+    }
+
+    function showPhoneStep() {
+      stepPhone.classList.remove('hidden');
+      stepOtp.classList.add('hidden');
+      stopResendTimer();
+      setResendReady();
+      otpInput.value = '';
+    }
+
+    function showOtpStep(phone) {
+      savedPhone = phone;
+      phoneDisplay.textContent = phone;
+      stepPhone.classList.add('hidden');
+      stepOtp.classList.remove('hidden');
+      otpInput.focus();
+      startResendTimer();
+    }
+
+    function stopResendTimer() {
+      if (resendTimerId) {
+        clearInterval(resendTimerId);
+        resendTimerId = null;
+      }
+    }
+
+    function setResendWaiting(seconds) {
+      resendBtn.disabled = true;
+      resendBtn.innerHTML =
+        'Надіслати код повторно (<span id="resendCountdown">' + seconds + '</span> с)';
+    }
+
+    function setResendReady() {
+      resendBtn.disabled = false;
+      resendBtn.textContent = 'Надіслати код повторно';
+    }
+
+    function startResendTimer() {
+      stopResendTimer();
+      resendSecondsLeft = RESEND_SECONDS;
+      setResendWaiting(resendSecondsLeft);
+      resendTimerId = setInterval(() => {
+        resendSecondsLeft -= 1;
+        if (resendSecondsLeft <= 0) {
+          stopResendTimer();
+          setResendReady();
+          return;
+        }
+        const countdownEl = document.getElementById('resendCountdown');
+        if (countdownEl) countdownEl.textContent = String(resendSecondsLeft);
+      }, 1000);
+    }
+
+    async function requestOtp(phone) {
+      const res = await fetch('/api/auth/otp/request', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ phone }),
+      });
+      const data = await res.json().catch(() => ({}));
+      return { res, data };
+    }
+
+    async function verifyOtp(phone, code) {
+      const res = await fetch('/api/auth/otp/verify', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ phone, code }),
+      });
+      const data = await res.json().catch(() => ({}));
+      return { res, data };
+    }
+
+    function handleOtpRequestError(res, data) {
+      if (data.error === 'telegram_not_linked') {
+        showError(
+          null,
+          'Ваш Telegram не підключено. <a href="/link-telegram.html">Підключити Telegram</a>'
+        );
+        return;
+      }
+      showError(data.message || data.error || 'Не вдалося надіслати код');
+    }
+
+    async function submitPhoneRequest() {
+      clearMessage();
+      const phone = phoneInput.value.trim();
+      if (!phone) {
+        showError('Вкажіть номер телефону');
+        phoneInput.focus();
+        return;
+      }
+
+      setButtonLoading(requestBtn, requestBtnText, true, 'Отримати код', 'Надсилання…');
+      try {
+        const { res, data } = await requestOtp(phone);
+        if (!res.ok) {
+          handleOtpRequestError(res, data);
+          return;
+        }
+        showOtpStep(data.phone || phone);
+        showSuccess('Код надіслано в Telegram. Перевірте повідомлення від бота.');
+      } catch (_) {
+        showError('Помилка мережі. Спробуйте ще раз.');
+      } finally {
+        setButtonLoading(requestBtn, requestBtnText, false, 'Отримати код', 'Надсилання…');
+      }
+    }
+
+    async function submitOtpVerify() {
+      clearMessage();
+      const code = otpInput.value.replace(/\D/g, '').trim();
+      if (!/^\d{6}$/.test(code)) {
+        showError('Введіть 6-значний код');
+        otpInput.focus();
+        return;
+      }
+
+      setButtonLoading(verifyBtn, verifyBtnText, true, 'Увійти', 'Перевірка…');
+      try {
+        const { res, data } = await verifyOtp(savedPhone, code);
+        if (!res.ok) {
+          showError(data.message || data.error || 'Невірний або прострочений код');
+          return;
+        }
+        redirectByRole(data.user.role);
+      } catch (_) {
+        showError('Помилка мережі. Спробуйте ще раз.');
+      } finally {
+        setButtonLoading(verifyBtn, verifyBtnText, false, 'Увійти', 'Перевірка…');
+      }
+    }
+
+    async function resendOtp() {
+      if (resendSecondsLeft > 0) return;
+      clearMessage();
+      resendBtn.disabled = true;
+      resendBtn.textContent = 'Надсилання…';
+      try {
+        const { res, data } = await requestOtp(savedPhone);
+        if (!res.ok) {
+          handleOtpRequestError(res, data);
+          setResendReady();
+          return;
+        }
+        showSuccess('Новий код надіслано в Telegram.');
+        startResendTimer();
+      } catch (_) {
+        showError('Помилка мережі. Спробуйте ще раз.');
+        setResendReady();
+      }
     }
 
     async function checkAlreadyLoggedIn() {
@@ -120,19 +462,52 @@
       } catch (_) {}
     }
 
-    form.addEventListener('submit', async (e) => {
-      e.preventDefault();
-      submitBtn.disabled = true;
-      message.className = 'msg';
+    requestBtn.addEventListener('click', submitPhoneRequest);
+    phoneInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        submitPhoneRequest();
+      }
+    });
 
+    verifyBtn.addEventListener('click', submitOtpVerify);
+    otpInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        submitOtpVerify();
+      }
+    });
+    otpInput.addEventListener('input', () => {
+      otpInput.value = otpInput.value.replace(/\D/g, '').slice(0, 6);
+    });
+
+    resendBtn.addEventListener('click', resendOtp);
+    changePhoneBtn.addEventListener('click', () => {
+      clearMessage();
+      showPhoneStep();
+      phoneInput.focus();
+    });
+
+    toggleClassicBtn.addEventListener('click', () => {
+      const willShow = classicForm.classList.contains('hidden');
+      classicForm.classList.toggle('hidden', !willShow);
+      toggleClassicBtn.textContent = willShow
+        ? 'Сховати класичний вхід'
+        : 'Класичний вхід (логін і пароль)';
+    });
+
+    classicForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      clearMessage();
+      setButtonLoading(classicSubmitBtn, classicSubmitText, true, 'Увійти за паролем', 'Вхід…');
       try {
         const res = await fetch('/api/login', {
           method: 'POST',
           credentials: 'same-origin',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            login: form.login.value.trim().toLowerCase(),
-            password: form.password.value,
+            login: classicForm.login.value.trim().toLowerCase(),
+            password: classicForm.password.value,
           }),
         });
         const data = await res.json();
@@ -141,7 +516,7 @@
       } catch (err) {
         showError(err.message);
       } finally {
-        submitBtn.disabled = false;
+        setButtonLoading(classicSubmitBtn, classicSubmitText, false, 'Увійти за паролем', 'Вхід…');
       }
     });
 

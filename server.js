@@ -15,6 +15,16 @@ const {
   mapUserRow,
   toUserRow,
 } = require('./supabaseClient.js');
+const {
+  isTelegramConfigured,
+  mountTelegramWebhook,
+} = require('./telegram-bot.js');
+const {
+  createTelegramLinkToken,
+  getTelegramBotLink,
+  normalizePhone,
+} = require('./telegram-auth.js');
+const { createAuthRouter } = require('./routes/auth.js');
 
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY || '';
 const IS_VERCEL = !!process.env.VERCEL;
@@ -44,6 +54,13 @@ const ORDER_STATUSES = ['Очікує', 'В роботі', 'Виконано'];
 app.use(express.json());
 app.use(cookieParser());
 app.use(attachAuth(JWT_SECRET));
+
+if (isTelegramConfigured()) {
+  mountTelegramWebhook(app);
+  console.log('[telegram] Webhook ready: POST /api/telegram/webhook');
+} else {
+  console.warn('[telegram] TELEGRAM_BOT_TOKEN not set — bot disabled');
+}
 function makeKey(name, existingKeys) {
   let base = String(name)
     .trim()
@@ -76,6 +93,7 @@ function getSessionUser(req) {
 function setSessionUser(res, user) {
   setAuthCookie(res, user, JWT_SECRET);
 }
+
 function canAccessAdmin(req) {
   const user = getSessionUser(req);
   return user && ADMIN_PANEL_ROLES.includes(user.role);
@@ -547,6 +565,54 @@ app.post('/api/logout', (req, res) => {
   clearAuthCookie(res);
   res.json({ ok: true });
 });
+
+app.post('/api/auth/telegram/link', requireAuth, async (req, res) => {
+  try {
+    const sessionUser = getSessionUser(req);
+    let phone = req.body?.phone?.trim();
+
+    if (!phone) {
+      const { data: row, error: userError } = await supabaseClient
+        .from(USERS_TABLE)
+        .select('phone')
+        .eq('id', sessionUser.id)
+        .maybeSingle();
+      if (userError) throw new Error(userError.message);
+      phone = row?.phone || '';
+    }
+
+    const normalizedPhone = normalizePhone(phone);
+    if (!normalizedPhone || normalizedPhone.replace(/\D/g, '').length < 10) {
+      return res.status(400).json({ error: 'Вкажіть коректний номер телефону' });
+    }
+
+    const { token, expiresAt, phone: savedPhone } = await createTelegramLinkToken({
+      userId: sessionUser.id,
+      phone: normalizedPhone,
+    });
+
+    res.json({
+      ok: true,
+      token,
+      botUrl: getTelegramBotLink(token),
+      expiresAt,
+      phone: savedPhone,
+    });
+  } catch (err) {
+    console.error('[POST /api/auth/telegram/link]', err);
+    res.status(500).json({ error: 'Не вдалося створити посилання для Telegram' });
+  }
+});
+
+app.use(
+  '/api/auth',
+  createAuthRouter({
+    jwtSecret: JWT_SECRET,
+    toPublicUserWithProfile,
+    readData,
+  })
+);
+
 app.get('/api/data', async (req, res) => {
   try {
     res.set('Cache-Control', 'no-store');
@@ -1134,7 +1200,7 @@ async function validateStartupData() {
   const users = await readUsers();
   const badUsers = users.filter((u) => !ALL_KNOWN_ROLES.includes(u.role));
   if (badUsers.length) {
-    console.warn('[startup] Невідомі ролі в Supabase (usersІ):', badUsers.map((u) => u.login).join(', '));
+    console.warn('[startup] Невідомі ролі в Supabase (users):', badUsers.map((u) => u.login).join(', '));
   }
 }
 
