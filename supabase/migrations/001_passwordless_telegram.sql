@@ -1,4 +1,5 @@
 -- Mapfix: passwordless login via Telegram OTP
+-- Superseded by supabase/sync_database.sql — run: npm run db:sync
 -- Run in Supabase → SQL Editor (table name: users)
 
 -- ---------------------------------------------------------------------------
