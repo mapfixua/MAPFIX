@@ -9,7 +9,9 @@
     "start:node": "node server.js",
     "check": "node scripts/architecture-check.js",
     "db:sync": "node scripts/sync-database.js",
-    "db:verify": "node scripts/verify-database-schema.js"
+    "db:verify": "node scripts/verify-database-schema.js",
+    "import:places": "node scripts/import-places.js",
+    "import:kotsyubynske": "node scripts/import-places.js --source osm --city kotsyubynske --category beauty --write"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.108.2",

@@ -202,6 +202,7 @@
       <div class="tabs">
         <button type="button" class="tab active" data-tab="providers">Провайдери</button>
         <button type="button" class="tab" data-tab="locations">Усі локації</button>
+        <button type="button" class="tab" data-tab="import">Імпорт</button>
         <button type="button" class="tab" data-tab="catalog">Глобальний каталог</button>
       </div>
 
@@ -213,6 +214,38 @@
       <div id="tabLocations" class="card hidden">
         <h2>Усі точки на карті</h2>
         <div id="adminLocationsList"></div>
+      </div>
+
+      <div id="tabImport" class="card hidden">
+        <h2>Імпорт надавачів (Google / OSM)</h2>
+        <p class="field-hint" style="margin-bottom:14px">
+          OSM — безкоштовно (без рейтингів). Google Places — якщо задано
+          <code>GOOGLE_PLACES_API_KEY</code>. Після імпорту точки зʼявляться на карті.
+        </p>
+        <div class="field-block">
+          <label>Джерело</label>
+          <select id="importSource">
+            <option value="osm">OpenStreetMap (безкоштовно)</option>
+            <option value="places">Google Places API</option>
+          </select>
+        </div>
+        <div class="field-block">
+          <label>Місто / смт</label>
+          <select id="importCity">
+            <option value="kotsyubynske">смт Коцюбинське</option>
+            <option value="kyiv">м. Київ (центр)</option>
+          </select>
+        </div>
+        <div class="field-block">
+          <label>Категорія Mapfix</label>
+          <select id="importCategory"></select>
+        </div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">
+          <button type="button" id="importPreviewBtn" class="btn-secondary" style="width:auto">Перегляд</button>
+          <button type="button" id="importWriteBtn" style="width:auto">Імпортувати на карту</button>
+          <button type="button" id="syncSupabaseBtn" class="btn-secondary" style="width:auto">Синхронізувати в Supabase</button>
+        </div>
+        <div id="importResult" class="msg" style="display:none;margin-top:14px"></div>
       </div>
 
       <div id="tabCatalog" class="card hidden">
@@ -463,13 +496,63 @@
       tab.onclick = () => {
         document.querySelectorAll('.tab').forEach((t) => t.classList.remove('active'));
         tab.classList.add('active');
-        ['Providers', 'Locations', 'Catalog'].forEach((name) => {
+        ['Providers', 'Locations', 'Import', 'Catalog'].forEach((name) => {
           document.getElementById('tab' + name).classList.toggle(
             'hidden',
             tab.dataset.tab !== name.toLowerCase()
           );
         });
       };
+    });
+
+    async function runPlacesImport(dryRun) {
+      const resultEl = document.getElementById('importResult');
+      resultEl.style.display = 'block';
+      resultEl.className = 'msg';
+      resultEl.textContent = dryRun ? 'Пошук…' : 'Імпорт…';
+      try {
+        const data = await apiFetch('/api/admin/import-places', {
+          method: 'POST',
+          body: JSON.stringify({
+            source: document.getElementById('importSource').value,
+            city: document.getElementById('importCity').value,
+            category: document.getElementById('importCategory').value,
+            dryRun: Boolean(dryRun),
+          }),
+        });
+        const lines = (data.preview || [])
+          .map((p) => `• ${p.title}${p.phone ? ' — ' + p.phone : ''}`)
+          .join('\n');
+        resultEl.className = 'msg ok';
+        resultEl.textContent =
+          (dryRun ? 'Перегляд: ' : 'Імпортовано: ') +
+          `знайдено ${data.found}, додано ${data.added}, пропущено ${data.skipped}` +
+          (lines ? '\n' + lines : '');
+        if (!dryRun) {
+          notifyMapDataChanged();
+          await initAdmin();
+        }
+      } catch (err) {
+        resultEl.className = 'msg err';
+        resultEl.textContent = err.message;
+      }
+    }
+
+    document.getElementById('importPreviewBtn')?.addEventListener('click', () => runPlacesImport(true));
+    document.getElementById('importWriteBtn')?.addEventListener('click', () => runPlacesImport(false));
+    document.getElementById('syncSupabaseBtn')?.addEventListener('click', async () => {
+      const resultEl = document.getElementById('importResult');
+      resultEl.style.display = 'block';
+      resultEl.className = 'msg';
+      resultEl.textContent = 'Синхронізація…';
+      try {
+        const data = await apiFetch('/api/admin/sync-locations-supabase', { method: 'POST', body: '{}' });
+        resultEl.className = 'msg ok';
+        resultEl.textContent = `Supabase: синхронізовано ${data.count} локацій`;
+      } catch (err) {
+        resultEl.className = 'msg err';
+        resultEl.textContent = err.message;
+      }
     });
 
     async function initAdmin() {
@@ -539,6 +622,24 @@
       const catRes = await apiFetch('/api/data');
       adminCatalog = catRes.masterCatalog || {};
       fillAdminCatalogSelects();
+
+      const importCat = document.getElementById('importCategory');
+      if (importCat) {
+        const cats = data.importCategories || Object.keys(adminCatalog);
+        importCat.innerHTML = cats
+          .map((c) => {
+            const label = adminCatalog[c]?.name || c;
+            return `<option value="${esc(c)}">${esc(label)}</option>`;
+          })
+          .join('');
+      }
+      if (data.googlePlacesConfigured === false) {
+        const src = document.getElementById('importSource');
+        if (src) {
+          const opt = src.querySelector('option[value="places"]');
+          if (opt) opt.textContent = 'Google Places API (ключ не задано)';
+        }
+      }
 
       if (new URLSearchParams(window.location.search).get('newLocation') === '1') {
         await showLocationEditorForAdmin();

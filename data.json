@@ -1118,6 +1118,95 @@
       ],
       "prices": {},
       "reviews": []
+    },
+    {
+      "id": "loc-2784fdad",
+      "providerId": "5793d129-8d19-4dab-a5ec-b2caf08fa7ee",
+      "lat": 50.48807777524429,
+      "lng": 30.344753265380863,
+      "cat": "repair",
+      "title": "увв",
+      "text": "",
+      "rating": 0,
+      "reviewsCount": 0,
+      "openStatus": "open",
+      "workingHours": "09:00 - 18:00",
+      "phone": "",
+      "address": "по",
+      "schedule": {
+        "Пн-Пт": "09:00 - 18:00"
+      },
+      "subcats": [
+        "shoes"
+      ],
+      "prices": {},
+      "reviews": []
+    },
+    {
+      "id": "loc-imp-55dc3ee6",
+      "providerId": null,
+      "lat": 50.4905,
+      "lng": 30.3345,
+      "cat": "1",
+      "title": "Салон Краса Коцюбинське",
+      "text": "4.5",
+      "rating": 0,
+      "reviewsCount": 0,
+      "openStatus": "open",
+      "workingHours": "09:00 - 18:00",
+      "phone": "+380501112233",
+      "address": "смт Коцюбинське",
+      "schedule": {
+        "Пн-Пт": "09:00 - 18:00"
+      },
+      "subcats": [],
+      "prices": {},
+      "reviews": [],
+      "importSource": "csv"
+    },
+    {
+      "id": "loc-imp-271f6fd9",
+      "providerId": null,
+      "lat": 50.488,
+      "lng": 30.331,
+      "cat": "auto",
+      "title": "СТО АвтоСервіс",
+      "text": "Шиномонтаж та діагностика",
+      "rating": 4.2,
+      "reviewsCount": 0,
+      "openStatus": "open",
+      "workingHours": "09:00 - 18:00",
+      "phone": "+380671234567",
+      "address": "смт Коцюбинське",
+      "schedule": {
+        "Пн-Пт": "09:00 - 18:00"
+      },
+      "subcats": [],
+      "prices": {},
+      "reviews": [],
+      "importSource": "csv"
+    },
+    {
+      "id": "loc-imp-7ce80537",
+      "providerId": null,
+      "lat": 50.492,
+      "lng": 30.338,
+      "cat": "pets",
+      "title": "Ветклініка Друг",
+      "text": "Ветеринарна допомога",
+      "rating": 4.8,
+      "reviewsCount": 0,
+      "openStatus": "open",
+      "workingHours": "09:00 - 18:00",
+      "phone": "+380931112233",
+      "address": "смт Коцюбинське",
+      "schedule": {
+        "Пн-Пт": "09:00 - 18:00"
+      },
+      "subcats": [],
+      "prices": {},
+      "reviews": [],
+      "importSource": "csv"
     }
   ],
   "providerProfiles": {
@@ -1143,6 +1232,33 @@
       "serviceCategories": [],
       "serviceSubcategories": [],
       "customSubcategories": []
+    },
+    "5793d129-8d19-4dab-a5ec-b2caf08fa7ee": {
+      "companyName": "Сантехнік",
+      "phone": "+380661486347",
+      "serviceCategories": [
+        "home"
+      ],
+      "serviceSubcategories": [
+        {
+          "category": "home",
+          "subcategory": "plumber",
+          "services": [
+            "Усунення засмічення труб",
+            "Встановлення або заміна змішувача",
+            "Монтаж сифона",
+            "Підключення пральної/посудомийної машини"
+          ]
+        }
+      ],
+      "customSubcategories": [
+        {
+          "category": "home",
+          "name": "сантехнік",
+          "services": []
+        }
+      ],
+      "createdAt": "2026-07-23T14:31:48.744Z"
     }
   }
 }

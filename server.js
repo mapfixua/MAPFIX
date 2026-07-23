@@ -28,6 +28,18 @@ const {
   normalizePhone,
 } = require('./telegram-auth.js');
 const { createAuthRouter } = require('./routes/auth.js');
+const {
+  fetchOsmPlaces,
+  fetchGooglePlaces,
+  mergeLocations,
+  CITY_PRESETS,
+  CATEGORY_OSM_FILTERS,
+  resolveCity,
+} = require('./places-import.js');
+const {
+  fetchLocationsFromSupabase,
+  syncAllLocationsToSupabase,
+} = require('./locations-store.js');
 
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY || '';
 const IS_VERCEL = !!process.env.VERCEL;
@@ -293,14 +305,42 @@ function ensureDataShape(data) {
 
 async function readData() {
   const raw = await fsPromises.readFile(DATA_FILE, 'utf8');
-  return ensureDataShape(JSON.parse(raw));
+  const data = ensureDataShape(JSON.parse(raw));
+
+  // Prefer Supabase locations when table is populated (Vercel-safe persistence)
+  try {
+    const remote = await fetchLocationsFromSupabase();
+    if (remote.ok && remote.locations.length > 0) {
+      data.mockLocations = remote.locations;
+    }
+  } catch (err) {
+    console.warn('[readData] Supabase locations skip:', err.message);
+  }
+
+  return data;
 }
 
 async function writeData(data) {
   const payload = ensureDataShape(data);
   console.log('[writeData]', DATA_FILE, 'locations:', payload.mockLocations?.length ?? 0);
-  await fsPromises.writeFile(DATA_FILE, JSON.stringify(payload, null, 2), 'utf8');
-  console.log('[writeData] OK');
+  try {
+    await fsPromises.writeFile(DATA_FILE, JSON.stringify(payload, null, 2), 'utf8');
+    console.log('[writeData] OK');
+  } catch (err) {
+    // On Vercel filesystem is read-only — continue to Supabase sync
+    console.warn('[writeData] local file skip:', err.message);
+  }
+
+  try {
+    const sync = await syncAllLocationsToSupabase(payload.mockLocations);
+    if (sync.ok) {
+      console.log('[writeData] Supabase locations synced:', sync.count);
+    } else if (sync.error) {
+      console.warn('[writeData] Supabase locations sync:', sync.error.message);
+    }
+  } catch (err) {
+    console.warn('[writeData] Supabase locations error:', err.message);
+  }
 }
 
 async function readUsers() {
@@ -724,10 +764,88 @@ app.get('/api/admin/overview', requireAuth, requireAdmin, async (req, res) => {
       providers,
       locations,
       catalogCategories: Object.keys(data.masterCatalog).length,
+      importCities: CITY_PRESETS,
+      importCategories: Object.keys(CATEGORY_OSM_FILTERS),
+      googlePlacesConfigured: Boolean(
+        process.env.GOOGLE_PLACES_API_KEY || process.env.GOOGLE_MAPS_API_KEY
+      ),
     });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Помилка завантаження панелі' });
+  }
+});
+
+app.post('/api/admin/import-places', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const source = String(req.body?.source || 'osm').toLowerCase();
+    const city = req.body?.city || 'kotsyubynske';
+    const category = req.body?.category || 'beauty';
+    const dryRun = Boolean(req.body?.dryRun);
+
+    let incoming = [];
+    let meta = {};
+
+    if (source === 'osm') {
+      meta = await fetchOsmPlaces({ city, category });
+      incoming = meta.locations;
+    } else if (source === 'places' || source === 'google') {
+      meta = await fetchGooglePlaces({ city, category });
+      incoming = meta.locations;
+    } else {
+      return res.status(400).json({
+        error: 'Підтримуються source: osm | places',
+      });
+    }
+
+    const data = await readData();
+    const merged = mergeLocations(data.mockLocations, incoming);
+
+    if (!dryRun) {
+      data.mockLocations = merged.locations;
+      await writeData(data);
+    }
+
+    res.json({
+      ok: true,
+      dryRun,
+      source: meta.source || source,
+      city: resolveCity(city),
+      category,
+      found: incoming.length,
+      added: merged.added.length,
+      skipped: merged.skipped.length,
+      total: dryRun ? data.mockLocations.length : merged.locations.length,
+      preview: incoming.slice(0, 10).map((l) => ({
+        id: l.id,
+        title: l.title,
+        phone: l.phone,
+        address: l.address,
+        lat: l.lat,
+        lng: l.lng,
+        rating: l.rating,
+      })),
+    });
+  } catch (err) {
+    console.error('[POST /api/admin/import-places]', err);
+    res.status(500).json({ error: err.message || 'Помилка імпорту' });
+  }
+});
+
+app.post('/api/admin/sync-locations-supabase', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const data = await readData();
+    const sync = await syncAllLocationsToSupabase(data.mockLocations);
+    if (!sync.ok) {
+      return res.status(503).json({
+        ok: false,
+        error: sync.error?.message || 'Не вдалося синхронізувати. Виконайте міграцію 004_locations_table.sql',
+      });
+    }
+    res.json({ ok: true, count: sync.count });
+  } catch (err) {
+    console.error('[POST /api/admin/sync-locations-supabase]', err);
+    res.status(500).json({ error: err.message || 'Помилка синхронізації' });
   }
 });
 
