@@ -268,6 +268,9 @@
           </button>
         </div>
 
+        <label for="email">Email (для відновлення пароля)</label>
+        <input id="email" type="email" autocomplete="email" placeholder="you@example.com">
+
         <label for="role">Роль</label>
         <select id="role" required>
           <option value="client">Клієнт (замовлення послуг)</option>
@@ -588,6 +591,7 @@
         login: document.getElementById('login').value.trim(),
         password: document.getElementById('password').value,
         role: roleSel.value,
+        email: document.getElementById('email')?.value.trim() || '',
       };
 
       if (body.role === 'provider') {

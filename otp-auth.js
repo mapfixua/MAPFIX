@@ -31,7 +31,7 @@ async function findUserByPhone(phone) {
 
   const { data, error } = await supabaseClient
     .from(USERS_TABLE)
-    .select('id, login, role, phone, passwordHash')
+    .select('id, login, role, phone')
     .eq('phone', normalizedPhone)
     .maybeSingle();
 

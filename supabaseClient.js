@@ -44,18 +44,23 @@ function mapUserRow(row) {
     passwordHash: row.passwordHash ?? row.password_hash ?? null,
     role: row.role,
     phone: row.phone ?? null,
+    email: row.email ?? null,
     telegramId: row.telegramId ?? row.telegram_id ?? null,
     telegramLinkedAt: row.telegramLinkedAt ?? row.telegram_linked_at ?? null,
   };
 }
 
 function toUserRow(user) {
-  return {
+  // Live Supabase `users` table uses camelCase `passwordHash` (not password_hash).
+  const row = {
     id: user.id,
     login: user.login,
     passwordHash: user.passwordHash,
     role: user.role,
   };
+  if (user.phone) row.phone = user.phone;
+  if (user.email) row.email = user.email;
+  return row;
 }
 
 module.exports = {

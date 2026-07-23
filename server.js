@@ -442,6 +442,22 @@ app.get('/register', (req, res) => {
   res.redirect('/register.html');
 });
 
+app.get('/forgot-password.html', (req, res) => {
+  sendPublicPage(res, 'forgot-password.html');
+});
+
+app.get('/forgot-password', (req, res) => {
+  res.redirect('/forgot-password.html');
+});
+
+app.get('/reset-password.html', (req, res) => {
+  sendPublicPage(res, 'reset-password.html');
+});
+
+app.get('/reset-password', (req, res) => {
+  res.redirect('/reset-password.html');
+});
+
 app.get('/link-telegram.html', (req, res) => {
   sendPublicPage(res, 'link-telegram.html');
 });
@@ -499,12 +515,17 @@ app.post('/api/register', async (req, res) => {
     const password = req.body.password;
     const role = req.body.role;
     const companyName = req.body.companyName?.trim();
+    const emailRaw = req.body.email?.trim().toLowerCase() || '';
+    const phoneRaw = req.body.phone?.trim() || '';
 
     if (!login || login.length < 3) {
       return res.status(400).json({ error: 'Логін має містити щонайменше 3 символи' });
     }
     if (!password || String(password).length < 6) {
       return res.status(400).json({ error: 'Пароль має містити щонайменше 6 символів' });
+    }
+    if (emailRaw && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailRaw)) {
+      return res.status(400).json({ error: 'Некоректний email' });
     }
     if (!VALID_ROLES.includes(role)) {
       return res.status(400).json({ error: "Роль має бути 'client' або 'provider'" });
@@ -564,12 +585,17 @@ app.post('/api/register', async (req, res) => {
       passwordHash,
       role,
     };
+    if (emailRaw) newUser.email = emailRaw;
+    if (phoneRaw) newUser.phone = normalizePhone(phoneRaw);
 
     const { error: insertError } = await supabaseClient
       .from(USERS_TABLE)
       .insert(toUserRow(newUser));
     if (insertError) {
       console.error(insertError);
+      if (insertError.code === '23505' && String(insertError.message).includes('email')) {
+        return res.status(409).json({ error: 'Цей email уже використовується' });
+      }
       return res.status(500).json({ error: 'Помилка збереження користувача' });
     }
 

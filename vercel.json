@@ -16,6 +16,7 @@
           "supabaseClient.js",
           "telegram-auth.js",
           "telegram-bot.js",
+          "password-reset.js",
           "locations-store.js",
           "places-import.js",
           "otp-auth.js",

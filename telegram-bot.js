@@ -283,9 +283,10 @@ async function startTelegramBotRuntime() {
   }
 }
 
-async function sendOtpToTelegram(phone, code) {
+async function sendOtpToTelegram(phone, code, options = {}) {
   const normalizedPhone = normalizePhone(phone);
   const otpCode = String(code || '').trim();
+  const purpose = options.purpose === 'reset' ? 'reset' : 'login';
 
   if (!normalizedPhone) {
     return { ok: false, error: 'invalid_phone' };
@@ -319,11 +320,14 @@ async function sendOtpToTelegram(phone, code) {
     return { ok: false, error: 'bot_not_configured' };
   }
 
+  const title =
+    purpose === 'reset' ? '🔐 Код відновлення пароля Mapfix' : '🔐 Код входу Mapfix';
+
   try {
     await bot.telegram.sendMessage(
       telegramId,
       [
-        '🔐 Код входу Mapfix',
+        title,
         '',
         otpCode,
         '',
