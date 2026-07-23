@@ -167,7 +167,7 @@
         });
         const data = await res.json();
         if (!res.ok) {
-          showError(data.error || data.message || 'Не вдалося створити посилання');
+          showError(data.message || data.error || 'Не вдалося створити посилання');
           return;
         }
         openBotBtn.href = data.botUrl;

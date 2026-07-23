@@ -12,7 +12,7 @@ const { createClient } = require('@supabase/supabase-js');
 const ROOT = path.join(__dirname, '..');
 
 const EXPECTED = {
-  users: ['phone', 'telegram_id', 'telegram_linked_at'],
+  users: ['phone'],
   otp_codes: [
     'id',
     'phone',
@@ -40,7 +40,7 @@ const CODE_MAPPING = {
   'users.phone': 'mapUserRow → user.phone (otp-auth, telegram-auth)',
   'users.telegram_id': 'mapUserRow → user.telegramId | raw row.telegram_id in telegram-bot',
   'users.telegram_linked_at': 'mapUserRow → user.telegramLinkedAt',
-  'users.password_hash': 'mapUserRow → user.passwordHash (server.js login/register)',
+  'users.passwordHash': 'mapUserRow → user.passwordHash (server.js login/register)',
   'otp_codes.code_hash': 'otp-auth.js hashOtpCode → code_hash',
   'otp_codes.consumed_at': 'otp-auth.js cancelOtpById / verifyOtp',
   'telegram_link_tokens.user_id': 'telegram-auth.js createTelegramLinkToken',

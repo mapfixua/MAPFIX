@@ -41,11 +41,11 @@ function mapUserRow(row) {
   return {
     id: row.id,
     login: row.login,
-    passwordHash: row.password_hash ?? row.passwordHash,
+    passwordHash: row.passwordHash ?? row.password_hash ?? null,
     role: row.role,
     phone: row.phone ?? null,
-    telegramId: row.telegram_id ?? null,
-    telegramLinkedAt: row.telegram_linked_at ?? null,
+    telegramId: row.telegramId ?? row.telegram_id ?? null,
+    telegramLinkedAt: row.telegramLinkedAt ?? row.telegram_linked_at ?? null,
   };
 }
 
@@ -53,7 +53,7 @@ function toUserRow(user) {
   return {
     id: user.id,
     login: user.login,
-    password_hash: user.passwordHash,
+    passwordHash: user.passwordHash,
     role: user.role,
   };
 }

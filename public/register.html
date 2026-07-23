@@ -50,6 +50,59 @@
     }
     button:hover { background: #0069d9; }
     button:disabled { opacity: 0.6; cursor: not-allowed; }
+    .password-field {
+      display: flex;
+      align-items: stretch;
+      gap: 8px;
+      margin-bottom: 14px;
+    }
+    .password-field input {
+      flex: 1;
+      min-width: 0;
+      margin-bottom: 0;
+      padding-right: 12px;
+    }
+    button.password-toggle {
+      position: static;
+      z-index: 2;
+      width: auto;
+      max-width: none;
+      min-width: 48px;
+      height: auto;
+      min-height: 44px;
+      padding: 0 12px;
+      margin: 0;
+      flex-shrink: 0;
+      background: #f1f5f9;
+      color: #0f172a;
+      border: 1px solid #cbd5e1;
+      border-radius: 8px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 0.8rem;
+      font-weight: 600;
+      line-height: 1;
+      cursor: pointer;
+      -webkit-tap-highlight-color: transparent;
+      touch-action: manipulation;
+      user-select: none;
+    }
+    button.password-toggle:hover,
+    button.password-toggle:active {
+      background: #e2e8f0;
+      color: #0f172a;
+    }
+    button.password-toggle .eye-label {
+      font-size: 0.78rem;
+      font-weight: 700;
+      letter-spacing: 0.01em;
+      white-space: nowrap;
+    }
+    .password-field input::-ms-reveal,
+    .password-field input::-ms-clear {
+      display: none;
+    }
     .msg { margin-top: 16px; padding: 12px; border-radius: 8px; font-size: 0.9rem; display: none; }
     .msg.ok { display: block; background: #dcfce7; color: #166534; }
     .msg.err { display: block; background: #fee2e2; color: #991b1b; }
@@ -201,7 +254,19 @@
         <input id="login" type="text" required autocomplete="username">
 
         <label for="password">Пароль</label>
-        <input id="password" type="password" required minlength="6" autocomplete="new-password">
+        <div class="password-field">
+          <input id="password" type="password" required minlength="6" autocomplete="new-password">
+          <button
+            type="button"
+            class="password-toggle"
+            id="passwordToggle"
+            aria-label="Показати пароль"
+            aria-pressed="false"
+            title="Показати пароль"
+          >
+            <span class="eye-label">Показати</span>
+          </button>
+        </div>
 
         <label for="role">Роль</label>
         <select id="role" required>
@@ -583,6 +648,22 @@
 
     loadCatalog();
     toggleProviderFields();
+
+    (function initPasswordToggle() {
+      const input = document.getElementById('password');
+      const toggle = document.getElementById('passwordToggle');
+      if (!input || !toggle) return;
+      const eye = toggle.querySelector('.eye-label');
+      toggle.addEventListener('click', () => {
+        const show = input.type === 'password';
+        input.type = show ? 'text' : 'password';
+        toggle.classList.toggle('is-visible', show);
+        toggle.setAttribute('aria-pressed', show ? 'true' : 'false');
+        toggle.setAttribute('aria-label', show ? 'Сховати пароль' : 'Показати пароль');
+        toggle.title = show ? 'Сховати пароль' : 'Показати пароль';
+        if (eye) eye.textContent = show ? 'Сховати' : 'Показати';
+      });
+    })();
   </script>
 </body>
 </html>

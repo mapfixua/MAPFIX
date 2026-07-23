@@ -1,6 +1,6 @@
 const crypto = require('crypto');
 const { supabaseClient, USERS_TABLE, mapUserRow } = require('./supabaseClient.js');
-const { normalizePhone } = require('./telegram-auth.js');
+const { normalizePhone, getTelegramIdForPhone } = require('./telegram-auth.js');
 
 const OTP_CODES_TABLE = 'otp_codes';
 const OTP_TTL_MS = 5 * 60 * 1000;
@@ -31,12 +31,18 @@ async function findUserByPhone(phone) {
 
   const { data, error } = await supabaseClient
     .from(USERS_TABLE)
-    .select('id, login, role, phone, telegram_id, password_hash')
+    .select('id, login, role, phone, passwordHash')
     .eq('phone', normalizedPhone)
     .maybeSingle();
 
   if (error) throw new Error(error.message);
-  return data ? mapUserRow(data) : null;
+  if (!data) return null;
+
+  const user = mapUserRow(data);
+  if (!user.telegramId) {
+    user.telegramId = await getTelegramIdForPhone(normalizedPhone);
+  }
+  return user;
 }
 
 async function invalidateActiveOtps(phone) {
@@ -72,7 +78,8 @@ async function requestOtp(phone, secret) {
   if (!user) {
     return { ok: false, error: 'user_not_found' };
   }
-  if (!user.telegramId) {
+  const telegramId = user.telegramId || (await getTelegramIdForPhone(normalizedPhone));
+  if (!telegramId) {
     return { ok: false, error: 'telegram_not_linked' };
   }
 

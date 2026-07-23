@@ -2,6 +2,7 @@ const { Telegraf } = require('telegraf');
 const {
   consumeTelegramLinkToken,
   getTelegramBotLink,
+  getTelegramIdForPhone,
   normalizePhone,
 } = require('./telegram-auth.js');
 const { supabaseClient, USERS_TABLE } = require('./supabaseClient.js');
@@ -9,13 +10,32 @@ const { supabaseClient, USERS_TABLE } = require('./supabaseClient.js');
 const WEBHOOK_PATH = '/api/telegram/webhook';
 
 let botInstance = null;
+let pollingStarted = false;
 
 function isTelegramConfigured() {
-  return Boolean(process.env.TELEGRAM_BOT_TOKEN);
+  return Boolean(String(process.env.TELEGRAM_BOT_TOKEN || '').trim());
 }
 
 function getBotUsername() {
   return String(process.env.TELEGRAM_BOT_USERNAME || '').replace(/^@/, '');
+}
+
+function getPublicBaseUrl() {
+  if (process.env.PUBLIC_BASE_URL) {
+    return String(process.env.PUBLIC_BASE_URL).replace(/\/$/, '');
+  }
+  if (process.env.VERCEL_URL) {
+    return `https://${String(process.env.VERCEL_URL).replace(/^https?:\/\//, '')}`;
+  }
+  return '';
+}
+
+function shouldUsePolling() {
+  if (!isTelegramConfigured()) return false;
+  if (String(process.env.TELEGRAM_MODE || '').toLowerCase() === 'webhook') return false;
+  if (String(process.env.TELEGRAM_MODE || '').toLowerCase() === 'polling') return true;
+  // Local/dev: polling works without a public HTTPS URL. Vercel: webhook only.
+  return !process.env.VERCEL;
 }
 
 function extractLinkToken(ctx) {
@@ -34,7 +54,7 @@ function extractLinkToken(ctx) {
 }
 
 function buildBot() {
-  const token = process.env.TELEGRAM_BOT_TOKEN;
+  const token = String(process.env.TELEGRAM_BOT_TOKEN || '').trim();
   if (!token) {
     throw new Error('TELEGRAM_BOT_TOKEN is not set');
   }
@@ -61,9 +81,9 @@ function buildBot() {
           'Цей бот надсилає коди входу на платформу Mapfix.',
           '',
           'Щоб підключити Telegram:',
-          '1. Увійдіть на сайт Mapfix і вкажіть номер телефону.',
-          '2. Натисніть «Підключити Telegram» — відкриється посилання з кодом.',
-          '3. Натисніть Start у цьому чаті.',
+          '1. Увійдіть на сайт Mapfix.',
+          '2. Відкрийте «Підключити Telegram» і вкажіть номер телефону.',
+          '3. Натисніть Start у цьому чаті за посиланням із сайту.',
           '',
           username ? `Бот: @${username}` : '',
         ]
@@ -125,7 +145,7 @@ function buildBot() {
         '',
         '/start — інструкція або підключення акаунта',
         '',
-        'Підключення: на сайті Mapfix натисніть «Підключити Telegram» і відкрийте посилання.',
+        'Підключення: на сайті Mapfix відкрийте «Підключити Telegram».',
       ].join('\n')
     );
   });
@@ -192,6 +212,8 @@ function mountTelegramWebhook(app) {
       ok: true,
       message: 'Mapfix Telegram webhook. Telegram sends POST updates here.',
       configured: isTelegramConfigured(),
+      mode: shouldUsePolling() ? 'polling' : 'webhook',
+      username: getBotUsername() || null,
     });
   });
 }
@@ -203,6 +225,62 @@ async function setTelegramWebhook(publicBaseUrl) {
   const url = `${String(publicBaseUrl).replace(/\/$/, '')}${WEBHOOK_PATH}`;
   await bot.telegram.setWebhook(url);
   return url;
+}
+
+/**
+ * Start bot delivery:
+ * - local/dev → long polling (works without public HTTPS)
+ * - Vercel / TELEGRAM_MODE=webhook → setWebhook to PUBLIC_BASE_URL / VERCEL_URL
+ */
+async function startTelegramBotRuntime() {
+  if (!isTelegramConfigured()) {
+    console.warn(
+      '[telegram] TELEGRAM_BOT_TOKEN not set — OTP/link bot disabled. Add TELEGRAM_BOT_TOKEN and TELEGRAM_BOT_USERNAME to .env'
+    );
+    return { ok: false, reason: 'not_configured' };
+  }
+
+  const bot = getTelegramBot();
+  if (!bot) return { ok: false, reason: 'not_configured' };
+
+  if (shouldUsePolling()) {
+    if (pollingStarted) return { ok: true, mode: 'polling' };
+    try {
+      await bot.telegram.deleteWebhook({ drop_pending_updates: false });
+      // Telegraf: launch() Promise resolves only when the bot STOPS — do not await it.
+      bot.launch({ dropPendingUpdates: false }).catch((err) => {
+        pollingStarted = false;
+        console.error('[telegram] Polling crashed:', err.message);
+      });
+      pollingStarted = true;
+      console.log(
+        `[telegram] Polling started (local). Bot: @${getBotUsername() || 'unknown'}`
+      );
+      process.once('SIGINT', () => bot.stop('SIGINT'));
+      process.once('SIGTERM', () => bot.stop('SIGTERM'));
+      return { ok: true, mode: 'polling' };
+    } catch (err) {
+      console.error('[telegram] Failed to start polling:', err.message);
+      return { ok: false, reason: 'polling_failed', error: err.message };
+    }
+  }
+
+  const base = getPublicBaseUrl();
+  if (!base) {
+    console.warn(
+      '[telegram] Webhook mode but PUBLIC_BASE_URL / VERCEL_URL is empty — set PUBLIC_BASE_URL=https://your-domain'
+    );
+    return { ok: false, reason: 'missing_public_url' };
+  }
+
+  try {
+    const url = await setTelegramWebhook(base);
+    console.log('[telegram] Webhook registered:', url);
+    return { ok: true, mode: 'webhook', url };
+  } catch (err) {
+    console.error('[telegram] setWebhook failed:', err.message);
+    return { ok: false, reason: 'webhook_failed', error: err.message };
+  }
 }
 
 async function sendOtpToTelegram(phone, code) {
@@ -218,7 +296,7 @@ async function sendOtpToTelegram(phone, code) {
 
   const { data: user, error: lookupError } = await supabaseClient
     .from(USERS_TABLE)
-    .select('id, telegram_id, phone')
+    .select('id, phone')
     .eq('phone', normalizedPhone)
     .maybeSingle();
 
@@ -227,7 +305,12 @@ async function sendOtpToTelegram(phone, code) {
     return { ok: false, error: 'db_error' };
   }
 
-  if (!user?.telegram_id) {
+  if (!user?.id) {
+    return { ok: false, error: 'user_not_found' };
+  }
+
+  const telegramId = await getTelegramIdForPhone(normalizedPhone);
+  if (!telegramId) {
     return { ok: false, error: 'telegram_not_linked' };
   }
 
@@ -238,7 +321,7 @@ async function sendOtpToTelegram(phone, code) {
 
   try {
     await bot.telegram.sendMessage(
-      user.telegram_id,
+      telegramId,
       [
         '🔐 Код входу Mapfix',
         '',
@@ -249,14 +332,26 @@ async function sendOtpToTelegram(phone, code) {
     );
     console.log('[telegram] OTP sent', {
       user_id: user.id,
-      telegram_id: user.telegram_id,
+      telegram_id: telegramId,
       phone: normalizedPhone,
     });
-    return { ok: true, telegramId: user.telegram_id };
+    return { ok: true, telegramId };
   } catch (err) {
     console.error('[telegram] sendMessage failed:', err.message);
     return { ok: false, error: 'send_failed' };
   }
+}
+
+function getTelegramStatus() {
+  const configured = isTelegramConfigured();
+  return {
+    configured,
+    username: getBotUsername() || null,
+    mode: configured ? (shouldUsePolling() ? 'polling' : 'webhook') : null,
+    publicBaseUrl: getPublicBaseUrl() || null,
+    webhookPath: WEBHOOK_PATH,
+    pollingStarted,
+  };
 }
 
 module.exports = {
@@ -267,5 +362,7 @@ module.exports = {
   mountTelegramWebhook,
   getTelegramBotLink,
   setTelegramWebhook,
+  startTelegramBotRuntime,
   sendOtpToTelegram,
+  getTelegramStatus,
 };

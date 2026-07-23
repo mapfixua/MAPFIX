@@ -18,10 +18,13 @@ const {
 const {
   isTelegramConfigured,
   mountTelegramWebhook,
+  startTelegramBotRuntime,
+  getTelegramStatus,
 } = require('./telegram-bot.js');
 const {
   createTelegramLinkToken,
   getTelegramBotLink,
+  getTelegramIdForPhone,
   normalizePhone,
 } = require('./telegram-auth.js');
 const { createAuthRouter } = require('./routes/auth.js');
@@ -55,11 +58,10 @@ app.use(express.json());
 app.use(cookieParser());
 app.use(attachAuth(JWT_SECRET));
 
+// Always mount webhook routes (health GET + POST). Delivery mode starts later.
+mountTelegramWebhook(app);
 if (isTelegramConfigured()) {
-  mountTelegramWebhook(app);
-  console.log('[telegram] Webhook ready: POST /api/telegram/webhook');
-} else {
-  console.warn('[telegram] TELEGRAM_BOT_TOKEN not set — bot disabled');
+  console.log('[telegram] Routes ready: GET/POST /api/telegram/webhook');
 }
 function makeKey(name, existingKeys) {
   let base = String(name)
@@ -322,7 +324,13 @@ async function getUserProfile(userId, data) {
 }
 
 async function toPublicUserWithProfile(user, data) {
-  const base = { id: user.id, login: user.login, role: user.role };
+  const base = {
+    id: user.id,
+    login: user.login,
+    role: user.role,
+    phone: user.phone || null,
+    telegramLinked: Boolean(user.telegramId),
+  };
   if (user.role === 'provider') {
     const profile = await getUserProfile(user.id, data);
     if (profile) base.companyName = profile.companyName;
@@ -394,6 +402,18 @@ app.get('/register', (req, res) => {
   res.redirect('/register.html');
 });
 
+app.get('/link-telegram.html', (req, res) => {
+  sendPublicPage(res, 'link-telegram.html');
+});
+
+app.get('/link-telegram', (req, res) => {
+  res.redirect('/link-telegram.html');
+});
+
+app.get('/api/telegram/status', (_req, res) => {
+  res.json({ ok: true, ...getTelegramStatus() });
+});
+
 app.get('/admin', (req, res) => {
   if (!canAccessAdmin(req)) {
     return res.redirect('/login.html?next=/admin');
@@ -421,10 +441,11 @@ app.get('/api/me', async (req, res) => {
   }
   try {
     const data = await readData();
-    const publicUser = await toPublicUserWithProfile(
-      (await readUsers()).find((u) => u.id === user.id) || user,
-      data
-    );
+    const fullUser = (await readUsers()).find((u) => u.id === user.id) || user;
+    if (fullUser.phone && !fullUser.telegramId) {
+      fullUser.telegramId = await getTelegramIdForPhone(fullUser.phone);
+    }
+    const publicUser = await toPublicUserWithProfile(fullUser, data);
     res.json({ loggedIn: true, user: publicUser });
   } catch (err) {
     console.error(err);
@@ -568,6 +589,13 @@ app.post('/api/logout', (req, res) => {
 
 app.post('/api/auth/telegram/link', requireAuth, async (req, res) => {
   try {
+    if (!isTelegramConfigured()) {
+      return res.status(503).json({
+        error: 'bot_not_configured',
+        message: 'Telegram-бот не налаштовано. Додайте TELEGRAM_BOT_TOKEN у .env',
+      });
+    }
+
     const sessionUser = getSessionUser(req);
     let phone = req.body?.phone?.trim();
 
@@ -586,6 +614,13 @@ app.post('/api/auth/telegram/link', requireAuth, async (req, res) => {
       return res.status(400).json({ error: 'Вкажіть коректний номер телефону' });
     }
 
+    if (!process.env.TELEGRAM_BOT_USERNAME) {
+      return res.status(503).json({
+        error: 'bot_username_missing',
+        message: 'Додайте TELEGRAM_BOT_USERNAME у .env (без @)',
+      });
+    }
+
     const { token, expiresAt, phone: savedPhone } = await createTelegramLinkToken({
       userId: sessionUser.id,
       phone: normalizedPhone,
@@ -600,6 +635,9 @@ app.post('/api/auth/telegram/link', requireAuth, async (req, res) => {
     });
   } catch (err) {
     console.error('[POST /api/auth/telegram/link]', err);
+    if (String(err.message).includes('phone_or_telegram_conflict')) {
+      return res.status(409).json({ error: 'Цей номер уже привʼязаний до іншого акаунта' });
+    }
     res.status(500).json({ error: 'Не вдалося створити посилання для Telegram' });
   }
 });
@@ -1209,6 +1247,7 @@ if (require.main === module) {
     console.log(`Mapfix: http://localhost:${PORT}`);
     console.log(`Вхід: http://localhost:${PORT}/login.html`);
     console.log(`Реєстрація: http://localhost:${PORT}/register.html`);
+    console.log(`Підключити Telegram: http://localhost:${PORT}/link-telegram.html`);
     console.log(`Кабінет клієнта: http://localhost:${PORT}/client`);
     console.log(`Адмін-панель: http://localhost:${PORT}/admin`);
     try {
@@ -1216,12 +1255,17 @@ if (require.main === module) {
     } catch (err) {
       console.error('[startup] Помилка валідації:', err.message);
     }
+    try {
+      await startTelegramBotRuntime();
+    } catch (err) {
+      console.error('[startup] Telegram runtime:', err.message);
+    }
   });
 
   server.on('error', (err) => {
     if (err.code === 'EADDRINUSE') {
       console.error(`\n[startup] Порт ${PORT} уже зайнятий іншим процесом.`);
-      console.error('Спробуйте: npm start  (скрипт автоматично звільнить порт)');
+      console.error('Спробуйте: npm.cmd start  (скрипт автоматично звільнить порт)');
       console.error(
         `Або вручну (PowerShell): Get-NetTCPConnection -LocalPort ${PORT} | Stop-Process -Id {OwningProcess} -Force\n`
       );
@@ -1229,6 +1273,11 @@ if (require.main === module) {
     }
     console.error('[startup] Помилка сервера:', err.message);
     process.exit(1);
+  });
+} else if (process.env.VERCEL && isTelegramConfigured()) {
+  // Best-effort webhook registration on serverless cold start
+  startTelegramBotRuntime().catch((err) => {
+    console.error('[vercel] Telegram runtime:', err.message);
   });
 }
 

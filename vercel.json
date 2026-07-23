@@ -12,10 +12,12 @@
           "favorites.json",
           "server.js",
           "paths.js",
-        "auth-jwt.js",
-        "supabaseClient.js",
-        "telegram-auth.js",
-        "telegram-bot.js",
+          "auth-jwt.js",
+          "supabaseClient.js",
+          "telegram-auth.js",
+          "telegram-bot.js",
+          "otp-auth.js",
+          "routes/**",
           "catalog-data.js",
           "search-ai.js"
         ]

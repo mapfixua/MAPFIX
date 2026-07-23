@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "node scripts/free-port.js && node server.js",
     "start": "node scripts/free-port.js && node server.js",
+    "start:node": "node server.js",
     "check": "node scripts/architecture-check.js",
     "db:sync": "node scripts/sync-database.js",
     "db:verify": "node scripts/verify-database-schema.js"
