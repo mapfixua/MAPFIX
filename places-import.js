@@ -79,6 +79,9 @@ const CATEGORY_OSM_FILTERS = {
     'office=rental',
     'shop=tool_hire',
     'shop=hardware',
+    'tourism=apartment',
+    'tourism=chalet',
+    'tourism=guest_house',
   ],
 };
 
@@ -90,7 +93,7 @@ const CATEGORY_SUBCAT_HINTS = {
   home: ['plumber', 'electric'],
   education: ['school'],
   sport: ['fitness'],
-  rental: ['tools', 'vehicles', 'equipment', 'spaces'],
+  rental: ['housing', 'tools', 'vehicles', 'equipment', 'spaces'],
 };
 
 function makeLocationId(seed) {
@@ -253,7 +256,7 @@ async function fetchGooglePlaces({ city, category, apiKey }) {
     home: 'сантехнік електрик будівельні послуги',
     education: 'школа курси репетитор',
     sport: 'спортзал фітнес',
-    rental: 'прокат оренда інструментів авто обладнання',
+    rental: 'оренда житла квартира будинок подобово прокат інструментів авто обладнання',
   };
 
   const textQuery = `${catNames[cat] || cat} ${preset.name}`;
