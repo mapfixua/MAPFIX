@@ -448,6 +448,7 @@ function defaultLocation(providerId, body) {
     subcats: Array.isArray(body.subcats) ? body.subcats : [],
     prices: typeof body.prices === 'object' && body.prices ? body.prices : {},
     reviews: [],
+    views: 0,
   };
 }
 
@@ -808,15 +809,59 @@ app.post('/api/search-ai', async (req, res) => {
 
 app.get('/api/admin/overview', requireAuth, requireAdmin, async (req, res) => {
   try {
-    const [data, users] = await Promise.all([readData(), readUsers()]);
+    const [data, users, orders] = await Promise.all([readData(), readUsers(), readOrders()]);
+
+    const locByProvider = new Map();
+    data.mockLocations.forEach((loc) => {
+      if (!loc.providerId) return;
+      if (!locByProvider.has(loc.providerId)) locByProvider.set(loc.providerId, []);
+      locByProvider.get(loc.providerId).push(loc);
+    });
+
     const providers = users
       .filter((u) => u.role === 'provider')
+      .map((u) => {
+        const locs = locByProvider.get(u.id) || [];
+        const views = locs.reduce((sum, l) => sum + (Number(l.views) || 0), 0);
+        const servicesCount = locs.reduce(
+          (sum, l) => sum + Object.keys(l.prices || {}).length,
+          0
+        );
+        const ordersCount = orders.filter((o) => o.providerId === u.id).length;
+        return {
+          id: u.id,
+          login: u.login,
+          phone: u.phone || data.providerProfiles[u.id]?.phone || '',
+          email: u.email || null,
+          companyName: data.providerProfiles[u.id]?.companyName || '—',
+          locationsCount: locs.length,
+          servicesCount,
+          views,
+          ordersCount,
+          hasPassword: Boolean(u.passwordHash),
+          telegramLinked: Boolean(u.telegramId),
+        };
+      });
+
+    const clients = users
+      .filter((u) => u.role === 'client')
       .map((u) => ({
         id: u.id,
         login: u.login,
-        companyName: data.providerProfiles[u.id]?.companyName || '—',
-        phone: data.providerProfiles[u.id]?.phone || '',
-        locationsCount: data.mockLocations.filter((l) => l.providerId === u.id).length,
+        phone: u.phone || null,
+        email: u.email || null,
+        hasPassword: Boolean(u.passwordHash),
+        telegramLinked: Boolean(u.telegramId),
+      }));
+
+    const admins = users
+      .filter((u) => u.role === 'admin')
+      .map((u) => ({
+        id: u.id,
+        login: u.login,
+        phone: u.phone || null,
+        email: u.email || null,
+        hasPassword: Boolean(u.passwordHash),
       }));
 
     const locations = data.mockLocations.map((loc) => ({
@@ -827,12 +872,20 @@ app.get('/api/admin/overview', requireAuth, requireAdmin, async (req, res) => {
       address: loc.address,
       openStatus: loc.openStatus,
       servicesCount: Object.keys(loc.prices || {}).length,
+      views: Number(loc.views) || 0,
+      rating: loc.rating || 0,
+      reviewsCount: loc.reviewsCount || 0,
+      phone: loc.phone || '',
     }));
 
     res.json({
       providers,
+      clients,
+      admins,
+      usersTotal: users.length,
       locations,
       catalogCategories: Object.keys(data.masterCatalog).length,
+      ordersTotal: orders.length,
       importCities: CITY_PRESETS,
       importCategories: Object.keys(CATEGORY_OSM_FILTERS),
       googlePlacesConfigured: Boolean(
@@ -842,6 +895,169 @@ app.get('/api/admin/overview', requireAuth, requireAdmin, async (req, res) => {
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Помилка завантаження панелі' });
+  }
+});
+
+app.get('/api/admin/providers/:userId', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const userId = String(req.params.userId || '').trim();
+    const [data, users, orders] = await Promise.all([readData(), readUsers(), readOrders()]);
+    const user = users.find((u) => u.id === userId && u.role === 'provider');
+    if (!user) return res.status(404).json({ error: 'Провайдера не знайдено' });
+
+    const profile = data.providerProfiles[userId] || {};
+    const locations = data.mockLocations.filter((l) => l.providerId === userId);
+    const providerOrders = orders.filter((o) => o.providerId === userId);
+    const views = locations.reduce((sum, l) => sum + (Number(l.views) || 0), 0);
+    const services = [];
+    locations.forEach((loc) => {
+      Object.entries(loc.prices || {}).forEach(([name, price]) => {
+        services.push({ locationId: loc.id, locationTitle: loc.title, name, price });
+      });
+    });
+
+    res.json({
+      id: user.id,
+      login: user.login,
+      role: user.role,
+      phone: user.phone || profile.phone || null,
+      email: user.email || null,
+      hasPassword: Boolean(user.passwordHash),
+      telegramLinked: Boolean(user.telegramId),
+      telegramId: user.telegramId || null,
+      companyName: profile.companyName || '—',
+      serviceCategories: profile.serviceCategories || [],
+      serviceSubcategories: profile.serviceSubcategories || [],
+      customSubcategories: profile.customSubcategories || [],
+      stats: {
+        locationsCount: locations.length,
+        servicesCount: services.length,
+        views,
+        ordersCount: providerOrders.length,
+        reviewsCount: locations.reduce((s, l) => s + (Number(l.reviewsCount) || 0), 0),
+      },
+      locations: locations.map((loc) => ({
+        id: loc.id,
+        title: loc.title,
+        address: loc.address,
+        cat: loc.cat,
+        phone: loc.phone,
+        openStatus: loc.openStatus,
+        views: Number(loc.views) || 0,
+        rating: loc.rating || 0,
+        reviewsCount: loc.reviewsCount || 0,
+        servicesCount: Object.keys(loc.prices || {}).length,
+        prices: loc.prices || {},
+        subcats: loc.subcats || [],
+      })),
+      services,
+      recentOrders: providerOrders.slice(-20).reverse(),
+    });
+  } catch (err) {
+    console.error('[GET /api/admin/providers/:userId]', err);
+    res.status(500).json({ error: 'Не вдалося завантажити провайдера' });
+  }
+});
+
+app.get('/api/admin/users/:userId', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const userId = String(req.params.userId || '').trim();
+    const [data, users, orders] = await Promise.all([readData(), readUsers(), readOrders()]);
+    const user = users.find((u) => u.id === userId);
+    if (!user) return res.status(404).json({ error: 'Користувача не знайдено' });
+
+    const profile = data.providerProfiles[userId] || null;
+    const userOrders = orders.filter(
+      (o) => o.clientId === userId || o.providerId === userId || o.userId === userId
+    );
+
+    res.json({
+      id: user.id,
+      login: user.login,
+      role: user.role,
+      phone: user.phone || null,
+      email: user.email || null,
+      hasPassword: Boolean(user.passwordHash),
+      telegramLinked: Boolean(user.telegramId),
+      telegramId: user.telegramId || null,
+      profile,
+      ordersCount: userOrders.length,
+      recentOrders: userOrders.slice(-20).reverse(),
+      locationsCount: data.mockLocations.filter((l) => l.providerId === userId).length,
+    });
+  } catch (err) {
+    console.error('[GET /api/admin/users/:userId]', err);
+    res.status(500).json({ error: 'Не вдалося завантажити користувача' });
+  }
+});
+
+app.get('/api/admin/locations/:id/detail', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const id = String(req.params.id || '').trim();
+    const [data, users, orders] = await Promise.all([readData(), readUsers(), readOrders()]);
+    const loc = data.mockLocations.find((l) => l.id === id);
+    if (!loc) return res.status(404).json({ error: 'Локацію не знайдено' });
+
+    const provider = loc.providerId ? users.find((u) => u.id === loc.providerId) : null;
+    const profile = loc.providerId ? data.providerProfiles[loc.providerId] : null;
+
+    res.json({
+      ...loc,
+      views: Number(loc.views) || 0,
+      provider: provider
+        ? {
+            id: provider.id,
+            login: provider.login,
+            companyName: profile?.companyName || '—',
+            phone: provider.phone || profile?.phone || null,
+          }
+        : null,
+      ordersCount: orders.filter((o) => o.locationId === id).length,
+      catalogCategoryName: data.masterCatalog?.[loc.cat]?.name || loc.cat,
+    });
+  } catch (err) {
+    console.error('[GET /api/admin/locations/:id/detail]', err);
+    res.status(500).json({ error: 'Не вдалося завантажити локацію' });
+  }
+});
+
+app.post('/api/admin/users/:userId/password', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const userId = String(req.params.userId || '').trim();
+    const newPassword = String(req.body?.password || req.body?.newPassword || '');
+    if (newPassword.length < 6) {
+      return res.status(400).json({ error: 'Пароль має містити щонайменше 6 символів' });
+    }
+
+    const passwordHash = await bcrypt.hash(newPassword, BCRYPT_ROUNDS);
+    const { error } = await supabaseClient
+      .from(USERS_TABLE)
+      .update({ passwordHash })
+      .eq('id', userId);
+
+    if (error) {
+      console.error('[admin set password]', error.message);
+      return res.status(503).json({ error: 'Не вдалося оновити пароль' });
+    }
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('[POST /api/admin/users/:userId/password]', err);
+    res.status(500).json({ error: 'Помилка оновлення пароля' });
+  }
+});
+
+app.post('/api/locations/:id/view', async (req, res) => {
+  try {
+    const id = String(req.params.id || '').trim();
+    const data = await readData();
+    const loc = data.mockLocations.find((l) => l.id === id);
+    if (!loc) return res.status(404).json({ error: 'not_found' });
+    loc.views = (Number(loc.views) || 0) + 1;
+    await writeData(data);
+    res.json({ ok: true, views: loc.views });
+  } catch (err) {
+    console.error('[POST /api/locations/:id/view]', err);
+    res.status(500).json({ error: 'view_failed' });
   }
 });
 

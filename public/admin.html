@@ -9,22 +9,22 @@
     * { box-sizing: border-box; }
     body {
       margin: 0;
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-      background: #f1f5f9;
-      color: #1e293b;
+      font-family: 'Manrope', -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: #eceef2;
+      color: #0b0d10;
       min-height: 100vh;
-      padding: 24px 16px;
+      padding: 0;
     }
-    .wrap { max-width: 720px; margin: 0 auto; }
-    h1 { font-size: 1.5rem; margin: 0 0 8px; }
+    .wrap { max-width: 1180px; margin: 0 auto; padding: 20px 16px 40px; }
+    h1 { font-size: 1.5rem; margin: 0 0 8px; letter-spacing: -0.03em; }
     h2 { font-size: 1.1rem; margin: 0 0 12px; }
-    .sub { color: #64748b; margin-bottom: 20px; font-size: 0.95rem; }
+    .sub { color: #6b7280; margin-bottom: 20px; font-size: 0.95rem; }
     .card {
       background: #fff;
-      border-radius: 12px;
+      border-radius: 16px;
       padding: 20px;
-      box-shadow: 0 4px 20px rgba(0,0,0,0.06);
-      border: 1px solid #e2e8f0;
+      box-shadow: 0 8px 28px rgba(11,13,16,0.06);
+      border: 1px solid #e4e6eb;
       margin-bottom: 16px;
     }
     label { display: block; font-weight: 600; font-size: 0.85rem; margin-bottom: 6px; }
@@ -95,7 +95,7 @@
     .list-item-title { font-weight: 700; font-size: 0.95rem; }
     .list-item-meta { font-size: 0.8rem; color: #64748b; margin-top: 4px; }
     .price-tag { display: inline-block; background: #e0f2fe; padding: 4px 8px; border-radius: 6px; font-size: 0.8rem; margin: 4px 4px 0 0; }
-    .tabs { display: flex; gap: 8px; margin-bottom: 16px; flex-wrap: wrap; }
+    .tabs { display: none; }
     .tab {
       padding: 8px 14px;
       border-radius: 8px;
@@ -106,9 +106,153 @@
       font-weight: 600;
       font-size: 0.85rem;
     }
-    .tab:hover { background: #f1f5f9; color: #0f172a; }
-    .tab.active { background: #007bff; color: #fff; border-color: #007bff; }
-    .tab.active:hover { background: #0069d9; color: #fff; }
+    .admin-shell {
+      display: grid;
+      grid-template-columns: 220px minmax(0, 1fr);
+      gap: 16px;
+      align-items: start;
+      min-height: 70vh;
+    }
+    .admin-nav {
+      background: #fff;
+      border: 1px solid #e4e6eb;
+      border-radius: 18px;
+      padding: 12px;
+      position: sticky;
+      top: 16px;
+      box-shadow: 0 8px 28px rgba(11,13,16,0.05);
+    }
+    .admin-nav-title {
+      font-size: 0.72rem;
+      font-weight: 800;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: #9ca3af;
+      padding: 6px 10px 10px;
+    }
+    .admin-nav button {
+      width: 100%;
+      text-align: left;
+      background: transparent;
+      color: #0b0d10;
+      border: none;
+      border-radius: 12px;
+      padding: 12px 12px;
+      margin-bottom: 4px;
+      font-weight: 700;
+      font-size: 0.92rem;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 8px;
+    }
+    .admin-nav button:hover { background: #f3f4f6; }
+    .admin-nav button.active {
+      background: #0b0d10;
+      color: #fff;
+    }
+    .admin-nav button .nav-count {
+      font-size: 0.75rem;
+      font-weight: 800;
+      background: #e5e7eb;
+      color: #374151;
+      border-radius: 999px;
+      padding: 2px 8px;
+      min-width: 1.6rem;
+      text-align: center;
+    }
+    .admin-nav button.active .nav-count {
+      background: #12c4b5;
+      color: #0b0d10;
+    }
+    .admin-main { min-width: 0; }
+    .admin-pane { display: none; }
+    .admin-pane.active { display: block; }
+    .stat-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+      gap: 10px;
+      margin-bottom: 16px;
+    }
+    .stat-card {
+      background: #fff;
+      border: 1px solid #e4e6eb;
+      border-radius: 14px;
+      padding: 14px;
+    }
+    .stat-card .stat-label { font-size: 0.75rem; font-weight: 700; color: #6b7280; }
+    .stat-card .stat-value { font-size: 1.4rem; font-weight: 800; margin-top: 4px; letter-spacing: -0.03em; }
+    .click-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      width: 100%;
+      text-align: left;
+      background: #f8fafc;
+      border: 1px solid #e4e6eb;
+      border-radius: 12px;
+      padding: 12px 14px;
+      margin-bottom: 8px;
+      color: #0b0d10;
+      cursor: pointer;
+      font-weight: 600;
+    }
+    .click-row:hover { border-color: #12c4b5; background: #e6faf8; }
+    .click-row .row-main { min-width: 0; flex: 1; }
+    .click-row .row-title { font-weight: 800; font-size: 0.95rem; }
+    .click-row .row-meta { font-size: 0.8rem; color: #6b7280; margin-top: 3px; font-weight: 500; }
+    .click-row .row-chevron { color: #9ca3af; font-size: 1.1rem; flex-shrink: 0; }
+    .detail-back {
+      background: transparent !important;
+      color: #0b0d10 !important;
+      border: 1.5px solid #e4e6eb !important;
+      width: auto !important;
+      margin-bottom: 12px;
+      border-radius: 999px !important;
+      padding: 8px 14px !important;
+    }
+    .detail-back:hover { background: #f3f4f6 !important; }
+    .kv-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 10px;
+      margin: 12px 0 16px;
+    }
+    .kv {
+      background: #f8fafc;
+      border-radius: 12px;
+      padding: 10px 12px;
+      border: 1px solid #e4e6eb;
+    }
+    .kv .k { font-size: 0.72rem; font-weight: 700; color: #6b7280; text-transform: uppercase; letter-spacing: 0.04em; }
+    .kv .v { font-size: 0.95rem; font-weight: 700; margin-top: 4px; word-break: break-word; }
+    .detail-section { margin-top: 18px; }
+    .detail-section h3 { margin: 0 0 10px; font-size: 0.95rem; }
+    .pwd-note {
+      font-size: 0.82rem;
+      color: #6b7280;
+      margin: 0 0 10px;
+      line-height: 1.4;
+    }
+    .inline-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+    @media (max-width: 860px) {
+      .admin-shell { grid-template-columns: 1fr; }
+      .admin-nav {
+        position: static;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+        padding: 10px;
+      }
+      .admin-nav-title { width: 100%; padding: 4px 6px 8px; }
+      .admin-nav button {
+        width: auto;
+        flex: 1 1 auto;
+        min-width: calc(50% - 6px);
+        margin-bottom: 0;
+      }
+    }
     .catalog-tree {
       max-height: 320px;
       overflow: auto;
@@ -239,111 +383,139 @@
 
     <!-- ========== СУПЕРАДМІН ========== -->
     <div id="adminPanel" class="hidden">
-      <p class="sub">Повне управління платформою: провайдери, точки на карті, глобальний каталог.</p>
-      <div class="tabs">
-        <button type="button" class="tab active" data-tab="providers">Провайдери</button>
-        <button type="button" class="tab" data-tab="locations">Усі локації</button>
-        <button type="button" class="tab" data-tab="import">Імпорт</button>
-        <button type="button" class="tab" data-tab="catalog">Глобальний каталог</button>
-      </div>
+      <p class="sub">Керування платформою: користувачі, провайдери, точки, каталог і імпорт.</p>
 
-      <div id="tabProviders" class="card">
-        <h2>Зареєстровані провайдери</h2>
-        <div id="providersList"></div>
-      </div>
+      <div class="admin-shell">
+        <aside class="admin-nav" aria-label="Розділи адмінки">
+          <div class="admin-nav-title">Панелі</div>
+          <button type="button" class="active" data-admin-nav="overview">Огляд</button>
+          <button type="button" data-admin-nav="users">Користувачі <span class="nav-count" id="navCountUsers">0</span></button>
+          <button type="button" data-admin-nav="providers">Провайдери <span class="nav-count" id="navCountProviders">0</span></button>
+          <button type="button" data-admin-nav="locations">Локації <span class="nav-count" id="navCountLocations">0</span></button>
+          <button type="button" data-admin-nav="catalog">Каталог <span class="nav-count" id="navCountCatalog">0</span></button>
+          <button type="button" data-admin-nav="import">Імпорт</button>
+        </aside>
 
-      <div id="tabLocations" class="card hidden">
-        <h2>Усі точки на карті</h2>
-        <div id="adminLocationsList"></div>
-      </div>
-
-      <div id="tabImport" class="card hidden">
-        <h2>Імпорт надавачів (Google / OSM)</h2>
-        <p class="field-hint" style="margin-bottom:14px">
-          OSM — безкоштовно (без рейтингів). Google Places — якщо задано
-          <code>GOOGLE_PLACES_API_KEY</code>. Після імпорту точки зʼявляться на карті.
-        </p>
-        <div class="field-block">
-          <label>Джерело</label>
-          <select id="importSource">
-            <option value="osm">OpenStreetMap (безкоштовно)</option>
-            <option value="places">Google Places API</option>
-          </select>
-        </div>
-        <div class="field-block">
-          <label>Місто / смт</label>
-          <select id="importCity">
-            <option value="kotsyubynske">смт Коцюбинське</option>
-            <option value="kyiv">м. Київ (центр)</option>
-          </select>
-        </div>
-        <div class="field-block">
-          <label>Категорія Mapfix</label>
-          <select id="importCategory"></select>
-        </div>
-        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">
-          <button type="button" id="importPreviewBtn" class="btn-secondary" style="width:auto">Перегляд</button>
-          <button type="button" id="importWriteBtn" style="width:auto">Імпортувати на карту</button>
-          <button type="button" id="syncSupabaseBtn" class="btn-secondary" style="width:auto">Синхронізувати в Supabase</button>
-        </div>
-        <div id="importResult" class="msg" style="display:none;margin-top:14px"></div>
-      </div>
-
-      <div id="tabCatalog" class="card hidden">
-        <h2>Глобальний каталог</h2>
-        <p class="field-hint">Додайте нову категорію, підкатегорію або послугу. Зміни одразу з’являться на карті та в реєстрації майстрів.</p>
-
-        <h3 style="font-size:0.95rem;margin:0 0 8px">Поточний каталог</h3>
-        <div id="adminCatalogTree" class="catalog-tree">
-          <p class="list-item-meta">Завантаження…</p>
-        </div>
-
-        <div class="catalog-forms-grid">
-          <div class="catalog-form-card">
-            <h3>Нова категорія</h3>
-            <form id="adminNewCategoryForm">
-              <label>Назва</label>
-              <input type="text" id="newCatName" required minlength="2" placeholder="напр. Краса">
-              <label>Іконка (емодзі, необовʼязково)</label>
-              <input type="text" id="newCatIcon" maxlength="4" placeholder="✂️">
-              <button type="submit">Додати категорію</button>
-            </form>
+        <div class="admin-main">
+          <div id="adminPaneOverview" class="admin-pane active card">
+            <h2>Огляд платформи</h2>
+            <div class="stat-grid" id="overviewStats"></div>
+            <p class="field-hint">Оберіть розділ зліва, щоб переглянути списки. Клік по рядку відкриває деталі.</p>
           </div>
 
-          <div class="catalog-form-card">
-            <h3>Нова підкатегорія</h3>
-            <form id="adminNewSubcategoryForm">
-              <label>Категорія</label>
-              <select id="newSubCat" required></select>
-              <label>Назва підкатегорії</label>
-              <input type="text" id="newSubName" required minlength="2" placeholder="напр. Нігтьовий сервіс">
-              <button type="submit">Додати підкатегорію</button>
-            </form>
+          <div id="adminPaneUsers" class="admin-pane card">
+            <div id="usersListView">
+              <h2>Користувачі</h2>
+              <div id="usersList"></div>
+            </div>
+            <div id="usersDetailView" class="hidden"></div>
           </div>
 
-          <div class="catalog-form-card span-2">
-            <h3>Нова послуга</h3>
-            <form id="adminCatalogForm">
-              <div class="row2">
-                <div class="field-block">
+          <div id="adminPaneProviders" class="admin-pane card">
+            <div id="providersListView">
+              <h2>Провайдери</h2>
+              <div id="providersList"></div>
+            </div>
+            <div id="providersDetailView" class="hidden"></div>
+          </div>
+
+          <div id="adminPaneLocations" class="admin-pane card">
+            <div id="locationsListView">
+              <h2>Усі точки на карті</h2>
+              <div id="adminLocationsList"></div>
+            </div>
+            <div id="locationsDetailView" class="hidden"></div>
+          </div>
+
+          <div id="adminPaneImport" class="admin-pane card">
+            <h2>Імпорт надавачів (Google / OSM)</h2>
+            <p class="field-hint" style="margin-bottom:14px">
+              OSM — безкоштовно (без рейтингів). Google Places — якщо задано
+              <code>GOOGLE_PLACES_API_KEY</code>. Після імпорту точки зʼявляться на карті.
+            </p>
+            <div class="field-block">
+              <label>Джерело</label>
+              <select id="importSource">
+                <option value="osm">OpenStreetMap (безкоштовно)</option>
+                <option value="places">Google Places API</option>
+              </select>
+            </div>
+            <div class="field-block">
+              <label>Місто / смт</label>
+              <select id="importCity">
+                <option value="kotsyubynske">смт Коцюбинське</option>
+                <option value="kyiv">м. Київ (центр)</option>
+              </select>
+            </div>
+            <div class="field-block">
+              <label>Категорія Mapfix</label>
+              <select id="importCategory"></select>
+            </div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">
+              <button type="button" id="importPreviewBtn" class="btn-secondary" style="width:auto">Перегляд</button>
+              <button type="button" id="importWriteBtn" style="width:auto">Імпортувати на карту</button>
+              <button type="button" id="syncSupabaseBtn" class="btn-secondary" style="width:auto">Синхронізувати в Supabase</button>
+            </div>
+            <div id="importResult" class="msg" style="display:none;margin-top:14px"></div>
+          </div>
+
+          <div id="adminPaneCatalog" class="admin-pane card">
+            <h2>Глобальний каталог</h2>
+            <p class="field-hint">Додайте нову категорію, підкатегорію або послугу. Зміни одразу з’являться на карті та в реєстрації майстрів.</p>
+
+            <h3 style="font-size:0.95rem;margin:0 0 8px">Поточний каталог</h3>
+            <div id="adminCatalogTree" class="catalog-tree">
+              <p class="list-item-meta">Завантаження…</p>
+            </div>
+
+            <div class="catalog-forms-grid">
+              <div class="catalog-form-card">
+                <h3>Нова категорія</h3>
+                <form id="adminNewCategoryForm">
+                  <label>Назва</label>
+                  <input type="text" id="newCatName" required minlength="2" placeholder="напр. Краса">
+                  <label>Іконка (емодзі, необовʼязково)</label>
+                  <input type="text" id="newCatIcon" maxlength="4" placeholder="✂️">
+                  <button type="submit">Додати категорію</button>
+                </form>
+              </div>
+
+              <div class="catalog-form-card">
+                <h3>Нова підкатегорія</h3>
+                <form id="adminNewSubcategoryForm">
                   <label>Категорія</label>
-                  <select id="adminCat" required></select>
-                </div>
-                <div class="field-block">
-                  <label>Підкатегорія</label>
-                  <select id="adminSub" disabled required></select>
-                </div>
+                  <select id="newSubCat" required></select>
+                  <label>Назва підкатегорії</label>
+                  <input type="text" id="newSubName" required minlength="2" placeholder="напр. Нігтьовий сервіс">
+                  <button type="submit">Додати підкатегорію</button>
+                </form>
               </div>
-              <div class="field-block">
-                <label>Послуга</label>
-                <input type="text" id="adminService" required minlength="2" placeholder="напр. Манікюр + гель-лак">
+
+              <div class="catalog-form-card span-2">
+                <h3>Нова послуга</h3>
+                <form id="adminCatalogForm">
+                  <div class="row2">
+                    <div class="field-block">
+                      <label>Категорія</label>
+                      <select id="adminCat" required></select>
+                    </div>
+                    <div class="field-block">
+                      <label>Підкатегорія</label>
+                      <select id="adminSub" disabled required></select>
+                    </div>
+                  </div>
+                  <div class="field-block">
+                    <label>Послуга</label>
+                    <input type="text" id="adminService" required minlength="2" placeholder="напр. Манікюр + гель-лак">
+                  </div>
+                  <div class="field-block">
+                    <label>Орієнтовна ціна</label>
+                    <input type="text" id="adminPrice" placeholder="800" required>
+                  </div>
+                  <button type="submit">Додати послугу</button>
+                </form>
               </div>
-              <div class="field-block">
-                <label>Орієнтовна ціна</label>
-                <input type="text" id="adminPrice" placeholder="800" required>
-              </div>
-              <button type="submit">Додати послугу</button>
-            </form>
+            </div>
           </div>
         </div>
       </div>
@@ -568,19 +740,256 @@
       location.href = '/login.html';
     };
 
-    /* ---- Admin tabs ---- */
-    document.querySelectorAll('.tab').forEach((tab) => {
-      tab.onclick = () => {
-        document.querySelectorAll('.tab').forEach((t) => t.classList.remove('active'));
-        tab.classList.add('active');
-        ['Providers', 'Locations', 'Import', 'Catalog'].forEach((name) => {
-          document.getElementById('tab' + name).classList.toggle(
-            'hidden',
-            tab.dataset.tab !== name.toLowerCase()
-          );
-        });
-      };
+    /* ---- Admin shell navigation ---- */
+    let adminOverviewCache = null;
+
+    function showAdminPane(name) {
+      document.querySelectorAll('[data-admin-nav]').forEach((btn) => {
+        btn.classList.toggle('active', btn.dataset.adminNav === name);
+      });
+      const paneId = 'adminPane' + name.charAt(0).toUpperCase() + name.slice(1);
+      document.querySelectorAll('.admin-pane').forEach((pane) => {
+        pane.classList.toggle('active', pane.id === paneId);
+      });
+      if (name === 'users') showUsersList();
+      if (name === 'providers') showProvidersList();
+      if (name === 'locations') showLocationsList();
+    }
+
+    document.querySelectorAll('[data-admin-nav]').forEach((btn) => {
+      btn.onclick = () => showAdminPane(btn.dataset.adminNav);
     });
+
+    function showUsersList() {
+      document.getElementById('usersListView')?.classList.remove('hidden');
+      document.getElementById('usersDetailView')?.classList.add('hidden');
+    }
+    function showProvidersList() {
+      document.getElementById('providersListView')?.classList.remove('hidden');
+      document.getElementById('providersDetailView')?.classList.add('hidden');
+    }
+    function showLocationsList() {
+      document.getElementById('locationsListView')?.classList.remove('hidden');
+      document.getElementById('locationsDetailView')?.classList.add('hidden');
+    }
+
+    function roleLabel(role) {
+      if (role === 'admin') return 'Суперадмін';
+      if (role === 'provider') return 'Провайдер';
+      if (role === 'client') return 'Клієнт';
+      return role || '—';
+    }
+
+    function passwordBlock(userId, hasPassword) {
+      return `
+        <div class="detail-section">
+          <h3>Пароль</h3>
+          <p class="pwd-note">Пароль у відкритому вигляді не зберігається і показати його неможливо. Статус: <strong>${hasPassword ? 'встановлено' : 'немає'}</strong>. Можна задати новий.</p>
+          <form class="admin-set-password" data-user-id="${esc(userId)}">
+            <label>Новий пароль</label>
+            <input type="password" name="password" minlength="6" required placeholder="мін. 6 символів" autocomplete="new-password">
+            <button type="submit" class="btn-secondary" style="width:auto">Зберегти новий пароль</button>
+          </form>
+        </div>`;
+    }
+
+    function bindPasswordForms(root) {
+      root.querySelectorAll('.admin-set-password').forEach((form) => {
+        form.onsubmit = async (e) => {
+          e.preventDefault();
+          const userId = form.dataset.userId;
+          const password = form.password.value;
+          try {
+            await apiFetch('/api/admin/users/' + encodeURIComponent(userId) + '/password', {
+              method: 'POST',
+              body: JSON.stringify({ password }),
+            });
+            showMessage('Новий пароль збережено');
+            form.reset();
+          } catch (err) {
+            showMessage(err.message, true);
+          }
+        };
+      });
+    }
+
+    async function openUserDetail(userId) {
+      const detail = document.getElementById('usersDetailView');
+      const list = document.getElementById('usersListView');
+      list.classList.add('hidden');
+      detail.classList.remove('hidden');
+      detail.innerHTML = '<p class="list-item-meta">Завантаження…</p>';
+      try {
+        const u = await apiFetch('/api/admin/users/' + encodeURIComponent(userId));
+        detail.innerHTML = `
+          <button type="button" class="detail-back" id="usersBackBtn">← До списку</button>
+          <h2>${esc(u.login)}</h2>
+          <div class="kv-grid">
+            <div class="kv"><div class="k">Роль</div><div class="v">${esc(roleLabel(u.role))}</div></div>
+            <div class="kv"><div class="k">Телефон</div><div class="v">${esc(u.phone || '—')}</div></div>
+            <div class="kv"><div class="k">Email</div><div class="v">${esc(u.email || '—')}</div></div>
+            <div class="kv"><div class="k">Telegram</div><div class="v">${u.telegramLinked ? 'підключено' : 'ні'}</div></div>
+            <div class="kv"><div class="k">Замовлення</div><div class="v">${u.ordersCount}</div></div>
+            <div class="kv"><div class="k">Локації</div><div class="v">${u.locationsCount}</div></div>
+          </div>
+          ${passwordBlock(u.id, u.hasPassword)}
+          ${u.role === 'provider' ? `<div class="inline-actions"><button type="button" class="btn-secondary" style="width:auto" id="goProviderFromUser">Відкрити картку провайдера</button></div>` : ''}
+          <div class="detail-section">
+            <h3>Останні замовлення</h3>
+            ${(u.recentOrders || []).length
+              ? u.recentOrders.map((o) => `<div class="list-item"><div class="list-item-title">${esc(o.serviceName || o.service || 'Замовлення')}</div><div class="list-item-meta">${esc(o.status || '')} · ${esc(o.locationId || '')}</div></div>`).join('')
+              : '<p class="list-item-meta">Замовлень ще немає</p>'}
+          </div>`;
+        document.getElementById('usersBackBtn').onclick = showUsersList;
+        const goProv = document.getElementById('goProviderFromUser');
+        if (goProv) {
+          goProv.onclick = () => {
+            showAdminPane('providers');
+            openProviderDetail(u.id);
+          };
+        }
+        bindPasswordForms(detail);
+      } catch (err) {
+        detail.innerHTML = `<button type="button" class="detail-back" id="usersBackBtn">← Назад</button><p class="list-item-meta">${esc(err.message)}</p>`;
+        document.getElementById('usersBackBtn').onclick = showUsersList;
+      }
+    }
+
+    async function openProviderDetail(userId) {
+      const detail = document.getElementById('providersDetailView');
+      const list = document.getElementById('providersListView');
+      list.classList.add('hidden');
+      detail.classList.remove('hidden');
+      detail.innerHTML = '<p class="list-item-meta">Завантаження…</p>';
+      try {
+        const p = await apiFetch('/api/admin/providers/' + encodeURIComponent(userId));
+        const servicesHtml = (p.services || []).length
+          ? p.services
+              .map(
+                (s) =>
+                  `<div class="list-item"><div class="list-item-title">${esc(s.name)}</div><div class="list-item-meta">${esc(s.locationTitle)} · ${esc(s.price)}</div></div>`
+              )
+              .join('')
+          : '<p class="list-item-meta">Послуг у прайсах ще немає</p>';
+        const locsHtml = (p.locations || []).length
+          ? p.locations
+              .map(
+                (l) => `
+              <button type="button" class="click-row" data-open-loc="${esc(l.id)}">
+                <div class="row-main">
+                  <div class="row-title">${esc(l.title)}</div>
+                  <div class="row-meta">${esc(l.address || '—')} · ${l.servicesCount} послуг · ${l.views} переглядів · ★ ${Number(l.rating || 0).toFixed(1)}</div>
+                </div>
+                <span class="row-chevron">›</span>
+              </button>`
+              )
+              .join('')
+          : '<p class="list-item-meta">Локацій немає</p>';
+
+        detail.innerHTML = `
+          <button type="button" class="detail-back" id="providersBackBtn">← До списку</button>
+          <h2>${esc(p.companyName)}</h2>
+          <div class="list-item-meta" style="margin-bottom:10px">@${esc(p.login)}</div>
+          <div class="kv-grid">
+            <div class="kv"><div class="k">Телефон</div><div class="v">${esc(p.phone || '—')}</div></div>
+            <div class="kv"><div class="k">Email</div><div class="v">${esc(p.email || '—')}</div></div>
+            <div class="kv"><div class="k">Telegram</div><div class="v">${p.telegramLinked ? 'підключено' : 'ні'}</div></div>
+            <div class="kv"><div class="k">Перегляди карток</div><div class="v">${p.stats.views}</div></div>
+            <div class="kv"><div class="k">Локації</div><div class="v">${p.stats.locationsCount}</div></div>
+            <div class="kv"><div class="k">Послуги</div><div class="v">${p.stats.servicesCount}</div></div>
+            <div class="kv"><div class="k">Замовлення</div><div class="v">${p.stats.ordersCount}</div></div>
+            <div class="kv"><div class="k">Відгуки</div><div class="v">${p.stats.reviewsCount}</div></div>
+          </div>
+          ${passwordBlock(p.id, p.hasPassword)}
+          <div class="inline-actions">
+            <button type="button" class="btn-danger" style="width:auto" id="delProviderBtn">Видалити провайдера</button>
+          </div>
+          <div class="detail-section"><h3>Локації</h3>${locsHtml}</div>
+          <div class="detail-section"><h3>Усі послуги (прайси)</h3>${servicesHtml}</div>
+          <div class="detail-section">
+            <h3>Останні замовлення</h3>
+            ${(p.recentOrders || []).length
+              ? p.recentOrders.map((o) => `<div class="list-item"><div class="list-item-title">${esc(o.serviceName || o.service || 'Замовлення')}</div><div class="list-item-meta">${esc(o.status || '')}</div></div>`).join('')
+              : '<p class="list-item-meta">Замовлень ще немає</p>'}
+          </div>`;
+        document.getElementById('providersBackBtn').onclick = showProvidersList;
+        document.getElementById('delProviderBtn').onclick = async () => {
+          if (!confirm('Видалити провайдера та всі його точки?')) return;
+          const r = await fetch('/api/admin/providers/' + p.id, { method: 'DELETE' });
+          const j = await r.json();
+          if (!r.ok) return showMessage(j.error, true);
+          showMessage('Провайдера видалено');
+          showProvidersList();
+          initAdmin();
+        };
+        detail.querySelectorAll('[data-open-loc]').forEach((btn) => {
+          btn.onclick = () => {
+            showAdminPane('locations');
+            openLocationDetail(btn.dataset.openLoc);
+          };
+        });
+        bindPasswordForms(detail);
+      } catch (err) {
+        detail.innerHTML = `<button type="button" class="detail-back" id="providersBackBtn">← Назад</button><p class="list-item-meta">${esc(err.message)}</p>`;
+        document.getElementById('providersBackBtn').onclick = showProvidersList;
+      }
+    }
+
+    async function openLocationDetail(locId) {
+      const detail = document.getElementById('locationsDetailView');
+      const list = document.getElementById('locationsListView');
+      list.classList.add('hidden');
+      detail.classList.remove('hidden');
+      detail.innerHTML = '<p class="list-item-meta">Завантаження…</p>';
+      try {
+        const l = await apiFetch('/api/admin/locations/' + encodeURIComponent(locId) + '/detail');
+        const prices = Object.entries(l.prices || {});
+        detail.innerHTML = `
+          <button type="button" class="detail-back" id="locationsBackBtn">← До списку</button>
+          <h2>${esc(l.title)}</h2>
+          <div class="kv-grid">
+            <div class="kv"><div class="k">Категорія</div><div class="v">${esc(l.catalogCategoryName || l.cat || '—')}</div></div>
+            <div class="kv"><div class="k">Адреса</div><div class="v">${esc(l.address || '—')}</div></div>
+            <div class="kv"><div class="k">Телефон</div><div class="v">${esc(l.phone || '—')}</div></div>
+            <div class="kv"><div class="k">Статус</div><div class="v">${l.openStatus === 'open' ? 'Відкрито' : 'Зачинено'}</div></div>
+            <div class="kv"><div class="k">Перегляди</div><div class="v">${Number(l.views) || 0}</div></div>
+            <div class="kv"><div class="k">Рейтинг</div><div class="v">★ ${Number(l.rating || 0).toFixed(1)} (${l.reviewsCount || 0})</div></div>
+            <div class="kv"><div class="k">Замовлення</div><div class="v">${l.ordersCount || 0}</div></div>
+            <div class="kv"><div class="k">Провайдер</div><div class="v">${l.provider ? esc(l.provider.companyName + ' (@' + l.provider.login + ')') : 'системна'}</div></div>
+          </div>
+          <div class="inline-actions">
+            <a class="btn-secondary" style="width:auto;display:inline-flex;align-items:center;text-decoration:none;padding:10px 16px;border-radius:8px;background:#64748b;color:#fff;font-weight:600" href="/?loc=${encodeURIComponent(l.id)}" target="_blank" rel="noopener">Відкрити на карті</a>
+            ${l.provider ? `<button type="button" class="btn-secondary" style="width:auto" id="goProvFromLoc">Картка провайдера</button>` : ''}
+            <button type="button" class="btn-danger" style="width:auto" id="delLocBtn">Видалити точку</button>
+          </div>
+          <div class="detail-section">
+            <h3>Послуги</h3>
+            ${prices.length
+              ? prices.map(([n, pr]) => `<span class="price-tag">${esc(n)}: ${esc(pr)}</span>`).join('')
+              : '<p class="list-item-meta">Прайсу немає</p>'}
+          </div>`;
+        document.getElementById('locationsBackBtn').onclick = showLocationsList;
+        document.getElementById('delLocBtn').onclick = async () => {
+          if (!confirm('Видалити цю точку з карти?')) return;
+          const r = await fetch('/api/admin/locations/' + l.id, { method: 'DELETE' });
+          const j = await r.json();
+          if (!r.ok) return showMessage(j.error, true);
+          showMessage('Точку видалено');
+          showLocationsList();
+          initAdmin();
+        };
+        const goProv = document.getElementById('goProvFromLoc');
+        if (goProv && l.provider) {
+          goProv.onclick = () => {
+            showAdminPane('providers');
+            openProviderDetail(l.provider.id);
+          };
+        }
+      } catch (err) {
+        detail.innerHTML = `<button type="button" class="detail-back" id="locationsBackBtn">← Назад</button><p class="list-item-meta">${esc(err.message)}</p>`;
+        document.getElementById('locationsBackBtn').onclick = showLocationsList;
+      }
+    }
 
     async function runPlacesImport(dryRun) {
       const resultEl = document.getElementById('importResult');
@@ -636,64 +1045,90 @@
       document.getElementById('pageTitle').textContent = 'Суперадмін Mapfix';
       document.getElementById('adminPanel').classList.remove('hidden');
 
-      const res = await fetch('/api/admin/overview');
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error);
+      const data = await apiFetch('/api/admin/overview');
+      adminOverviewCache = data;
 
-      const provEl = document.getElementById('providersList');
-      provEl.innerHTML = data.providers.length
-        ? data.providers
-            .map(
-              (p) => `
-          <div class="list-item">
-            <div class="list-item-head">
-              <div>
-                <div class="list-item-title">${esc(p.companyName)}</div>
-                <div class="list-item-meta">@${esc(p.login)} · ${p.locationsCount} локацій</div>
-              </div>
-              <button type="button" class="btn-danger btn-small" data-del-provider="${p.id}">Видалити</button>
-            </div>
-          </div>`
-            )
-            .join('')
-        : '<p class="list-item-meta">Провайдерів ще немає</p>';
+      const usersCount =
+        (data.clients?.length || 0) + (data.providers?.length || 0) + (data.admins?.length || 0);
+      document.getElementById('navCountUsers').textContent = String(data.usersTotal || usersCount);
+      document.getElementById('navCountProviders').textContent = String(data.providers?.length || 0);
+      document.getElementById('navCountLocations').textContent = String(data.locations?.length || 0);
+      document.getElementById('navCountCatalog').textContent = String(data.catalogCategories || 0);
 
-      provEl.querySelectorAll('[data-del-provider]').forEach((btn) => {
-        btn.onclick = async () => {
-          if (!confirm('Видалити провайдера та всі його точки?')) return;
-          const r = await fetch('/api/admin/providers/' + btn.dataset.delProvider, { method: 'DELETE' });
-          const j = await r.json();
-          if (!r.ok) return showMessage(j.error, true);
-          showMessage('Провайдера видалено');
-          initAdmin();
-        };
-      });
-
-      const locEl = document.getElementById('adminLocationsList');
-      locEl.innerHTML = data.locations
+      document.getElementById('overviewStats').innerHTML = [
+        ['Користувачі', data.usersTotal || usersCount],
+        ['Провайдери', data.providers?.length || 0],
+        ['Клієнти', data.clients?.length || 0],
+        ['Локації', data.locations?.length || 0],
+        ['Категорії', data.catalogCategories || 0],
+        ['Замовлення', data.ordersTotal || 0],
+      ]
         .map(
-          (l) => `
-        <div class="list-item">
-          <div class="list-item-head">
-            <div>
-              <div class="list-item-title">${esc(l.title)}</div>
-              <div class="list-item-meta">${esc(l.address || '—')} · ${l.servicesCount} послуг · ${l.providerId ? 'провайдер' : 'системна'}</div>
-            </div>
-            <button type="button" class="btn-danger btn-small" data-del-loc="${l.id}">Видалити</button>
-          </div>
-        </div>`
+          ([label, value]) =>
+            `<div class="stat-card"><div class="stat-label">${esc(label)}</div><div class="stat-value">${esc(String(value))}</div></div>`
         )
         .join('');
 
-      locEl.querySelectorAll('[data-del-loc]').forEach((btn) => {
-        btn.onclick = async () => {
-          if (!confirm('Видалити цю точку з карти?')) return;
-          const r = await fetch('/api/admin/locations/' + btn.dataset.delLoc, { method: 'DELETE' });
-          const j = await r.json();
-          if (!r.ok) return showMessage(j.error, true);
-          showMessage('Точку видалено');
-          initAdmin();
-        };
+      const allUsers = [
+        ...(data.admins || []).map((u) => ({ ...u, role: 'admin' })),
+        ...(data.providers || []).map((u) => ({ ...u, role: 'provider' })),
+        ...(data.clients || []).map((u) => ({ ...u, role: 'client' })),
+      ];
+      const usersEl = document.getElementById('usersList');
+      usersEl.innerHTML = allUsers.length
+        ? allUsers
+            .map(
+              (u) => `
+          <button type="button" class="click-row" data-user-id="${esc(u.id)}">
+            <div class="row-main">
+              <div class="row-title">${esc(u.login)}${u.companyName && u.companyName !== '—' ? ' · ' + esc(u.companyName) : ''}</div>
+              <div class="row-meta">${esc(roleLabel(u.role))} · ${esc(u.phone || 'без телефону')} · пароль: ${u.hasPassword ? 'є' : 'немає'}</div>
+            </div>
+            <span class="row-chevron">›</span>
+          </button>`
+            )
+            .join('')
+        : '<p class="list-item-meta">Користувачів ще немає</p>';
+      usersEl.querySelectorAll('[data-user-id]').forEach((btn) => {
+        btn.onclick = () => openUserDetail(btn.dataset.userId);
+      });
+
+      const provEl = document.getElementById('providersList');
+      provEl.innerHTML = data.providers?.length
+        ? data.providers
+            .map(
+              (p) => `
+          <button type="button" class="click-row" data-provider-id="${esc(p.id)}">
+            <div class="row-main">
+              <div class="row-title">${esc(p.companyName)}</div>
+              <div class="row-meta">@${esc(p.login)} · ${p.locationsCount} локацій · ${p.servicesCount} послуг · ${p.views} переглядів · ${p.ordersCount} замовлень</div>
+            </div>
+            <span class="row-chevron">›</span>
+          </button>`
+            )
+            .join('')
+        : '<p class="list-item-meta">Провайдерів ще немає</p>';
+      provEl.querySelectorAll('[data-provider-id]').forEach((btn) => {
+        btn.onclick = () => openProviderDetail(btn.dataset.providerId);
+      });
+
+      const locEl = document.getElementById('adminLocationsList');
+      locEl.innerHTML = data.locations?.length
+        ? data.locations
+            .map(
+              (l) => `
+        <button type="button" class="click-row" data-loc-id="${esc(l.id)}">
+          <div class="row-main">
+            <div class="row-title">${esc(l.title)}</div>
+            <div class="row-meta">${esc(l.address || '—')} · ${l.servicesCount} послуг · ${l.views || 0} переглядів · ${l.providerId ? 'провайдер' : 'системна'}</div>
+          </div>
+          <span class="row-chevron">›</span>
+        </button>`
+            )
+            .join('')
+        : '<p class="list-item-meta">Локацій ще немає</p>';
+      locEl.querySelectorAll('[data-loc-id]').forEach((btn) => {
+        btn.onclick = () => openLocationDetail(btn.dataset.locId);
       });
 
       const catRes = await apiFetch('/api/data');

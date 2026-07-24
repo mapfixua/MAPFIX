@@ -23,6 +23,7 @@ function toDbRow(loc) {
     subcats: loc.subcats || [],
     prices: loc.prices || {},
     reviews: loc.reviews || [],
+    views: Number(loc.views) || 0,
     import_source: loc.importSource || loc.importMeta?.source || null,
     updated_at: new Date().toISOString(),
   };
@@ -48,6 +49,7 @@ function fromDbRow(row) {
     subcats: row.subcats || [],
     prices: row.prices || {},
     reviews: row.reviews || [],
+    views: Number(row.views) || 0,
     importSource: row.import_source || null,
   };
 }
@@ -71,7 +73,13 @@ async function upsertLocationsToSupabase(locations) {
     return { ok: true, count: 0 };
   }
   const rows = locations.map(toDbRow);
-  const { error } = await supabaseClient.from(LOCATIONS_TABLE).upsert(rows, { onConflict: 'id' });
+  let { error } = await supabaseClient.from(LOCATIONS_TABLE).upsert(rows, { onConflict: 'id' });
+  if (error && /views/i.test(String(error.message || ''))) {
+    const withoutViews = rows.map(({ views, ...rest }) => rest);
+    ({ error } = await supabaseClient
+      .from(LOCATIONS_TABLE)
+      .upsert(withoutViews, { onConflict: 'id' }));
+  }
   if (error) {
     return { ok: false, error };
   }

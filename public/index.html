@@ -1198,6 +1198,15 @@
             window.openMasterDetail = function(locId) {
                 const loc = window.mockLocations.find(l => l.id === locId);
                 if (!loc) return;
+
+                fetch('/api/locations/' + encodeURIComponent(locId) + '/view', {
+                    method: 'POST',
+                    credentials: 'same-origin',
+                }).then(async (r) => {
+                    if (!r.ok) return;
+                    const j = await r.json().catch(() => ({}));
+                    if (typeof j.views === 'number') loc.views = j.views;
+                }).catch(() => {});
                 
                 State.selectedLocation = loc;
                 State.formRatingScore = 5;
