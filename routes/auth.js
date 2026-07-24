@@ -12,7 +12,8 @@ const OTP_ERROR_MESSAGES = {
   invalid_token: 'Посилання недійсне або вже використане',
   token_expired: 'Посилання прострочене. Запросіть нове',
   user_not_found: 'Користувача не знайдено',
-  telegram_not_linked: 'Спочатку підключіть Telegram через бота',
+  telegram_not_linked:
+    'Telegram ще не підключено. Увійдіть логіном/паролем і відкрийте «Підключити Telegram»',
   bot_not_configured: 'Telegram-бот не налаштовано',
   send_failed: 'Не вдалося надіслати повідомлення',
   email_not_configured: 'Email-відновлення ще не налаштоване (RESEND_API_KEY)',

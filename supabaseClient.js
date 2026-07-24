@@ -47,6 +47,8 @@ function mapUserRow(row) {
     email: row.email ?? null,
     telegramId: row.telegramId ?? row.telegram_id ?? null,
     telegramLinkedAt: row.telegramLinkedAt ?? row.telegram_linked_at ?? null,
+    googleId: row.googleId ?? row.google_id ?? null,
+    appleId: row.appleId ?? row.apple_id ?? null,
   };
 }
 
@@ -60,6 +62,8 @@ function toUserRow(user) {
   };
   if (user.phone) row.phone = user.phone;
   if (user.email) row.email = user.email;
+  if (user.googleId) row.googleId = user.googleId;
+  if (user.appleId) row.appleId = user.appleId;
   return row;
 }
 

@@ -617,3 +617,23 @@
   margin-right: 8px;
   display: inline-block;
 }
+
+.mf-oauth { display: flex; flex-direction: column; gap: 10px; margin: 0 0 16px; }
+.mf-oauth-btn {
+  width: 100%; min-height: 48px; border-radius: var(--mf-radius-pill);
+  border: 1.5px solid var(--mf-line); background: #fff; color: var(--mf-ink);
+  font-family: inherit; font-weight: 700; font-size: 0.95rem; cursor: pointer;
+  display: inline-flex; align-items: center; justify-content: center; gap: 10px;
+}
+.mf-oauth-btn:hover { background: var(--mf-input); }
+.mf-oauth-btn:disabled { opacity: 0.55; cursor: not-allowed; }
+.mf-or {
+  display: flex; align-items: center; gap: 12px; margin: 4px 0 16px;
+  color: var(--mf-muted); font-size: 0.82rem; font-weight: 600;
+}
+.mf-or::before, .mf-or::after { content: ''; flex: 1; height: 1px; background: var(--mf-line); }
+.mf-telegram-box {
+  margin-top: 14px; padding: 14px; border-radius: 16px;
+  background: var(--mf-accent-soft); border: 1px solid #9ee8e0;
+}
+.mf-telegram-box p { margin: 0 0 12px; font-size: 0.9rem; font-weight: 600; line-height: 1.45; }

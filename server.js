@@ -29,6 +29,11 @@ const {
 } = require('./telegram-auth.js');
 const { createAuthRouter } = require('./routes/auth.js');
 const {
+  oauthPublicConfig,
+  signInWithGoogle,
+  signInWithApple,
+} = require('./oauth-auth.js');
+const {
   fetchOsmPlaces,
   fetchGooglePlaces,
   mergeLocations,
@@ -561,6 +566,7 @@ app.post('/api/register', async (req, res) => {
     const companyName = req.body.companyName?.trim();
     const emailRaw = req.body.email?.trim().toLowerCase() || '';
     const phoneRaw = req.body.phone?.trim() || '';
+    const categoryKey = String(req.body.categoryKey || req.body.serviceCategory || '').trim();
 
     if (!login || login.length < 3) {
       return res.status(400).json({ error: 'Логін має містити щонайменше 3 символи' });
@@ -578,35 +584,21 @@ app.post('/api/register', async (req, res) => {
       return res.status(400).json({ error: 'Для провайдера вкажіть назву компанії' });
     }
 
-    const dataForCatalog = await readData();
-    const catalog = dataForCatalog.masterCatalog;
-    const serviceSubcategories =
-      role === 'provider'
-        ? normalizeServiceSubcategories(req.body.serviceSubcategories, catalog)
-        : [];
-    const customSubcategories =
-      role === 'provider'
-        ? normalizeCustomSubcategories(req.body.customSubcategories, catalog)
-        : [];
-    let serviceCategories =
-      role === 'provider'
-        ? mergeProviderServiceCategories(
-            normalizeServiceCategories(req.body.serviceCategories, catalog),
-            serviceSubcategories,
-            customSubcategories
-          )
-        : [];
+    const normalizedPhone = phoneRaw ? normalizePhone(phoneRaw) : '';
+    if (phoneRaw && (!normalizedPhone || normalizedPhone.replace(/\D/g, '').length < 10)) {
+      return res.status(400).json({ error: 'Вкажіть коректний номер телефону' });
+    }
 
-    if (
-      role === 'provider' &&
-      serviceCategories.length === 0 &&
-      !serviceSubcategories.length &&
-      !customSubcategories.length
-    ) {
-      return res.status(400).json({
-        error:
-          'Оберіть категорію, підкатегорію з каталогу або додайте свою підкатегорію',
-      });
+    const dataForCatalog = await readData();
+    const catalog = dataForCatalog.masterCatalog || {};
+    let serviceCategories = [];
+    if (role === 'provider') {
+      if (categoryKey && catalog[categoryKey]) {
+        serviceCategories = [categoryKey];
+      } else if (categoryKey) {
+        return res.status(400).json({ error: 'Оберіть категорію зі списку' });
+      }
+      // Provider may register with only company name; category optional for quick start
     }
 
     const { data: existingUser, error: lookupError } = await supabaseClient
@@ -630,7 +622,7 @@ app.post('/api/register', async (req, res) => {
       role,
     };
     if (emailRaw) newUser.email = emailRaw;
-    if (phoneRaw) newUser.phone = normalizePhone(phoneRaw);
+    if (normalizedPhone) newUser.phone = normalizedPhone;
 
     const { error: insertError } = await supabaseClient
       .from(USERS_TABLE)
@@ -640,6 +632,9 @@ app.post('/api/register', async (req, res) => {
       if (insertError.code === '23505' && String(insertError.message).includes('email')) {
         return res.status(409).json({ error: 'Цей email уже використовується' });
       }
+      if (insertError.code === '23505' && String(insertError.message).includes('phone')) {
+        return res.status(409).json({ error: 'Цей телефон уже використовується' });
+      }
       return res.status(500).json({ error: 'Помилка збереження користувача' });
     }
 
@@ -647,21 +642,127 @@ app.post('/api/register', async (req, res) => {
       const data = await readData();
       data.providerProfiles[newUser.id] = {
         companyName,
-        phone: req.body.phone?.trim() || '',
+        phone: normalizedPhone || phoneRaw || '',
         serviceCategories,
-        serviceSubcategories,
-        customSubcategories,
+        serviceSubcategories: [],
+        customSubcategories: [],
         createdAt: new Date().toISOString(),
       };
       await writeData(data);
     }
 
     setSessionUser(res, newUser);
+
+    let telegramLink = null;
+    if (normalizedPhone && isTelegramConfigured() && process.env.TELEGRAM_BOT_USERNAME) {
+      try {
+        const { token, expiresAt, phone: savedPhone } = await createTelegramLinkToken({
+          userId: newUser.id,
+          phone: normalizedPhone,
+        });
+        telegramLink = {
+          botUrl: getTelegramBotLink(token),
+          expiresAt,
+          phone: savedPhone,
+        };
+      } catch (linkErr) {
+        console.warn('[register] telegram link skip:', linkErr.message);
+      }
+    }
+
     const data = await readData();
-    res.status(201).json({ ok: true, user: await toPublicUserWithProfile(newUser, data) });
+    res.status(201).json({
+      ok: true,
+      user: await toPublicUserWithProfile(newUser, data),
+      telegramLink,
+      nextStep: telegramLink
+        ? 'open_telegram'
+        : 'done',
+      message: telegramLink
+        ? 'Акаунт створено. Відкрийте Telegram-бота, щоб отримувати коди входу.'
+        : 'Акаунт створено. Можна входити логіном і паролем.',
+    });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Помилка реєстрації' });
+  }
+});
+
+app.get('/api/auth/oauth-config', (_req, res) => {
+  res.json(oauthPublicConfig());
+});
+
+async function finishOauthSignIn(res, result) {
+  if (!result.ok) {
+    const status =
+      result.error === 'google_not_configured' || result.error === 'apple_not_configured'
+        ? 503
+        : 401;
+    const messages = {
+      google_not_configured: 'Google-вхід ще не налаштовано (GOOGLE_CLIENT_ID)',
+      apple_not_configured: 'Apple-вхід ще не налаштовано (APPLE_CLIENT_ID)',
+      invalid_token: 'Невірний токен авторизації',
+      invalid_nonce: 'Помилка безпеки Apple Sign In. Спробуйте ще раз',
+    };
+    return res.status(status).json({
+      ok: false,
+      error: result.error,
+      message: messages[result.error] || 'Не вдалося увійти',
+    });
+  }
+
+  if (result.created && result.user.role === 'provider' && result.profileCompany) {
+    const data = await readData();
+    if (!data.providerProfiles[result.user.id]) {
+      data.providerProfiles[result.user.id] = {
+        companyName: result.profileCompany,
+        phone: '',
+        serviceCategories: [],
+        serviceSubcategories: [],
+        customSubcategories: [],
+        createdAt: new Date().toISOString(),
+      };
+      await writeData(data);
+    }
+  }
+
+  setSessionUser(res, result.user);
+  const data = await readData();
+  return res.json({
+    ok: true,
+    created: Boolean(result.created),
+    provider: result.provider,
+    user: await toPublicUserWithProfile(result.user, data),
+  });
+}
+
+app.post('/api/auth/google', async (req, res) => {
+  try {
+    const result = await signInWithGoogle({
+      idToken: req.body?.credential || req.body?.idToken,
+      role: req.body?.role,
+      companyName: req.body?.companyName,
+    });
+    await finishOauthSignIn(res, result);
+  } catch (err) {
+    console.error('[POST /api/auth/google]', err);
+    res.status(500).json({ error: 'Помилка Google-входу' });
+  }
+});
+
+app.post('/api/auth/apple', async (req, res) => {
+  try {
+    const result = await signInWithApple({
+      idToken: req.body?.idToken || req.body?.identityToken,
+      rawNonce: req.body?.rawNonce || req.body?.nonce,
+      role: req.body?.role,
+      companyName: req.body?.companyName,
+      name: req.body?.name || req.body?.fullName,
+    });
+    await finishOauthSignIn(res, result);
+  } catch (err) {
+    console.error('[POST /api/auth/apple]', err);
+    res.status(500).json({ error: 'Помилка Apple-входу' });
   }
 });
 

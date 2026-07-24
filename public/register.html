@@ -5,9 +5,11 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Mapfix — Реєстрація</title>
   <link rel="stylesheet" href="/css/mapfix-ui.css">
+  <script src="https://accounts.google.com/gsi/client" async defer></script>
+  <script src="https://appleid.cdn-apple.com/appleauth/static/jsapi/appleid/1/en_US/appleid.auth.js" async defer></script>
 </head>
 <body class="mf-auth-body">
-  <div class="mf-auth-wrap" style="max-width:520px">
+  <div class="mf-auth-wrap" style="max-width:440px">
     <a class="mf-back" href="/">← На головну</a>
     <div class="mf-card">
       <div class="mf-brand">
@@ -15,292 +17,95 @@
         <span class="mf-brand-name">Mapfix</span>
       </div>
       <h1 class="mf-title">Реєстрація</h1>
-      <p class="mf-sub">Створіть акаунт клієнта або майстра.</p>
+      <p class="mf-sub">Швидко створіть акаунт. Telegram-код — опційно після привʼязки бота.</p>
+
       <nav class="mf-seg" aria-label="Вхід або реєстрація">
         <a href="/login.html">Вхід</a>
         <a class="active" href="/register.html">Реєстрація</a>
       </nav>
+
+      <div id="oauthBlock" class="mf-oauth mf-hidden">
+        <button type="button" class="mf-oauth-btn" id="googleBtn"><span class="g-icon">G</span> Продовжити з Google</button>
+        <button type="button" class="mf-oauth-btn" id="appleBtn"><span class="a-icon"></span> Продовжити з Apple</button>
+      </div>
+      <div id="oauthOr" class="mf-or mf-hidden">або email / логін</div>
+
       <form id="registerForm">
-        <label class="mf-label" for="login">Логін / імʼя</label>
-        <input id="login" type="text" required autocomplete="username" placeholder="Імʼя або логін">
-
-        <label class="mf-label" for="password">Пароль</label>
-        <div class="mf-password">
-          <input id="password" type="password" required minlength="6" autocomplete="new-password" placeholder="Пароль (мін. 6 символів)">
-          <button type="button" class="mf-toggle-eye" id="passwordToggle" aria-label="Показати пароль" aria-pressed="false" title="Показати пароль">
-            <span class="eye-label">Показати</span>
-          </button>
-        </div>
-
-        <label class="mf-label" for="email">Email (для відновлення пароля)</label>
-        <input id="email" type="email" autocomplete="email" placeholder="you@example.com">
-
         <p class="mf-label">Хто ви?</p>
         <div class="mf-role" role="group" aria-label="Роль">
           <button type="button" class="active" id="roleClientBtn" data-role="client">Я клієнт</button>
           <button type="button" id="roleProviderBtn" data-role="provider">Я майстер</button>
         </div>
-        <select id="role" required class="mf-hidden" aria-hidden="true" tabindex="-1">
-          <option value="client">Клієнт</option>
-          <option value="provider">Майстер / бізнес</option>
+        <select id="role" class="mf-hidden" aria-hidden="true" tabindex="-1">
+          <option value="client">client</option>
+          <option value="provider">provider</option>
         </select>
 
-        <div id="providerFields" class="hidden">
-          <label class="mf-label" for="companyName">Назва компанії або ПІБ майстра</label>
-          <input id="companyName" type="text" placeholder="напр. Nail Art Студія">
+        <label class="mf-label" for="login">Логін</label>
+        <input id="login" type="text" required minlength="3" autocomplete="username" placeholder="напр. sewing_studio">
 
-          <label class="mf-label" for="phone">Телефон</label>
-          <input id="phone" type="text" placeholder="+380">
+        <label class="mf-label" for="password">Пароль</label>
+        <div class="mf-password">
+          <input id="password" type="password" required minlength="6" autocomplete="new-password" placeholder="мін. 6 символів">
+          <button type="button" class="mf-toggle-eye" id="passwordToggle"><span class="eye-label">Показати</span></button>
+        </div>
 
-          <label class="mf-label">Категорії та послуги</label>
-          <p class="mf-hint">
-            Оберіть категорію, підкатегорію з каталогу або окремі послуги.
-            Можна також додати власну підкатегорію.
-          </p>
-          <p id="catalogLoading" class="loading-cats">Завантаження каталогу…</p>
-          <div id="servicesTree" class="services-tree hidden" role="group" aria-label="Категорії та послуги"></div>
+        <label class="mf-label" for="phone">Телефон</label>
+        <input id="phone" type="tel" inputmode="tel" autocomplete="tel" placeholder="+380661486347">
+        <p class="mf-hint">Потрібен для кодів у Telegram (після привʼязки бота)</p>
 
-          <div id="customSubsSection" class="custom-subs hidden">
-            <h3>Своя підкатегорія</h3>
-            <p class="mf-hint" style="margin-bottom: 10px;">
-              Якщо вашої ніші немає в каталозі — вкажіть категорію, назву підкатегорії
-              та послуги (через кому, необовʼязково).
-            </p>
-            <div id="customSubsList"></div>
-            <button type="button" id="addCustomSubBtn" class="btn-secondary">+ Додати підкатегорію</button>
-          </div>
+        <label class="mf-label" for="email">Email (необовʼязково)</label>
+        <input id="email" type="email" autocomplete="email" placeholder="you@gmail.com">
+
+        <div id="providerFields" class="mf-hidden">
+          <label class="mf-label" for="companyName">Назва бізнесу</label>
+          <input id="companyName" type="text" placeholder="напр. Швейний салон">
+
+          <label class="mf-label" for="categoryKey">Категорія (необовʼязково)</label>
+          <select id="categoryKey">
+            <option value="">— оберіть пізніше —</option>
+          </select>
         </div>
 
         <button type="submit" class="mf-btn mf-btn-primary" id="submitBtn">Створити акаунт</button>
       </form>
-      <div id="message" class="msg"></div>
+
+      <div id="telegramAfter" class="mf-telegram-box mf-hidden">
+        <p id="telegramAfterText">Акаунт створено. Щоб отримувати коди входу в Telegram — відкрийте бота й натисніть Start.</p>
+        <a class="mf-btn mf-btn-dark" id="openTelegramBtn" href="#" target="_blank" rel="noopener">Відкрити Telegram-бота</a>
+        <button type="button" class="mf-btn mf-btn-ghost" id="skipTelegramBtn">Продовжити без Telegram</button>
+      </div>
+
+      <div id="message" class="msg" role="alert"></div>
     </div>
-    <p class="mf-foot">
-      Підтвердження через Telegram буде доступне на сторінці
-      <a href="/link-telegram.html">звʼязку з Telegram</a>.
-    </p>
   </div>
+
   <script>
     const roleSel = document.getElementById('role');
     const providerFields = document.getElementById('providerFields');
-    const servicesTree = document.getElementById('servicesTree');
-    const catalogLoading = document.getElementById('catalogLoading');
     const message = document.getElementById('message');
     const submitBtn = document.getElementById('submitBtn');
-    const customSubsSection = document.getElementById('customSubsSection');
-    const customSubsList = document.getElementById('customSubsList');
-    const addCustomSubBtn = document.getElementById('addCustomSubBtn');
-    let masterCatalog = {};
+    const registerForm = document.getElementById('registerForm');
+    const telegramAfter = document.getElementById('telegramAfter');
+    let oauthConfig = { googleEnabled: false, appleEnabled: false };
+    let pendingRedirectRole = 'client';
 
-    function categoryLabel(name) {
-      return String(name || '').replace(/^[\p{Extended_Pictographic}\p{Emoji_Presentation}\s]+/u, '').trim() || name;
+    function showMsg(text, ok) {
+      message.textContent = text;
+      message.className = 'msg ' + (ok ? 'ok' : 'err');
     }
 
-    function subSelector(catKey, subKey) {
-      return `.service-cb[data-cat="${catKey}"][data-sub="${subKey}"]`;
+    function setRole(role) {
+      roleSel.value = role;
+      document.getElementById('roleClientBtn').classList.toggle('active', role === 'client');
+      document.getElementById('roleProviderBtn').classList.toggle('active', role === 'provider');
+      providerFields.classList.toggle('mf-hidden', role !== 'provider');
     }
 
-    function subPickCb(catKey, subKey) {
-      return document.querySelector(`.sub-pick-cb[data-cat="${catKey}"][data-sub="${subKey}"]`);
-    }
-
-    function syncSubPick(catKey, subKey) {
-      const pickCb = subPickCb(catKey, subKey);
-      const serviceCbs = [...document.querySelectorAll(subSelector(catKey, subKey))];
-      if (!pickCb || !serviceCbs.length) return;
-      const checkedCount = serviceCbs.filter((cb) => cb.checked).length;
-      pickCb.checked = checkedCount === serviceCbs.length;
-      pickCb.indeterminate = checkedCount > 0 && checkedCount < serviceCbs.length;
-    }
-
-    function syncSubSelectAll(catKey, subKey) {
-      const allCb = document.querySelector(
-        `.sub-all-cb[data-cat="${catKey}"][data-sub="${subKey}"]`
-      );
-      const serviceCbs = [...document.querySelectorAll(subSelector(catKey, subKey))];
-      if (!allCb || !serviceCbs.length) return;
-      const checkedCount = serviceCbs.filter((cb) => cb.checked).length;
-      allCb.checked = checkedCount === serviceCbs.length;
-      allCb.indeterminate = checkedCount > 0 && checkedCount < serviceCbs.length;
-      syncSubPick(catKey, subKey);
-    }
-
-    function setSubServices(catKey, subKey, checked) {
-      document.querySelectorAll(subSelector(catKey, subKey)).forEach((cb) => {
-        cb.checked = checked;
-      });
-      syncSubSelectAll(catKey, subKey);
-    }
-
-    function makeCheckRow(className, inputAttrs, text) {
-      const row = document.createElement('label');
-      row.className = 'check-row ' + (className || '');
-      const input = document.createElement('input');
-      input.type = 'checkbox';
-      Object.entries(inputAttrs).forEach(([k, v]) => input.setAttribute(k, v));
-      const span = document.createElement('span');
-      span.textContent = text;
-      row.appendChild(input);
-      row.appendChild(span);
-      return { row, input };
-    }
-
-    function renderServicesTree() {
-      const entries = Object.entries(masterCatalog);
-      servicesTree.innerHTML = '';
-      if (!entries.length) {
-        catalogLoading.textContent = 'Каталог недоступний. Перезапустіть сервер.';
-        return;
-      }
-      catalogLoading.classList.add('hidden');
-      servicesTree.classList.remove('hidden');
-
-      entries.forEach(([catKey, cat]) => {
-        const catBlock = document.createElement('div');
-        catBlock.className = 'cat-block';
-
-        const { row: catHead, input: catCb } = makeCheckRow(
-          'cat-head',
-          { 'data-cat-check': catKey, class: 'cat-cb' },
-          categoryLabel(cat.name)
-        );
-        catHead.className = 'cat-head';
-        catBlock.appendChild(catHead);
-
-        const subList = document.createElement('div');
-        Object.entries(cat.subcats || {}).forEach(([subKey, sub]) => {
-          const subBlock = document.createElement('div');
-          subBlock.className = 'sub-block';
-
-          const { row: pickRow, input: pickCb } = makeCheckRow(
-            'sub-pick',
-            {
-              class: 'sub-pick-cb',
-              'data-cat': catKey,
-              'data-sub': subKey,
-            },
-            'Підкатегорія: ' + sub.name
-          );
-          pickCb.addEventListener('change', () => {
-            setSubServices(catKey, subKey, pickCb.checked);
-            if (pickCb.checked) catCb.checked = true;
-          });
-          subBlock.appendChild(pickRow);
-
-          const { row: allRow, input: allCb } = makeCheckRow(
-            'sub-all',
-            {
-              class: 'sub-all-cb',
-              'data-cat': catKey,
-              'data-sub': subKey,
-            },
-            'Всі послуги в підкатегорії'
-          );
-          allCb.addEventListener('change', () => setSubServices(catKey, subKey, allCb.checked));
-          subBlock.appendChild(allRow);
-
-          (sub.items || []).forEach((item) => {
-            const { row: svcRow, input: svcCb } = makeCheckRow(
-              'service-row',
-              {
-                class: 'service-cb',
-                'data-cat': catKey,
-                'data-sub': subKey,
-                'data-service': item.name,
-              },
-              item.name
-            );
-            svcCb.addEventListener('change', () => {
-              syncSubSelectAll(catKey, subKey);
-              if (svcCb.checked) catCb.checked = true;
-            });
-            subBlock.appendChild(svcRow);
-          });
-
-          subList.appendChild(subBlock);
-        });
-
-        catBlock.appendChild(subList);
-        servicesTree.appendChild(catBlock);
-      });
-    }
-
-    function categoryOptionsHtml(selectedKey) {
-      return Object.entries(masterCatalog)
-        .map(([key, cat]) => {
-          const label = categoryLabel(cat.name);
-          const sel = key === selectedKey ? ' selected' : '';
-          return `<option value="${key}"${sel}>${label}</option>`;
-        })
-        .join('');
-    }
-
-    function addCustomSubRow(prefill) {
-      const row = document.createElement('div');
-      row.className = 'custom-row';
-      row.innerHTML = `
-        <label>Категорія</label>
-        <select class="custom-cat" required>
-          <option value="">— оберіть —</option>
-          ${categoryOptionsHtml(prefill?.category || '')}
-        </select>
-        <label>Назва підкатегорії</label>
-        <input class="custom-name" type="text" placeholder="напр. Ламинування вій" required minlength="2">
-        <label>Послуги (через кому, необовʼязково)</label>
-        <textarea class="custom-services" placeholder="напр. Ламинування, Фарбування вій"></textarea>
-        <button type="button" class="btn-remove">Видалити</button>
-      `;
-      if (prefill?.name) row.querySelector('.custom-name').value = prefill.name;
-      if (prefill?.services?.length) {
-        row.querySelector('.custom-services').value = prefill.services.join(', ');
-      }
-      row.querySelector('.btn-remove').addEventListener('click', () => row.remove());
-      customSubsList.appendChild(row);
-    }
-
-    function showCustomSubsSection() {
-      customSubsSection.classList.remove('hidden');
-      if (!customSubsList.children.length) addCustomSubRow();
-    }
-
-    addCustomSubBtn.addEventListener('click', () => addCustomSubRow());
-
-    async function loadCatalog() {
-      try {
-        const res = await fetch('/api/data?t=' + Date.now(), { cache: 'no-store' });
-        const data = await res.json();
-        if (!res.ok) throw new Error('Не вдалося завантажити каталог');
-        masterCatalog = data.masterCatalog || {};
-        renderServicesTree();
-        showCustomSubsSection();
-      } catch (err) {
-        catalogLoading.textContent = err.message;
-      }
-    }
-
-    function toggleProviderFields() {
-      providerFields.classList.toggle('hidden', roleSel.value !== 'provider');
-    }
-
-    roleSel.onchange = toggleProviderFields;
-    if (new URLSearchParams(window.location.search).get('role') === 'provider') {
-      roleSel.value = 'provider';
-      toggleProviderFields();
-    }
-
-    (function initRolePills() {
-      const buttons = [
-        document.getElementById('roleClientBtn'),
-        document.getElementById('roleProviderBtn'),
-      ];
-      function setRole(role) {
-        roleSel.value = role;
-        buttons.forEach((btn) => btn.classList.toggle('active', btn.dataset.role === role));
-        toggleProviderFields();
-      }
-      buttons.forEach((btn) => btn.addEventListener('click', () => setRole(btn.dataset.role)));
-      setRole(roleSel.value === 'provider' ? 'provider' : 'client');
-    })();
+    document.getElementById('roleClientBtn').onclick = () => setRole('client');
+    document.getElementById('roleProviderBtn').onclick = () => setRole('provider');
+    if (new URLSearchParams(location.search).get('role') === 'provider') setRole('provider');
+    else setRole('client');
 
     function redirectByRole(role) {
       if (role === 'admin' || role === 'provider') location.href = '/admin';
@@ -308,112 +113,132 @@
       else location.href = '/';
     }
 
-    function parseServicesList(text) {
-      return String(text || '')
-        .split(/[,;\n]+/)
-        .map((s) => s.trim())
-        .filter(Boolean);
+    async function loadCategories() {
+      try {
+        const res = await fetch('/api/data?t=' + Date.now(), { cache: 'no-store' });
+        const data = await res.json();
+        const sel = document.getElementById('categoryKey');
+        Object.entries(data.masterCatalog || {}).forEach(([key, cat]) => {
+          const opt = document.createElement('option');
+          opt.value = key;
+          opt.textContent = cat.name || key;
+          sel.appendChild(opt);
+        });
+      } catch (_) {}
     }
 
-    function collectProviderServices() {
-      const serviceCategories = [...document.querySelectorAll('.cat-cb:checked')].map(
-        (el) => el.getAttribute('data-cat-check')
-      );
-      const subMap = new Map();
+    function makeNonce() {
+      const bytes = new Uint8Array(16);
+      crypto.getRandomValues(bytes);
+      return Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
+    }
 
-      document.querySelectorAll('.sub-pick-cb:checked').forEach((cb) => {
-        const cat = cb.getAttribute('data-cat');
-        const sub = cb.getAttribute('data-sub');
-        const key = cat + ':' + sub;
-        if (!subMap.has(key)) {
-          subMap.set(key, {
-            category: cat,
-            subcategory: sub,
-            wholeSubcategory: true,
-            services: [],
+    async function sha256Hex(value) {
+      const data = new TextEncoder().encode(value);
+      const hash = await crypto.subtle.digest('SHA-256', data);
+      return Array.from(new Uint8Array(hash), (b) => b.toString(16).padStart(2, '0')).join('');
+    }
+
+    async function finishOauth(path, body) {
+      showMsg('Вхід…', true);
+      const res = await fetch(path, {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.message || data.error || 'Помилка OAuth');
+      redirectByRole(data.user?.role);
+    }
+
+    async function initOauth() {
+      try {
+        const res = await fetch('/api/auth/oauth-config', { cache: 'no-store' });
+        oauthConfig = await res.json();
+      } catch (_) {
+        return;
+      }
+      const block = document.getElementById('oauthBlock');
+      const or = document.getElementById('oauthOr');
+      const show = oauthConfig.googleEnabled || oauthConfig.appleEnabled;
+      block.classList.toggle('mf-hidden', !show);
+      or.classList.toggle('mf-hidden', !show);
+      document.getElementById('googleBtn').classList.toggle('mf-hidden', !oauthConfig.googleEnabled);
+      document.getElementById('appleBtn').classList.toggle('mf-hidden', !oauthConfig.appleEnabled);
+
+      if (oauthConfig.googleEnabled && window.google?.accounts?.id) {
+        google.accounts.id.initialize({
+          client_id: oauthConfig.googleClientId,
+          callback: async (response) => {
+            try {
+              await finishOauth('/api/auth/google', {
+                credential: response.credential,
+                role: roleSel.value,
+                companyName: document.getElementById('companyName').value.trim(),
+              });
+            } catch (err) {
+              showMsg(err.message, false);
+            }
+          },
+        });
+      }
+
+      document.getElementById('googleBtn').onclick = () => {
+        if (!oauthConfig.googleEnabled) return showMsg('Додайте GOOGLE_CLIENT_ID у Vercel', false);
+        if (window.google?.accounts?.id) {
+          google.accounts.id.prompt();
+        } else {
+          showMsg('Google SDK ще завантажується. Спробуйте за секунду.', false);
+        }
+      };
+
+      document.getElementById('appleBtn').onclick = async () => {
+        if (!oauthConfig.appleEnabled) return showMsg('Додайте APPLE_CLIENT_ID у Vercel', false);
+        if (!window.AppleID) return showMsg('Apple SDK ще завантажується', false);
+        try {
+          const rawNonce = makeNonce();
+          const hashedNonce = await sha256Hex(rawNonce);
+          AppleID.auth.init({
+            clientId: oauthConfig.appleClientId,
+            scope: 'name email',
+            redirectURI: location.origin + '/login.html',
+            usePopup: true,
+            nonce: hashedNonce,
           });
+          const result = await AppleID.auth.signIn();
+          const idToken = result?.authorization?.id_token;
+          const fullName = result?.user?.name
+            ? [result.user.name.firstName, result.user.name.lastName].filter(Boolean).join(' ')
+            : '';
+          await finishOauth('/api/auth/apple', {
+            idToken,
+            rawNonce,
+            role: roleSel.value,
+            companyName: document.getElementById('companyName').value.trim() || fullName,
+            name: fullName,
+          });
+        } catch (err) {
+          if (err?.error !== 'popup_closed_by_user') {
+            showMsg(err.message || 'Apple Sign In скасовано', false);
+          }
         }
-      });
-
-      document.querySelectorAll('.service-cb:checked').forEach((cb) => {
-        const cat = cb.getAttribute('data-cat');
-        const sub = cb.getAttribute('data-sub');
-        const service = cb.getAttribute('data-service');
-        const key = cat + ':' + sub;
-        const entry = subMap.get(key);
-        if (entry?.wholeSubcategory) return;
-        if (!subMap.has(key)) {
-          subMap.set(key, { category: cat, subcategory: sub, services: [] });
-        }
-        subMap.get(key).services.push(service);
-      });
-
-      const customSubcategories = [...customSubsList.querySelectorAll('.custom-row')]
-        .map((row) => {
-          const category = row.querySelector('.custom-cat')?.value?.trim();
-          const name = row.querySelector('.custom-name')?.value?.trim();
-          const services = parseServicesList(row.querySelector('.custom-services')?.value);
-          if (!category || !name) return null;
-          return { category, name, services };
-        })
-        .filter(Boolean);
-
-      return {
-        serviceCategories: [...new Set(serviceCategories)],
-        serviceSubcategories: [...subMap.values()],
-        customSubcategories,
       };
     }
 
-    document.getElementById('registerForm').onsubmit = async (e) => {
+    registerForm.onsubmit = async (e) => {
       e.preventDefault();
       message.className = 'msg';
       submitBtn.disabled = true;
-
       const body = {
         login: document.getElementById('login').value.trim(),
         password: document.getElementById('password').value,
         role: roleSel.value,
-        email: document.getElementById('email')?.value.trim() || '',
+        phone: document.getElementById('phone').value.trim(),
+        email: document.getElementById('email').value.trim(),
+        companyName: document.getElementById('companyName').value.trim(),
+        categoryKey: document.getElementById('categoryKey').value,
       };
-
-      if (body.role === 'provider') {
-        body.companyName = document.getElementById('companyName').value.trim();
-        body.phone = document.getElementById('phone').value.trim();
-        const picked = collectProviderServices();
-        body.serviceCategories = picked.serviceCategories;
-        body.serviceSubcategories = picked.serviceSubcategories;
-        body.customSubcategories = picked.customSubcategories;
-
-        const hasCategories = body.serviceCategories.length > 0;
-        const hasServices = body.serviceSubcategories.some(
-          (s) => s.services.length > 0 || s.wholeSubcategory
-        );
-        const hasCustom = body.customSubcategories.length > 0;
-        if (!hasCategories && !hasServices && !hasCustom) {
-          message.textContent =
-            'Оберіть категорію, підкатегорію з каталогу або додайте свою підкатегорію';
-          message.className = 'msg err';
-          submitBtn.disabled = false;
-          return;
-        }
-        if (hasCustom) {
-          const incomplete = [...customSubsList.querySelectorAll('.custom-row')].some((row) => {
-            const cat = row.querySelector('.custom-cat')?.value?.trim();
-            const name = row.querySelector('.custom-name')?.value?.trim();
-            const hasAny = cat || name || row.querySelector('.custom-services')?.value?.trim();
-            return hasAny && (!cat || !name || name.length < 2);
-          });
-          if (incomplete) {
-            message.textContent =
-              'У блоці «Своя підкатегорія» вкажіть категорію та назву (мін. 2 символи)';
-            message.className = 'msg err';
-            submitBtn.disabled = false;
-            return;
-          }
-        }
-      }
-
       try {
         const res = await fetch('/api/register', {
           method: 'POST',
@@ -423,34 +248,41 @@
         });
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || 'Помилка реєстрації');
-        message.textContent = 'Реєстрація успішна! Перенаправлення…';
-        message.className = 'msg ok';
-        setTimeout(() => redirectByRole(data.user.role), 800);
+        pendingRedirectRole = data.user?.role || body.role;
+        if (data.telegramLink?.botUrl) {
+          registerForm.classList.add('mf-hidden');
+          document.getElementById('oauthBlock').classList.add('mf-hidden');
+          document.getElementById('oauthOr').classList.add('mf-hidden');
+          telegramAfter.classList.remove('mf-hidden');
+          document.getElementById('openTelegramBtn').href = data.telegramLink.botUrl;
+          document.getElementById('telegramAfterText').textContent =
+            data.message || 'Відкрийте Telegram-бота і натисніть Start.';
+          showMsg('Акаунт створено', true);
+        } else {
+          showMsg(data.message || 'Реєстрація успішна', true);
+          setTimeout(() => redirectByRole(pendingRedirectRole), 700);
+        }
       } catch (err) {
-        message.textContent = err.message;
-        message.className = 'msg err';
+        showMsg(err.message, false);
         submitBtn.disabled = false;
       }
     };
 
-    loadCatalog();
-    toggleProviderFields();
+    document.getElementById('skipTelegramBtn').onclick = () => redirectByRole(pendingRedirectRole);
+    document.getElementById('openTelegramBtn').addEventListener('click', () => {
+      setTimeout(() => redirectByRole(pendingRedirectRole), 1200);
+    });
 
-    (function initPasswordToggle() {
+    document.getElementById('passwordToggle').onclick = () => {
       const input = document.getElementById('password');
-      const toggle = document.getElementById('passwordToggle');
-      if (!input || !toggle) return;
-      const eye = toggle.querySelector('.eye-label');
-      toggle.addEventListener('click', () => {
-        const show = input.type === 'password';
-        input.type = show ? 'text' : 'password';
-        toggle.classList.toggle('is-visible', show);
-        toggle.setAttribute('aria-pressed', show ? 'true' : 'false');
-        toggle.setAttribute('aria-label', show ? 'Сховати пароль' : 'Показати пароль');
-        toggle.title = show ? 'Сховати пароль' : 'Показати пароль';
-        if (eye) eye.textContent = show ? 'Сховати' : 'Показати';
-      });
-    })();
+      const show = input.type === 'password';
+      input.type = show ? 'text' : 'password';
+      document.querySelector('#passwordToggle .eye-label').textContent = show ? 'Сховати' : 'Показати';
+    };
+
+    loadCategories();
+    window.addEventListener('load', initOauth);
+    setTimeout(initOauth, 800);
   </script>
 </body>
 </html>

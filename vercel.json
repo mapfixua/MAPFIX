@@ -17,6 +17,7 @@
           "telegram-auth.js",
           "telegram-bot.js",
           "password-reset.js",
+          "oauth-auth.js",
           "catalog-store.js",
           "locations-store.js",
           "places-import.js",
