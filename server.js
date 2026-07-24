@@ -47,14 +47,21 @@ try {
 const {
   fetchOsmPlaces,
   fetchGooglePlaces,
+  searchGooglePlacesText,
+  fetchGooglePlaceDetails,
+  googlePlaceToLocation,
   mergeLocations,
   CITY_PRESETS,
   CATEGORY_OSM_FILTERS,
   resolveCity,
+  parseCsv,
+  csvRowToLocation,
+  PROVIDER_IMPORT_TEMPLATE_CSV,
 } = require('./places-import.js');
 const {
   fetchLocationsFromSupabase,
   syncAllLocationsToSupabase,
+  upsertLocationsToSupabase,
 } = require('./locations-store.js');
 const {
   fetchCatalogFromSupabase,
@@ -484,6 +491,24 @@ function defaultLocation(providerId, body) {
     reviews: [],
     views: 0,
   };
+}
+
+/** Persist only changed locations — avoids full catalog/location rewrite hangs on Vercel. */
+async function persistLocationsPatch(data, changedLocs) {
+  const payload = ensureDataShape(data);
+  try {
+    await fsPromises.writeFile(DATA_FILE, JSON.stringify(payload, null, 2), 'utf8');
+  } catch (err) {
+    console.warn('[persistLocationsPatch] local skip:', err.message);
+  }
+  if (Array.isArray(changedLocs) && changedLocs.length) {
+    const sync = await upsertLocationsToSupabase(changedLocs);
+    if (!sync.ok) {
+      console.warn('[persistLocationsPatch] supabase:', sync.error?.message || sync.error);
+      return { ok: false, error: sync.error };
+    }
+  }
+  return { ok: true };
 }
 
 function sendPublicPage(res, filename) {
@@ -1748,7 +1773,7 @@ app.post('/api/provider/locations', requireAuth, rejectClientFromPanel, requireP
       return res.status(500).json({ error: 'Помилка прив\'язки локації до користувача' });
     }
     data.mockLocations.push(loc);
-    await writeData(data);
+    await persistLocationsPatch(data, [loc]);
     res.status(201).json({ ok: true, location: loc });
   } catch (err) {
     console.error(err);
@@ -1782,7 +1807,7 @@ app.put('/api/provider/locations/:id', requireAuth, requireProviderOrAdmin, asyn
     if (Array.isArray(req.body.subcats)) loc.subcats = req.body.subcats;
     if (req.body.schedule) loc.schedule = req.body.schedule;
 
-    await writeData(data);
+    await persistLocationsPatch(data, [loc]);
     res.json({ ok: true, location: loc });
   } catch (err) {
     console.error(err);
@@ -1799,12 +1824,17 @@ app.delete('/api/provider/locations/:id', requireAuth, requireProviderOrAdmin, a
     if (!canManageLocation(data.mockLocations[idx], user)) {
       return res.status(403).json({ error: 'Немає доступу до цієї локації' });
     }
-    data.mockLocations.splice(idx, 1);
-    await writeData(data);
+    const [removed] = data.mockLocations.splice(idx, 1);
+    await persistLocationsPatch(data, []);
+    try {
+      await supabaseClient.from('locations').delete().eq('id', removed.id);
+    } catch (_) {
+      /* optional */
+    }
     res.json({ ok: true });
   } catch (err) {
     console.error(err);
-    res.status(500).json({ error: 'Помилка видалення' });
+    res.status(500).json({ error: 'Помилка видалення локації' });
   }
 });
 
@@ -1833,7 +1863,7 @@ app.post('/api/provider/locations/:id/prices', requireAuth, requireProviderOrAdm
       loc.subcats = [...new Set([...(loc.subcats || []), ...subcats])];
     }
 
-    await writeData(data);
+    await persistLocationsPatch(data, [loc]);
     res.json({ ok: true, location: loc });
   } catch (err) {
     console.error(err);
@@ -1854,7 +1884,7 @@ app.delete('/api/provider/locations/:id/prices', requireAuth, requireProviderOrA
     }
 
     delete loc.prices[serviceName];
-    await writeData(data);
+    await persistLocationsPatch(data, [loc]);
     res.json({ ok: true, location: loc });
   } catch (err) {
     console.error(err);
@@ -1870,6 +1900,10 @@ app.put('/api/provider/profile', requireAuth, requireProvider, async (req, res) 
       data.providerProfiles[user.id] = {};
     }
     const profile = data.providerProfiles[user.id];
+    const onlyBasicProfile =
+      req.body.serviceCategories === undefined &&
+      req.body.serviceSubcategories === undefined &&
+      req.body.customSubcategories === undefined;
     if (req.body.companyName?.trim()) profile.companyName = req.body.companyName.trim();
     if (req.body.phone !== undefined) profile.phone = req.body.phone.trim();
     if (req.body.serviceSubcategories !== undefined) {
@@ -1890,7 +1924,10 @@ app.put('/api/provider/profile', requireAuth, requireProvider, async (req, res) 
         profile.serviceSubcategories || [],
         profile.customSubcategories || []
       );
-    } else if (profile.serviceSubcategories?.length || profile.customSubcategories?.length) {
+    } else if (
+      !onlyBasicProfile &&
+      (profile.serviceSubcategories?.length || profile.customSubcategories?.length)
+    ) {
       profile.serviceCategories = mergeProviderServiceCategories(
         profile.serviceCategories || [],
         profile.serviceSubcategories || [],
@@ -1901,6 +1938,7 @@ app.put('/api/provider/profile', requireAuth, requireProvider, async (req, res) 
     if (!Array.isArray(profile.serviceSubcategories)) profile.serviceSubcategories = [];
     if (!Array.isArray(profile.customSubcategories)) profile.customSubcategories = [];
     if (
+      !onlyBasicProfile &&
       !profile.serviceCategories.length &&
       !profile.serviceSubcategories.length &&
       !profile.customSubcategories.length
@@ -1910,11 +1948,156 @@ app.put('/api/provider/profile', requireAuth, requireProvider, async (req, res) 
           'Оберіть категорію, підкатегорію з каталогу або додайте свою підкатегорію',
       });
     }
-    await writeData(data);
+    try {
+      await upsertProviderProfile(user.id, profile);
+    } catch (e) {
+      console.warn('[profile] supabase profile:', e.message);
+    }
+    try {
+      await fsPromises.writeFile(DATA_FILE, JSON.stringify(ensureDataShape(data), null, 2), 'utf8');
+    } catch (e) {
+      console.warn('[profile] local skip:', e.message);
+    }
     res.json({ ok: true, profile });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Помилка оновлення профілю' });
+  }
+});
+
+app.get('/api/provider/import/template', requireAuth, requireProvider, (_req, res) => {
+  res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+  res.setHeader('Content-Disposition', 'attachment; filename="mapfix-locations-template.csv"');
+  res.send('\uFEFF' + PROVIDER_IMPORT_TEMPLATE_CSV);
+});
+
+app.get('/api/provider/places/search', requireAuth, requireProvider, async (req, res) => {
+  try {
+    if (!process.env.GOOGLE_PLACES_API_KEY && !process.env.GOOGLE_MAPS_API_KEY) {
+      return res.status(503).json({
+        ok: false,
+        error: 'places_not_configured',
+        message: 'Додайте GOOGLE_PLACES_API_KEY у Vercel для пошуку місць Google',
+      });
+    }
+    const places = await searchGooglePlacesText({
+      query: req.query.q,
+      lat: req.query.lat != null ? Number(req.query.lat) : undefined,
+      lng: req.query.lng != null ? Number(req.query.lng) : undefined,
+    });
+    res.json({ ok: true, places });
+  } catch (err) {
+    console.error('[GET /api/provider/places/search]', err);
+    res.status(400).json({ error: err.message || 'Помилка пошуку Google' });
+  }
+});
+
+app.get('/api/provider/places/details', requireAuth, requireProvider, async (req, res) => {
+  try {
+    if (!process.env.GOOGLE_PLACES_API_KEY && !process.env.GOOGLE_MAPS_API_KEY) {
+      return res.status(503).json({
+        ok: false,
+        error: 'places_not_configured',
+        message: 'Додайте GOOGLE_PLACES_API_KEY у Vercel',
+      });
+    }
+    const place = await fetchGooglePlaceDetails({ placeId: req.query.placeId });
+    res.json({ ok: true, place });
+  } catch (err) {
+    console.error('[GET /api/provider/places/details]', err);
+    res.status(400).json({ error: err.message || 'Помилка деталей місця' });
+  }
+});
+
+app.post('/api/provider/import/place', requireAuth, requireProvider, async (req, res) => {
+  try {
+    const user = getSessionUser(req);
+    const cat = String(req.body.cat || '').trim();
+    if (!cat) return res.status(400).json({ error: 'Оберіть категорію Mapfix' });
+
+    let place = req.body.place;
+    if (!place && req.body.placeId) {
+      place = await fetchGooglePlaceDetails({ placeId: req.body.placeId });
+    }
+    if (!place?.title || !Number.isFinite(Number(place.lat)) || !Number.isFinite(Number(place.lng))) {
+      return res.status(400).json({ error: 'Немає даних місця для імпорту' });
+    }
+
+    const loc = googlePlaceToLocation(place, { providerId: user.id, cat });
+    const data = await readData();
+    const merged = mergeLocations(data.mockLocations, [loc], { updateExisting: false });
+    if (!merged.added.length) {
+      return res.status(409).json({
+        error: 'Схожа точка вже є на карті',
+        skipped: merged.skipped,
+      });
+    }
+    const created = merged.locations.find((l) => l.id === merged.added[0]);
+    created.providerId = user.id;
+    data.mockLocations = merged.locations.map((l) =>
+      l.id === created.id ? { ...l, providerId: user.id } : l
+    );
+    await persistLocationsPatch(data, [created]);
+    res.status(201).json({ ok: true, location: created });
+  } catch (err) {
+    console.error('[POST /api/provider/import/place]', err);
+    res.status(500).json({ error: err.message || 'Помилка імпорту місця' });
+  }
+});
+
+app.post('/api/provider/import/excel', requireAuth, requireProvider, async (req, res) => {
+  try {
+    const user = getSessionUser(req);
+    const defaultCat = String(req.body.defaultCat || '').trim() || 'home';
+    let rows = Array.isArray(req.body.rows) ? req.body.rows : null;
+    if (!rows && req.body.csv) {
+      rows = parseCsv(String(req.body.csv));
+    }
+    if (!rows || !rows.length) {
+      return res.status(400).json({
+        error:
+          'Немає рядків. Завантажте CSV/Excel у форматі: title,address,phone,lat,lng,cat,text,status',
+      });
+    }
+
+    const incoming = rows
+      .map((row) => {
+        const loc = csvRowToLocation(row, defaultCat);
+        if (!loc) return null;
+        if (row.status === 'closed' || row.openStatus === 'closed') loc.openStatus = 'closed';
+        loc.providerId = user.id;
+        loc.importSource = 'excel';
+        return loc;
+      })
+      .filter(Boolean);
+
+    if (!incoming.length) {
+      return res.status(400).json({
+        error:
+          'Жодного валідного рядка. Потрібні title, lat, lng (і бажано address, phone, cat)',
+      });
+    }
+
+    const data = await readData();
+    const merged = mergeLocations(data.mockLocations, incoming, { updateExisting: false });
+    const created = merged.locations.filter((l) => merged.added.includes(l.id)).map((l) => ({
+      ...l,
+      providerId: user.id,
+    }));
+    data.mockLocations = merged.locations.map((l) =>
+      merged.added.includes(l.id) ? { ...l, providerId: user.id } : l
+    );
+    await persistLocationsPatch(data, created);
+    res.status(201).json({
+      ok: true,
+      added: created.length,
+      skipped: merged.skipped.length,
+      locations: created,
+      skippedDetails: merged.skipped,
+    });
+  } catch (err) {
+    console.error('[POST /api/provider/import/excel]', err);
+    res.status(500).json({ error: err.message || 'Помилка імпорту Excel' });
   }
 });
 

@@ -522,82 +522,128 @@
     </div>
 
     <!-- ========== ПРОВАЙДЕР ========== -->
-    <div id="providerPanel" class="hidden">
-      <p class="sub">Кабінет вашої компанії: лише ваші точки та прайс-лист.</p>
+    <div id="providerCabinet" class="hidden">
+      <p class="sub">Кабінет вашої компанії: профіль, точки, замовлення та імпорт у нашому форматі.</p>
 
-      <div class="card">
-        <h2>Профіль компанії</h2>
-        <form id="profileForm">
-          <label>Назва компанії</label>
-          <input type="text" id="companyName" required>
-          <label>Телефон</label>
-          <input type="text" id="companyPhone">
-          <button type="submit">Зберегти профіль</button>
-        </form>
-      </div>
+      <div class="admin-shell">
+        <aside class="admin-nav" aria-label="Кабінет провайдера">
+          <div class="admin-nav-title">Меню</div>
+          <button type="button" class="active" data-provider-nav="profile">Профіль</button>
+          <button type="button" data-provider-nav="locations">Мої локації <span class="nav-count" id="navCountMyLocs">0</span></button>
+          <button type="button" data-provider-nav="orders">Замовлення</button>
+          <button type="button" data-provider-nav="import">Імпорт</button>
+        </aside>
 
-      <div class="card">
-        <h2>📥 Вхідні замовлення</h2>
-        <div id="providerOrdersList"><p class="list-item-meta">Завантаження…</p></div>
-      </div>
-
-      <div class="card">
-        <h2>Мої локації</h2>
-        <div id="myLocationsList"></div>
-        <button type="button" id="showNewLocBtn" class="btn-secondary" style="margin-top:12px;width:100%">+ Нова локація</button>
-      </div>
-
-      <div class="card hidden" id="locationEditor">
-        <h2 id="locEditorTitle">Нова локація</h2>
-        <form id="locationForm">
-          <input type="hidden" id="editLocId">
-          <label>Назва закладу</label>
-          <input type="text" id="locTitle" required>
-          <label>Опис</label>
-          <textarea id="locText"></textarea>
-          <label>Адреса</label>
-          <input type="text" id="locAddress" required>
-          <label>Телефон</label>
-          <input type="text" id="locPhone">
-          <div class="field-block loc-pick-map-wrap">
-            <label>Розташування на карті</label>
-            <p class="loc-map-hint">Клікніть на карту, щоб поставити маркер. Його можна перетягнути для уточнення.</p>
-            <div id="locPickMap" class="loc-pick-map"></div>
-            <p class="loc-coords-hint" id="locCoordsHint">Оберіть точку на карті</p>
-            <input type="hidden" id="locLat">
-            <input type="hidden" id="locLng">
+        <div class="admin-main">
+          <div id="providerPaneProfile" class="admin-pane active card">
+            <h2>Профіль компанії</h2>
+            <form id="profileForm">
+              <label>Назва компанії</label>
+              <input type="text" id="companyName" required>
+              <label>Телефон</label>
+              <input type="text" id="companyPhone">
+              <button type="submit">Зберегти профіль</button>
+            </form>
           </div>
-          <label>Категорія на карті</label>
-          <select id="locCat"></select>
-          <label>Підкатегорії</label>
-          <p class="field-hint">Оберіть одну або кілька підкатегорій з каталогу для цієї точки.</p>
-          <div id="locSubcatsPicker" class="subcat-picker">
-            <p class="list-item-meta">Спочатку оберіть категорію</p>
-          </div>
-          <label>Статус</label>
-          <select id="locStatus">
-            <option value="open">Відкрито</option>
-            <option value="closed">Зачинено</option>
-          </select>
-          <button type="submit" id="locSaveBtn">Зберегти локацію</button>
-          <button type="button" class="btn-secondary hidden" id="locDeleteBtn" style="margin-top:8px;width:100%">Видалити локацію</button>
-        </form>
 
-        <hr style="margin:20px 0;border:none;border-top:1px solid #e2e8f0">
-        <h2>Послуги та ціни цієї точки</h2>
-        <div id="locPricesList"></div>
-        <form id="priceForm" class="hidden">
-          <label>Послуги з каталогу</label>
-          <p class="field-hint">Оберіть послуги для прайсу. Галочка «Всі послуги» обирає всі з обраних підкатегорій.</p>
-          <div id="priceServicesPicker" class="subcat-picker">
-            <p class="list-item-meta">Спочатку оберіть категорію та підкатегорії</p>
+          <div id="providerPaneOrders" class="admin-pane card">
+            <h2>Вхідні замовлення</h2>
+            <div id="providerOrdersList"><p class="list-item-meta">Завантаження…</p></div>
           </div>
-          <label>Або нова назва послуги</label>
-          <input type="text" id="priceServiceCustom" placeholder="Якщо немає в списку">
-          <label>Ваша ціна</label>
-          <input type="text" id="priceValue" placeholder="Якщо порожньо — орієнтовна ціна з каталогу">
-          <button type="submit">Додати / оновити ціну</button>
-        </form>
+
+          <div id="providerPaneLocations" class="admin-pane card">
+            <h2>Мої локації</h2>
+            <div id="myLocationsList"></div>
+            <button type="button" id="showNewLocBtn" class="btn-secondary" style="margin-top:12px;width:100%">+ Нова локація вручну</button>
+          </div>
+
+          <div id="providerPaneImport" class="admin-pane card">
+            <h2>Імпорт точок</h2>
+            <p class="field-hint">Лише два способи: таблиця Mapfix (Excel/CSV) або одне місце з Google Maps.</p>
+
+            <div style="border:1px solid #e5e7eb;border-radius:12px;padding:14px;margin:0 0 16px;background:#fff">
+              <h3 style="margin:0 0 8px;font-size:1rem">1) Excel / CSV (наш шаблон)</h3>
+              <p class="field-hint">Колонки: <code>title, address, phone, lat, lng, cat, text, status</code>. <code>cat</code> — ключ категорії (напр. rental, beauty, home).</p>
+              <div style="margin-bottom:10px">
+                <a class="btn-secondary" style="width:auto;display:inline-block;text-decoration:none;padding:10px 14px" href="/api/provider/import/template">Скачати шаблон CSV</a>
+              </div>
+              <label>Категорія за замовчуванням (якщо в файлі порожньо)</label>
+              <select id="provImportDefaultCat"></select>
+              <label>Файл .csv або .xlsx</label>
+              <input type="file" id="provImportFile" accept=".csv,.xlsx,.xls,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet">
+              <button type="button" id="provImportExcelBtn" style="margin-top:10px">Імпортувати з файлу</button>
+              <div id="provImportExcelResult" class="msg" style="display:none;margin-top:10px"></div>
+            </div>
+
+            <div style="border:1px solid #e5e7eb;border-radius:12px;padding:14px;background:#fff">
+              <h3 style="margin:0 0 8px;font-size:1rem">2) Місце з Google Maps</h3>
+              <p class="field-hint">Знайдіть заклад за назвою/адресою, перегляньте дані й додайте як вашу точку.</p>
+              <label>Категорія Mapfix</label>
+              <select id="provPlaceCat" required></select>
+              <label>Пошук у Google</label>
+              <div style="display:flex;gap:8px;align-items:stretch;flex-wrap:wrap">
+                <input type="text" id="provPlaceQuery" placeholder="напр. оренда квартир Коцюбинське" style="flex:1;min-width:180px">
+                <button type="button" id="provPlaceSearchBtn" class="btn-secondary" style="width:auto">Знайти</button>
+              </div>
+              <div id="provPlaceResults" style="margin-top:10px"></div>
+              <div id="provPlacePreview" class="hidden" style="margin-top:12px;padding:12px;background:#f9fafb;border-radius:10px"></div>
+              <div id="provPlaceResult" class="msg" style="display:none;margin-top:10px"></div>
+            </div>
+          </div>
+
+          <div class="card hidden" id="locationEditor">
+            <h2 id="locEditorTitle">Нова локація</h2>
+            <form id="locationForm">
+              <input type="hidden" id="editLocId">
+              <label>Назва закладу</label>
+              <input type="text" id="locTitle" required>
+              <label>Опис</label>
+              <textarea id="locText"></textarea>
+              <label>Адреса</label>
+              <input type="text" id="locAddress" required>
+              <label>Телефон</label>
+              <input type="text" id="locPhone">
+              <div class="field-block loc-pick-map-wrap">
+                <label>Розташування на карті</label>
+                <p class="loc-map-hint">Клікніть на карту, щоб поставити маркер. Його можна перетягнути для уточнення.</p>
+                <div id="locPickMap" class="loc-pick-map"></div>
+                <p class="loc-coords-hint" id="locCoordsHint">Оберіть точку на карті</p>
+                <input type="hidden" id="locLat">
+                <input type="hidden" id="locLng">
+              </div>
+              <label>Категорія на карті</label>
+              <select id="locCat"></select>
+              <label>Підкатегорії</label>
+              <p class="field-hint">Оберіть одну або кілька підкатегорій з каталогу для цієї точки.</p>
+              <div id="locSubcatsPicker" class="subcat-picker">
+                <p class="list-item-meta">Спочатку оберіть категорію</p>
+              </div>
+              <label>Статус</label>
+              <select id="locStatus">
+                <option value="open">Відкрито</option>
+                <option value="closed">Зачинено</option>
+              </select>
+              <button type="submit" id="locSaveBtn">Зберегти локацію</button>
+              <button type="button" class="btn-secondary hidden" id="locDeleteBtn" style="margin-top:8px;width:100%">Видалити локацію</button>
+            </form>
+
+            <hr style="margin:20px 0;border:none;border-top:1px solid #e2e8f0">
+            <h2>Послуги та ціни цієї точки</h2>
+            <div id="locPricesList"></div>
+            <form id="priceForm" class="hidden">
+              <label>Послуги з каталогу</label>
+              <p class="field-hint">Оберіть послуги для прайсу. Галочка «Всі послуги» обирає всі з обраних підкатегорій.</p>
+              <div id="priceServicesPicker" class="subcat-picker">
+                <p class="list-item-meta">Спочатку оберіть категорію та підкатегорії</p>
+              </div>
+              <label>Або нова назва послуги</label>
+              <input type="text" id="priceServiceCustom" placeholder="Якщо немає в списку">
+              <label>Ваша ціна</label>
+              <input type="text" id="priceValue" placeholder="Якщо порожньо — орієнтовна ціна з каталогу">
+              <button type="submit">Додати / оновити ціну</button>
+            </form>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -606,6 +652,7 @@
   </div>
 
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
   <script src="/mapfix-sync.js"></script>
   <script>
     const LOC_MAP_DEFAULT = [50.4501, 30.5234];
@@ -1683,19 +1730,238 @@
 
     async function initProvider() {
       document.getElementById('pageTitle').textContent = 'Кабінет провайдера';
-      document.getElementById('providerPanel').classList.remove('hidden');
+      document.getElementById('adminPanel').classList.add('hidden');
+      document.getElementById('providerCabinet').classList.remove('hidden');
       await reloadProvider();
       document.getElementById('companyName').value = providerData.profile.companyName || '';
       document.getElementById('companyPhone').value = providerData.profile.phone || '';
       fillLocCatSelect('', []);
+      fillProviderImportCats();
       renderMyLocations();
       loadProviderOrders();
+      const navCount = document.getElementById('navCountMyLocs');
+      if (navCount) navCount.textContent = String(providerData.locations?.length || 0);
 
       if (new URLSearchParams(window.location.search).get('newLocation') === '1') {
+        showProviderPane('locations');
         await openLocationEditor(null);
         document.getElementById('locationEditor').scrollIntoView({ behavior: 'smooth' });
       }
     }
+
+    function showProviderPane(name) {
+      document.querySelectorAll('[data-provider-nav]').forEach((btn) => {
+        btn.classList.toggle('active', btn.dataset.providerNav === name);
+      });
+      const map = {
+        profile: 'providerPaneProfile',
+        locations: 'providerPaneLocations',
+        orders: 'providerPaneOrders',
+        import: 'providerPaneImport',
+      };
+      Object.values(map).forEach((id) => {
+        const el = document.getElementById(id);
+        if (el) el.classList.toggle('active', map[name] === id);
+      });
+      const editor = document.getElementById('locationEditor');
+      if (editor && name !== 'locations') editor.classList.add('hidden');
+      if (name === 'orders') loadProviderOrders();
+    }
+
+    document.querySelectorAll('[data-provider-nav]').forEach((btn) => {
+      btn.onclick = () => showProviderPane(btn.dataset.providerNav);
+    });
+
+    function fillProviderImportCats() {
+      const opts =
+        '<option value="">— оберіть —</option>' +
+        Object.entries(catalog || {})
+          .map(([k, c]) => '<option value="' + esc(k) + '">' + esc(c.name || k) + '</option>')
+          .join('');
+      const a = document.getElementById('provImportDefaultCat');
+      const b = document.getElementById('provPlaceCat');
+      if (a) a.innerHTML = opts;
+      if (b) b.innerHTML = opts;
+      const fromProfile = (providerData?.profile?.serviceCategories || [])[0];
+      if (fromProfile && catalog[fromProfile]) {
+        if (a) a.value = fromProfile;
+        if (b) b.value = fromProfile;
+      }
+    }
+
+    function parseCsvClient(text) {
+      const lines = String(text || '')
+        .replace(/^\uFEFF/, '')
+        .split(/\r?\n/)
+        .map((l) => l.trim())
+        .filter(Boolean);
+      if (lines.length < 2) return [];
+      const sep = lines[0].includes(';') ? ';' : ',';
+      const headers = lines[0].split(sep).map((h) => h.trim().toLowerCase());
+      return lines.slice(1).map((line) => {
+        const cols = line.split(sep).map((c) => c.trim().replace(/^"|"$/g, ''));
+        const row = {};
+        headers.forEach((h, i) => {
+          row[h] = cols[i] || '';
+        });
+        return row;
+      });
+    }
+
+    async function readImportFile(file) {
+      const name = (file.name || '').toLowerCase();
+      if (name.endsWith('.csv') || file.type === 'text/csv') {
+        return parseCsvClient(await file.text());
+      }
+      if (!window.XLSX) {
+        throw new Error('Парсер Excel не завантажився. Збережіть як CSV або оновіть сторінку.');
+      }
+      const buf = await file.arrayBuffer();
+      const wb = XLSX.read(buf, { type: 'array' });
+      const sheet = wb.Sheets[wb.SheetNames[0]];
+      const json = XLSX.utils.sheet_to_json(sheet, { defval: '' });
+      return json.map((row) => {
+        const out = {};
+        Object.entries(row).forEach(([k, v]) => {
+          out[String(k).trim().toLowerCase()] = String(v ?? '').trim();
+        });
+        return out;
+      });
+    }
+
+    document.getElementById('provImportExcelBtn')?.addEventListener('click', async () => {
+      const resultEl = document.getElementById('provImportExcelResult');
+      const file = document.getElementById('provImportFile')?.files?.[0];
+      resultEl.style.display = 'block';
+      resultEl.className = 'msg';
+      if (!file) {
+        resultEl.className = 'msg err';
+        resultEl.textContent = 'Оберіть файл CSV або Excel';
+        return;
+      }
+      resultEl.textContent = 'Імпорт…';
+      try {
+        const rows = await readImportFile(file);
+        const data = await apiFetch('/api/provider/import/excel', {
+          method: 'POST',
+          body: JSON.stringify({
+            rows,
+            defaultCat: document.getElementById('provImportDefaultCat').value || 'home',
+          }),
+        });
+        resultEl.className = 'msg ok';
+        resultEl.textContent =
+          'Додано ' + data.added + ' точок' + (data.skipped ? ', пропущено ' + data.skipped : '');
+        await reloadProvider();
+        renderMyLocations();
+        document.getElementById('navCountMyLocs').textContent = String(providerData.locations?.length || 0);
+        notifyMapDataChanged();
+      } catch (err) {
+        resultEl.className = 'msg err';
+        resultEl.textContent = err.message;
+      }
+    });
+
+    document.getElementById('provPlaceSearchBtn')?.addEventListener('click', async () => {
+      const q = document.getElementById('provPlaceQuery').value.trim();
+      const box = document.getElementById('provPlaceResults');
+      const msg = document.getElementById('provPlaceResult');
+      msg.style.display = 'none';
+      document.getElementById('provPlacePreview').classList.add('hidden');
+      if (q.length < 2) {
+        msg.style.display = 'block';
+        msg.className = 'msg err';
+        msg.textContent = 'Введіть назву або адресу';
+        return;
+      }
+      box.innerHTML = '<p class="list-item-meta">Пошук…</p>';
+      try {
+        const data = await apiFetch('/api/provider/places/search?q=' + encodeURIComponent(q));
+        const places = data.places || [];
+        if (!places.length) {
+          box.innerHTML = '<p class="list-item-meta">Нічого не знайдено</p>';
+          return;
+        }
+        box.innerHTML = places
+          .map(
+            (p, i) =>
+              '<button type="button" class="list-item" data-place-idx="' +
+              i +
+              '" style="width:100%;text-align:left;margin-bottom:6px">' +
+              '<strong>' +
+              esc(p.title) +
+              '</strong><br>' +
+              '<span class="list-item-meta">' +
+              esc(p.address || '') +
+              (p.phone ? ' · ' + esc(p.phone) : '') +
+              '</span></button>'
+          )
+          .join('');
+        box.querySelectorAll('[data-place-idx]').forEach((btn) => {
+          btn.onclick = () => {
+            const place = places[Number(btn.dataset.placeIdx)];
+            const preview = document.getElementById('provPlacePreview');
+            preview.classList.remove('hidden');
+            preview.innerHTML =
+              '<p><strong>' +
+              esc(place.title) +
+              '</strong></p>' +
+              '<p class="list-item-meta">' +
+              esc(place.address || '') +
+              '</p>' +
+              '<p class="list-item-meta">' +
+              (place.phone ? esc(place.phone) + ' · ' : '') +
+              Number(place.lat).toFixed(5) +
+              ', ' +
+              Number(place.lng).toFixed(5) +
+              '</p>' +
+              '<button type="button" id="provPlaceImportBtn" style="margin-top:8px">Імпортувати цю точку</button>';
+            document.getElementById('provPlaceImportBtn').onclick = async () => {
+              const cat = document.getElementById('provPlaceCat').value;
+              const out = document.getElementById('provPlaceResult');
+              out.style.display = 'block';
+              if (!cat) {
+                out.className = 'msg err';
+                out.textContent = 'Оберіть категорію Mapfix';
+                return;
+              }
+              out.className = 'msg';
+              out.textContent = 'Імпорт…';
+              try {
+                let payload = { cat, place };
+                if (place.placeId) {
+                  const details = await apiFetch(
+                    '/api/provider/places/details?placeId=' + encodeURIComponent(place.placeId)
+                  );
+                  payload = { cat, place: details.place };
+                }
+                await apiFetch('/api/provider/import/place', {
+                  method: 'POST',
+                  body: JSON.stringify(payload),
+                });
+                out.className = 'msg ok';
+                out.textContent = 'Точку додано на карту';
+                await reloadProvider();
+                renderMyLocations();
+                document.getElementById('navCountMyLocs').textContent = String(
+                  providerData.locations?.length || 0
+                );
+                notifyMapDataChanged();
+                showProviderPane('locations');
+              } catch (err) {
+                out.className = 'msg err';
+                out.textContent = err.message;
+              }
+            };
+          };
+        });
+      } catch (err) {
+        box.innerHTML = '';
+        msg.style.display = 'block';
+        msg.className = 'msg err';
+        msg.textContent = err.message;
+      }
+    });
 
     document.getElementById('profileForm').onsubmit = async (e) => {
       e.preventDefault();
@@ -1712,7 +1978,10 @@
       showMessage('Профіль збережено');
     };
 
-    document.getElementById('showNewLocBtn').onclick = () => openLocationEditor(null);
+    document.getElementById('showNewLocBtn').onclick = () => {
+      showProviderPane('locations');
+      openLocationEditor(null);
+    };
 
     document.getElementById('locationForm').onsubmit = async (e) => {
       e.preventDefault();

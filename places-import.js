@@ -467,15 +467,171 @@ function mergeLocations(existing, incoming, { updateExisting = false } = {}) {
   return { locations: result, added, skipped, updated };
 }
 
+async function searchGooglePlacesText({ query, apiKey, lat, lng, maxResultCount = 8 }) {
+  const key = apiKey || process.env.GOOGLE_PLACES_API_KEY || process.env.GOOGLE_MAPS_API_KEY;
+  if (!key) throw new Error('GOOGLE_PLACES_API_KEY is not set');
+  const q = String(query || '').trim();
+  if (q.length < 2) throw new Error('Вкажіть назву або адресу місця');
+
+  const body = {
+    textQuery: q,
+    languageCode: 'uk',
+    regionCode: 'UA',
+    maxResultCount: Math.min(20, Math.max(1, Number(maxResultCount) || 8)),
+  };
+  if (Number.isFinite(lat) && Number.isFinite(lng)) {
+    body.locationBias = {
+      circle: {
+        center: { latitude: lat, longitude: lng },
+        radius: 25000,
+      },
+    };
+  }
+
+  const res = await fetch('https://places.googleapis.com/v1/places:searchText', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-Goog-Api-Key': key,
+      'X-Goog-FieldMask':
+        'places.id,places.displayName,places.formattedAddress,places.location,places.nationalPhoneNumber,places.rating,places.userRatingCount',
+    },
+    body: JSON.stringify(body),
+  });
+  const json = await res.json();
+  if (!res.ok) {
+    throw new Error(json?.error?.message || `Places API HTTP ${res.status}`);
+  }
+
+  return (Array.isArray(json.places) ? json.places : [])
+    .map((p) => {
+      const plat = p.location?.latitude;
+      const plng = p.location?.longitude;
+      if (!Number.isFinite(plat) || !Number.isFinite(plng)) return null;
+      const title = p.displayName?.text;
+      if (!title) return null;
+      return {
+        placeId: p.id,
+        title: String(title).trim(),
+        address: p.formattedAddress || '',
+        phone: normalizePhone(p.nationalPhoneNumber || ''),
+        lat: plat,
+        lng: plng,
+        rating: Number(p.rating) || 0,
+        reviewsCount: Number(p.userRatingCount) || 0,
+      };
+    })
+    .filter(Boolean);
+}
+
+async function fetchGooglePlaceDetails({ placeId, apiKey }) {
+  const key = apiKey || process.env.GOOGLE_PLACES_API_KEY || process.env.GOOGLE_MAPS_API_KEY;
+  if (!key) throw new Error('GOOGLE_PLACES_API_KEY is not set');
+  let id = String(placeId || '').trim();
+  if (!id) throw new Error('placeId is required');
+  if (id.startsWith('places/')) id = id.slice('places/'.length);
+
+  const res = await fetch(`https://places.googleapis.com/v1/places/${encodeURIComponent(id)}`, {
+    headers: {
+      'X-Goog-Api-Key': key,
+      'X-Goog-FieldMask':
+        'id,displayName,formattedAddress,location,nationalPhoneNumber,internationalPhoneNumber,rating,userRatingCount,regularOpeningHours,websiteUri,googleMapsUri',
+    },
+  });
+  const p = await res.json();
+  if (!res.ok) {
+    throw new Error(p?.error?.message || `Places API HTTP ${res.status}`);
+  }
+
+  const lat = p.location?.latitude;
+  const lng = p.location?.longitude;
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+    throw new Error('У місця немає координат');
+  }
+
+  const hours =
+    Array.isArray(p.regularOpeningHours?.weekdayDescriptions) &&
+    p.regularOpeningHours.weekdayDescriptions.length
+      ? p.regularOpeningHours.weekdayDescriptions.join('; ')
+      : '09:00 - 18:00';
+
+  return {
+    placeId: p.id || id,
+    title: String(p.displayName?.text || '').trim(),
+    address: p.formattedAddress || '',
+    phone: normalizePhone(p.nationalPhoneNumber || p.internationalPhoneNumber || ''),
+    lat,
+    lng,
+    rating: Number(p.rating) || 0,
+    reviewsCount: Number(p.userRatingCount) || 0,
+    workingHours: hours,
+    website: p.websiteUri || '',
+    mapsUrl: p.googleMapsUri || '',
+    text: 'Імпортовано з Google Maps',
+  };
+}
+
+function googlePlaceToLocation(place, { providerId, cat }) {
+  const placeId = place.placeId || place.id;
+  return {
+    id: makeLocationId(`ggl:${placeId || place.title}:${place.lat}:${place.lng}`),
+    providerId: providerId || null,
+    lat: place.lat,
+    lng: place.lng,
+    cat: cat || 'home',
+    title: String(place.title || '').trim(),
+    text: place.text || 'Імпортовано з Google Maps',
+    rating: Number(place.rating) || 0,
+    reviewsCount: Number(place.reviewsCount) || 0,
+    openStatus: 'open',
+    workingHours: place.workingHours || '09:00 - 18:00',
+    phone: normalizePhone(place.phone || ''),
+    address: place.address || '',
+    schedule: { 'Пн-Пт': place.workingHours || '09:00 - 18:00' },
+    subcats: [],
+    prices: {},
+    reviews: [],
+    views: 0,
+    importSource: 'google_maps',
+    importMeta: {
+      source: 'google_maps',
+      placeId,
+      mapsUrl: place.mapsUrl || '',
+      importedAt: new Date().toISOString(),
+    },
+  };
+}
+
+/** Official Mapfix spreadsheet columns (CSV / Excel). */
+const PROVIDER_IMPORT_COLUMNS = [
+  'title',
+  'address',
+  'phone',
+  'lat',
+  'lng',
+  'cat',
+  'text',
+  'status',
+];
+
+const PROVIDER_IMPORT_TEMPLATE_CSV =
+  'title,address,phone,lat,lng,cat,text,status\n' +
+  'Оренда квартири,"вул. Прикладна 1, Коцюбинське",+380991112233,50.4905,30.3345,rental,Опис точки,open\n';
+
 module.exports = {
   CITY_PRESETS,
   CATEGORY_OSM_FILTERS,
   resolveCity,
   fetchOsmPlaces,
   fetchGooglePlaces,
+  searchGooglePlacesText,
+  fetchGooglePlaceDetails,
+  googlePlaceToLocation,
   loadLocationsFromFile,
   mergeLocations,
   parseCsv,
   csvRowToLocation,
   normalizePhone,
+  PROVIDER_IMPORT_COLUMNS,
+  PROVIDER_IMPORT_TEMPLATE_CSV,
 };
