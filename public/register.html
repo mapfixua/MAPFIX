@@ -42,13 +42,15 @@
         </select>
 
         <label class="mf-label" for="login">Логін</label>
-        <input id="login" type="text" required minlength="3" autocomplete="username" placeholder="напр. sewing_studio">
+        <input id="login" type="text" required minlength="3" maxlength="32" pattern="[A-Za-z0-9._\-]+" autocomplete="username" placeholder="напр. orenda_kvartyra" title="Лише латиниця, цифри, . _ -">
+        <p class="mf-hint">Лише латиниця: a–z, цифри, . _ - (не українською). Назва бізнесу нижче може бути українською.</p>
 
         <label class="mf-label" for="password">Пароль</label>
         <div class="mf-password">
           <input id="password" type="password" required minlength="6" autocomplete="new-password" placeholder="мін. 6 символів">
           <button type="button" class="mf-toggle-eye" id="passwordToggle"><span class="eye-label">Показати</span></button>
         </div>
+        <p class="mf-hint">Пароль може бути будь-якою мовою.</p>
 
         <label class="mf-label" for="phone">Телефон</label>
         <input id="phone" type="tel" inputmode="tel" autocomplete="tel" placeholder="+380661486347">
@@ -229,9 +231,15 @@
     registerForm.onsubmit = async (e) => {
       e.preventDefault();
       message.className = 'msg';
+      const loginVal = document.getElementById('login').value.trim().toLowerCase();
+      if (!/^[a-z0-9._-]{3,32}$/.test(loginVal)) {
+        showMsg('Логін лише латиницею: a–z, цифри, . _ - (напр. orenda_kvartyra). Українською логін не можна.', false);
+        return;
+      }
       submitBtn.disabled = true;
+      submitBtn.textContent = 'Створюємо…';
       const body = {
-        login: document.getElementById('login').value.trim(),
+        login: loginVal,
         password: document.getElementById('password').value,
         role: roleSel.value,
         phone: document.getElementById('phone').value.trim(),
@@ -239,14 +247,17 @@
         companyName: document.getElementById('companyName').value.trim(),
         categoryKey: document.getElementById('categoryKey').value,
       };
+      const ctrl = new AbortController();
+      const timer = setTimeout(() => ctrl.abort(), 28000);
       try {
         const res = await fetch('/api/register', {
           method: 'POST',
           credentials: 'same-origin',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(body),
+          signal: ctrl.signal,
         });
-        const data = await res.json();
+        const data = await res.json().catch(() => ({}));
         if (!res.ok) throw new Error(data.error || 'Помилка реєстрації');
         pendingRedirectRole = data.user?.role || body.role;
         if (data.telegramLink?.botUrl) {
@@ -263,8 +274,15 @@
           setTimeout(() => redirectByRole(pendingRedirectRole), 700);
         }
       } catch (err) {
-        showMsg(err.message, false);
+        const msg =
+          err.name === 'AbortError'
+            ? 'Сервер довго не відповідає. Спробуйте ще раз або змініть логін на латиницю.'
+            : err.message;
+        showMsg(msg, false);
         submitBtn.disabled = false;
+        submitBtn.textContent = 'Створити акаунт';
+      } finally {
+        clearTimeout(timer);
       }
     };
 

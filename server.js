@@ -61,6 +61,12 @@ const {
   upsertCatalogToSupabase,
   mergeCatalog,
 } = require('./catalog-store.js');
+const {
+  fetchProviderProfilesMap,
+  upsertProviderProfile,
+} = require('./provider-profiles-store.js');
+
+const LOGIN_RE = /^[a-z0-9._-]{3,32}$/;
 
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY || '';
 const IS_VERCEL = !!process.env.VERCEL;
@@ -357,6 +363,18 @@ async function readData() {
     console.warn('[readData] Supabase catalog skip:', err.message);
   }
 
+  try {
+    const remoteProfiles = await fetchProviderProfilesMap();
+    if (remoteProfiles.ok && remoteProfiles.profiles) {
+      data.providerProfiles = {
+        ...data.providerProfiles,
+        ...remoteProfiles.profiles,
+      };
+    }
+  } catch (err) {
+    console.warn('[readData] Supabase provider profiles skip:', err.message);
+  }
+
   return data;
 }
 
@@ -579,8 +597,11 @@ app.post('/api/register', async (req, res) => {
     const phoneRaw = req.body.phone?.trim() || '';
     const categoryKey = String(req.body.categoryKey || req.body.serviceCategory || '').trim();
 
-    if (!login || login.length < 3) {
-      return res.status(400).json({ error: 'Логін має містити щонайменше 3 символи' });
+    if (!login || !LOGIN_RE.test(login)) {
+      return res.status(400).json({
+        error:
+          'Логін: лише латинські літери, цифри, крапка, _ або - (3–32 символи). Українською не можна.',
+      });
     }
     if (!password || String(password).length < 6) {
       return res.status(400).json({ error: 'Пароль має містити щонайменше 6 символів' });
@@ -600,16 +621,20 @@ app.post('/api/register', async (req, res) => {
       return res.status(400).json({ error: 'Вкажіть коректний номер телефону' });
     }
 
-    const dataForCatalog = await readData();
-    const catalog = dataForCatalog.masterCatalog || {};
     let serviceCategories = [];
+    let catalog = {};
+    try {
+      const localRaw = await fsPromises.readFile(DATA_FILE, 'utf8');
+      catalog = ensureDataShape(JSON.parse(localRaw)).masterCatalog || {};
+    } catch (_) {
+      catalog = {};
+    }
     if (role === 'provider') {
       if (categoryKey && catalog[categoryKey]) {
         serviceCategories = [categoryKey];
       } else if (categoryKey) {
         return res.status(400).json({ error: 'Оберіть категорію зі списку' });
       }
-      // Provider may register with only company name; category optional for quick start
     }
 
     const { data: existingUser, error: lookupError } = await supabaseClient
@@ -649,18 +674,33 @@ app.post('/api/register', async (req, res) => {
       return res.status(500).json({ error: 'Помилка збереження користувача' });
     }
 
-    if (role === 'provider') {
+    const providerProfile =
+      role === 'provider'
+        ? {
+            companyName,
+            phone: normalizedPhone || phoneRaw || '',
+            serviceCategories,
+            serviceSubcategories: [],
+            customSubcategories: [],
+            createdAt: new Date().toISOString(),
+          }
+        : null;
+
+    if (providerProfile) {
       try {
-        const data = await readData();
-        data.providerProfiles[newUser.id] = {
-          companyName,
-          phone: normalizedPhone || phoneRaw || '',
-          serviceCategories,
-          serviceSubcategories: [],
-          customSubcategories: [],
-          createdAt: new Date().toISOString(),
-        };
-        await writeData(data);
+        const saved = await upsertProviderProfile(newUser.id, providerProfile);
+        if (!saved.ok && !saved.missing) {
+          console.warn('[register] provider profile:', saved.error?.message || saved.error);
+        }
+        // Best-effort local cache (may be read-only on Vercel)
+        try {
+          const raw = await fsPromises.readFile(DATA_FILE, 'utf8');
+          const local = ensureDataShape(JSON.parse(raw));
+          local.providerProfiles[newUser.id] = providerProfile;
+          await fsPromises.writeFile(DATA_FILE, JSON.stringify(local, null, 2), 'utf8');
+        } catch (localErr) {
+          console.warn('[register] local profile skip:', localErr.message);
+        }
       } catch (profileErr) {
         console.warn('[register] provider profile skip:', profileErr.message);
       }
@@ -685,7 +725,11 @@ app.post('/api/register', async (req, res) => {
       }
     }
 
-    const data = await readData();
+    const data = ensureDataShape({
+      providerProfiles: providerProfile ? { [newUser.id]: providerProfile } : {},
+      mockLocations: [],
+      masterCatalog: catalog,
+    });
     res.status(201).json({
       ok: true,
       user: await toPublicUserWithProfile(newUser, data),
@@ -727,17 +771,18 @@ async function finishOauthSignIn(res, result) {
   }
 
   if (result.created && result.user.role === 'provider' && result.profileCompany) {
-    const data = await readData();
-    if (!data.providerProfiles[result.user.id]) {
-      data.providerProfiles[result.user.id] = {
-        companyName: result.profileCompany,
-        phone: '',
-        serviceCategories: [],
-        serviceSubcategories: [],
-        customSubcategories: [],
-        createdAt: new Date().toISOString(),
-      };
-      await writeData(data);
+    const profile = {
+      companyName: result.profileCompany,
+      phone: '',
+      serviceCategories: [],
+      serviceSubcategories: [],
+      customSubcategories: [],
+      createdAt: new Date().toISOString(),
+    };
+    try {
+      await upsertProviderProfile(result.user.id, profile);
+    } catch (err) {
+      console.warn('[oauth] provider profile:', err.message);
     }
   }
 
