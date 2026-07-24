@@ -276,6 +276,24 @@
 
         .detail-scroll-body { flex-grow: 1; overflow-y: auto; padding: 20px; background: #f8fafc; display: flex; flex-direction: column; gap: 16px; }
         .detail-section { background: white; border: 1px solid var(--border); border-radius: 12px; padding: 14px; display: flex; flex-direction: column; gap: 10px; }
+        .detail-photos {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 8px;
+        }
+        .detail-photos a {
+            display: block;
+            aspect-ratio: 1;
+            border-radius: 10px;
+            overflow: hidden;
+            background: #f1f5f9;
+        }
+        .detail-photos img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            display: block;
+        }
         .section-title { font-size: 12px; font-weight: 800; color: #64748b; text-transform: uppercase; border-bottom: 1px solid var(--border); padding-bottom: 4px; margin: 0; }
         
         .info-item { display: flex; gap: 8px; font-size: 13px; color: var(--dark); font-weight: 600; }
@@ -1352,7 +1370,26 @@
                     reviewsHtml = '<div style="font-size:12px; color:#94a3b8; padding:5px 0;">Відгуків ще немає. Будьте першим!</div>';
                 }
 
+                let photosHtml = '';
+                const photos = Array.isArray(loc.photos) ? loc.photos.filter((p) => p && p.url) : [];
+                if (photos.length) {
+                    photosHtml = `
+                    <div class="detail-section">
+                        <h4 class="section-title">📷 Фото</h4>
+                        <div class="detail-photos">
+                            ${photos
+                              .slice(0, 3)
+                              .map(
+                                (p) =>
+                                  `<a href="${p.url}" target="_blank" rel="noopener"><img src="${p.url}" alt=""></a>`
+                              )
+                              .join('')}
+                        </div>
+                    </div>`;
+                }
+
                 bodyBox.innerHTML = `
+                    ${photosHtml}
                     <div class="detail-section">
                         <h4 class="section-title">📍 Контакти та Адреса</h4>
                         <div class="info-item">🏢 ${loc.address}</div>

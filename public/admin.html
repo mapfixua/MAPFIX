@@ -629,6 +629,17 @@
               <button type="button" class="btn-secondary hidden" id="locDeleteBtn" style="margin-top:8px;width:100%">Видалити локацію</button>
             </form>
 
+            <div id="locPhotosBlock" class="hidden" style="margin-top:16px">
+              <h2>Фото точки</h2>
+              <p class="field-hint">До 3 фото, кожне до 5 МБ (JPEG / PNG / WebP). Перед завантаженням стискаємо для якості та розміру.</p>
+              <div id="locPhotosList" style="display:flex;flex-wrap:wrap;gap:10px;margin-bottom:10px"></div>
+              <label class="btn-secondary" style="display:inline-block;width:auto;cursor:pointer;padding:10px 14px">
+                Додати фото
+                <input type="file" id="locPhotoInput" accept="image/jpeg,image/png,image/webp" style="display:none">
+              </label>
+              <div id="locPhotosMsg" class="msg" style="display:none;margin-top:10px"></div>
+            </div>
+
             <hr style="margin:20px 0;border:none;border-top:1px solid #e2e8f0">
             <h2>Послуги та ціни цієї точки</h2>
             <div id="locPricesList"></div>
@@ -1541,12 +1552,14 @@
       document.getElementById('locDeleteBtn').classList.toggle('hidden', !locId);
       document.getElementById('locEditorTitle').textContent = locId ? 'Редагування локації' : 'Нова локація';
       document.getElementById('priceForm').classList.toggle('hidden', !locId);
+      document.getElementById('locPhotosBlock').classList.toggle('hidden', !locId);
 
       if (!locId) {
         clearLocationFormFields();
         fillLocCatSelect('', []);
         fillPriceServiceSelect('');
         syncLocPickMapFromFields();
+        renderLocPhotos(null);
         return;
       }
 
@@ -1564,7 +1577,138 @@
       renderLocPrices(loc);
       fillPriceServiceSelect(loc.cat);
       syncLocPickMapFromFields();
+      renderLocPhotos(loc);
     }
+
+    const MAX_LOC_PHOTOS = 3;
+    const MAX_LOC_PHOTO_BYTES = 5 * 1024 * 1024;
+
+    function showLocPhotosMsg(text, ok) {
+      const el = document.getElementById('locPhotosMsg');
+      if (!el) return;
+      el.style.display = 'block';
+      el.className = 'msg ' + (ok ? 'ok' : 'err');
+      el.textContent = text;
+    }
+
+    function renderLocPhotos(loc) {
+      const list = document.getElementById('locPhotosList');
+      const input = document.getElementById('locPhotoInput');
+      if (!list) return;
+      const photos = Array.isArray(loc?.photos) ? loc.photos : [];
+      list.innerHTML = '';
+      if (!loc) {
+        if (input) input.disabled = true;
+        return;
+      }
+      if (input) input.disabled = photos.length >= MAX_LOC_PHOTOS;
+      if (!photos.length) {
+        list.innerHTML = '<p class="list-item-meta">Фото ще немає</p>';
+        return;
+      }
+      photos.forEach((photo) => {
+        const wrap = document.createElement('div');
+        wrap.style.cssText =
+          'position:relative;width:110px;height:110px;border-radius:12px;overflow:hidden;border:1px solid #e5e7eb;background:#f3f4f6';
+        wrap.innerHTML =
+          '<img src="' +
+          esc(photo.url) +
+          '" alt="" style="width:100%;height:100%;object-fit:cover">' +
+          '<button type="button" data-photo-id="' +
+          esc(photo.id) +
+          '" style="position:absolute;top:4px;right:4px;width:auto;padding:4px 8px;background:#dc2626;border-radius:8px;font-size:12px">✕</button>';
+        wrap.querySelector('button').onclick = async () => {
+          if (!confirm('Видалити це фото?')) return;
+          try {
+            await apiFetch(
+              '/api/provider/locations/' + encodeURIComponent(loc.id) + '/photos/' + encodeURIComponent(photo.id),
+              { method: 'DELETE', body: '{}' }
+            );
+            await reloadProvider();
+            const updated = providerData.locations.find((l) => l.id === loc.id);
+            renderLocPhotos(updated);
+            showLocPhotosMsg('Фото видалено', true);
+          } catch (err) {
+            showLocPhotosMsg(err.message, false);
+          }
+        };
+        list.appendChild(wrap);
+      });
+    }
+
+    function compressImageFile(file) {
+      return new Promise((resolve, reject) => {
+        if (!file || !file.type.startsWith('image/')) {
+          reject(new Error('Оберіть зображення JPEG, PNG або WebP'));
+          return;
+        }
+        if (file.size > MAX_LOC_PHOTO_BYTES * 2) {
+          reject(new Error('Файл занадто великий навіть для стиснення (макс. ~10 МБ сирого)'));
+          return;
+        }
+        const img = new Image();
+        const url = URL.createObjectURL(file);
+        img.onload = () => {
+          URL.revokeObjectURL(url);
+          const maxSide = 1600;
+          let { width, height } = img;
+          if (width > maxSide || height > maxSide) {
+            const ratio = Math.min(maxSide / width, maxSide / height);
+            width = Math.round(width * ratio);
+            height = Math.round(height * ratio);
+          }
+          const canvas = document.createElement('canvas');
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext('2d');
+          ctx.drawImage(img, 0, 0, width, height);
+          let quality = 0.82;
+          let dataUrl = canvas.toDataURL('image/jpeg', quality);
+          while (dataUrl.length > MAX_LOC_PHOTO_BYTES * 1.37 && quality > 0.5) {
+            quality -= 0.08;
+            dataUrl = canvas.toDataURL('image/jpeg', quality);
+          }
+          const approxBytes = Math.ceil((dataUrl.length - 'data:image/jpeg;base64,'.length) * 0.75);
+          if (approxBytes > MAX_LOC_PHOTO_BYTES) {
+            reject(new Error('Після стиснення все ще більше 5 МБ. Оберіть менше фото.'));
+            return;
+          }
+          resolve(dataUrl);
+        };
+        img.onerror = () => {
+          URL.revokeObjectURL(url);
+          reject(new Error('Не вдалося прочитати зображення'));
+        };
+        img.src = url;
+      });
+    }
+
+    document.getElementById('locPhotoInput')?.addEventListener('change', async (e) => {
+      const file = e.target.files?.[0];
+      e.target.value = '';
+      const locId = document.getElementById('editLocId').value;
+      if (!file || !locId) return;
+      const loc = providerData?.locations?.find((l) => l.id === locId);
+      if ((loc?.photos || []).length >= MAX_LOC_PHOTOS) {
+        showLocPhotosMsg('Вже є 3 фото — видаліть одне, щоб додати нове', false);
+        return;
+      }
+      showLocPhotosMsg('Стискаємо та завантажуємо…', true);
+      try {
+        const dataUrl = await compressImageFile(file);
+        await apiFetch('/api/provider/locations/' + encodeURIComponent(locId) + '/photos', {
+          method: 'POST',
+          body: JSON.stringify({ dataUrl }),
+        });
+        await reloadProvider();
+        const updated = providerData.locations.find((l) => l.id === locId);
+        renderLocPhotos(updated);
+        showLocPhotosMsg('Фото додано', true);
+        notifyMapDataChanged();
+      } catch (err) {
+        showLocPhotosMsg(err.message, false);
+      }
+    });
 
     function renderLocPrices(loc) {
       const el = document.getElementById('locPricesList');

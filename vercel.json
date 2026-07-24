@@ -22,6 +22,7 @@
           "locations-store.js",
           "provider-profiles-store.js",
           "catalog-clicks-store.js",
+          "location-photos.js",
           "places-import.js",
           "otp-auth.js",
           "routes/**",

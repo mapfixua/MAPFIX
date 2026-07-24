@@ -24,6 +24,7 @@ function toDbRow(loc) {
     prices: loc.prices || {},
     reviews: loc.reviews || [],
     views: Number(loc.views) || 0,
+    photos: Array.isArray(loc.photos) ? loc.photos : [],
     import_source: loc.importSource || loc.importMeta?.source || null,
     updated_at: new Date().toISOString(),
   };
@@ -50,6 +51,7 @@ function fromDbRow(row) {
     prices: row.prices || {},
     reviews: row.reviews || [],
     views: Number(row.views) || 0,
+    photos: Array.isArray(row.photos) ? row.photos : [],
     importSource: row.import_source || null,
   };
 }
@@ -74,8 +76,14 @@ async function upsertLocationsToSupabase(locations) {
   }
   const rows = locations.map(toDbRow);
   let { error } = await supabaseClient.from(LOCATIONS_TABLE).upsert(rows, { onConflict: 'id' });
+  if (error && /photos/i.test(String(error.message || ''))) {
+    const withoutPhotos = rows.map(({ photos, ...rest }) => rest);
+    ({ error } = await supabaseClient
+      .from(LOCATIONS_TABLE)
+      .upsert(withoutPhotos, { onConflict: 'id' }));
+  }
   if (error && /views/i.test(String(error.message || ''))) {
-    const withoutViews = rows.map(({ views, ...rest }) => rest);
+    const withoutViews = rows.map(({ views, photos, ...rest }) => rest);
     ({ error } = await supabaseClient
       .from(LOCATIONS_TABLE)
       .upsert(withoutViews, { onConflict: 'id' }));
