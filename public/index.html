@@ -8,29 +8,37 @@
 
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" crossorigin="anonymous" referrerpolicy="no-referrer">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;600;700;800&display=swap" rel="stylesheet">
     
     <style>
         :root {
-            --primary: #007bff;
-            --primary-light: #e0f2fe;
-            --success: #2e7d32;
-            --danger: #d32f2f;
-            --dark: #1e293b;
-            --border: #e2e8f0;
+            --primary: #12c4b5;
+            --primary-light: #e6faf8;
+            --success: #0f6b45;
+            --danger: #b42318;
+            --dark: #0b0d10;
+            --border: #e4e6eb;
+            --bg: #eceef2;
+            --ink: #0b0d10;
+            --muted: #6b7280;
             --sidebar-width: 420px;
             --desktop-max: 100%;
             --ease-sheet: cubic-bezier(0.32, 0.72, 0, 1);
+            --font: 'Manrope', 'Segoe UI', sans-serif;
         }
 
         * { -webkit-tap-highlight-color: transparent; }
 
         body {
             margin: 0; padding: 0;
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            font-family: var(--font);
             overflow: hidden;
-            background: #f1f5f9;
+            background: var(--bg);
             height: 100vh;
             height: 100dvh;
+            color: var(--ink);
         }
 
         #app-shell {
@@ -38,7 +46,7 @@
             height: 100vh;
             height: 100dvh;
             width: 100%;
-            background: #f1f5f9;
+            background: var(--bg);
         }
 
         #map-container {
@@ -79,29 +87,31 @@
             display: flex;
             flex-direction: column;
             align-items: center;
-            border: 2px solid transparent;
-            background: #f8fafc;
+            border: 1.5px solid var(--border);
+            background: #fff;
             cursor: pointer;
-            transition: transform 0.2s var(--ease-sheet), border-color 0.2s, background 0.2s;
+            border-radius: 16px;
+            transition: transform 0.2s var(--ease-sheet), border-color 0.2s, background 0.2s, box-shadow 0.2s;
             touch-action: manipulation;
         }
         .category-card:active { transform: scale(0.95); }
         .category-card.active {
-            border-color: var(--primary);
-            background: var(--primary-light);
+            border-color: var(--ink);
+            background: #fff;
+            box-shadow: 0 0 0 1px var(--ink);
         }
         .category-card-icon {
             border-radius: 50%;
-            background: white;
+            background: var(--bg);
             display: flex;
             align-items: center;
             justify-content: center;
-            color: var(--primary);
+            color: var(--ink);
             transition: transform 0.2s var(--ease-sheet), color 0.2s, background 0.2s;
         }
         .category-card.active .category-card-icon {
-            background: var(--primary);
-            color: #fff;
+            background: var(--accent, var(--primary));
+            color: var(--ink);
         }
         .category-card-label {
             font-weight: 800;
@@ -212,7 +222,7 @@
             color: var(--dark);
         }
         .nav-item:hover { background: #f1f5f9; border-color: #cbd5e1; }
-        .nav-item.active { background: #e0f2fe; color: var(--primary); border-color: var(--primary); }
+        .nav-item.active { background: var(--primary-light); color: var(--ink); border-color: var(--ink); }
         .nav-item-arrow { color: #94a3b8; font-size: 13px; flex-shrink: 0; margin: 0; }
         .nav-item-meta { font-size: 11px; font-weight: 600; color: #64748b; margin: 2px 0 0; line-height: 1.25; }
         .nav-hint {
@@ -227,7 +237,7 @@
         .provider-card {
             background: white;
             border: 1px solid var(--border);
-            border-radius: 12px;
+            border-radius: 16px;
             padding: 12px 14px;
             margin: 0;
             cursor: pointer;
@@ -237,7 +247,7 @@
             gap: 5px;
         }
         .provider-card:hover { background: #f8fafc; border-color: #cbd5e1; }
-        .provider-card.active { background: #f0f7ff; border-color: var(--primary); }
+        .provider-card.active { background: var(--primary-light); border-color: var(--primary); }
         .provider-top { display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; margin: 0; }
         .provider-title { font-weight: 700; font-size: 14px; color: var(--dark); margin: 0; line-height: 1.25; }
         .rating-block { display: flex; align-items: center; gap: 3px; font-size: 12px; font-weight: 700; margin: 0; }
@@ -261,8 +271,8 @@
         .detail-actions-row { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 4px; }
         .action-btn { flex: 1 1 calc(50% - 4px); min-width: 120px; height: 38px; border-radius: 8px; border: none; font-weight: 700; font-size: 13px; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 6px; text-decoration: none; }
         .btn-call { background: var(--success); color: white; }
-        .btn-route { background: var(--primary); color: white; }
-        .btn-directions { background: #0ea5e9; color: white; }
+        .btn-route { background: var(--ink); color: white; }
+        .btn-directions { background: var(--primary); color: var(--ink); }
 
         .detail-scroll-body { flex-grow: 1; overflow-y: auto; padding: 20px; background: #f8fafc; display: flex; flex-direction: column; gap: 16px; }
         .detail-section { background: white; border: 1px solid var(--border); border-radius: 12px; padding: 14px; display: flex; flex-direction: column; gap: 10px; }
@@ -319,23 +329,53 @@
 
         .top-header {
             position: absolute; top: 12px; left: 12px; right: 12px; z-index: 10;
-            display: flex; gap: 8px; align-items: center; pointer-events: none;
+            display: flex; flex-direction: column; gap: 10px; pointer-events: none;
         }
-        .search-container { flex-grow: 1; background: white; border-radius: 30px; padding: 5px 10px 5px 18px; display: flex; align-items: center; box-shadow: 0 4px 20px rgba(0,0,0,0.08); height: 48px; pointer-events: auto; position: relative; }
-        .search-container input { border: none; width: 100%; outline: none; font-size: 15px; margin-left: 8px; flex: 1; min-width: 0; }
+        .top-header-row {
+            display: flex; gap: 8px; align-items: center; width: 100%;
+        }
+        .brand-chip {
+            display: inline-flex; align-items: center; gap: 8px;
+            height: 48px; padding: 0 14px 0 8px;
+            background: #fff; border-radius: 999px;
+            box-shadow: 0 8px 28px rgba(11,13,16,0.1);
+            pointer-events: auto; flex-shrink: 0;
+            text-decoration: none; color: var(--ink);
+        }
+        .brand-chip-mark {
+            width: 32px; height: 32px; border-radius: 50%;
+            background: var(--ink); color: #fff;
+            display: inline-flex; align-items: center; justify-content: center;
+            font-weight: 800; font-size: 0.9rem;
+        }
+        .brand-chip-name { font-weight: 800; font-size: 0.98rem; letter-spacing: -0.03em; }
+        .search-container {
+            flex-grow: 1; background: white; border-radius: 999px;
+            padding: 5px 10px 5px 16px; display: flex; align-items: center;
+            box-shadow: 0 8px 28px rgba(11,13,16,0.1);
+            height: 48px; pointer-events: auto; position: relative;
+            border: 1.5px solid transparent;
+        }
+        .search-container:focus-within { border-color: var(--primary); }
+        .search-container input {
+            border: none; width: 100%; outline: none; font-size: 15px;
+            margin-left: 8px; flex: 1; min-width: 0; font-family: inherit; font-weight: 600;
+            background: transparent; color: var(--ink);
+        }
+        .search-container input::placeholder { color: #9ca3af; font-weight: 500; }
         .voice-mic-btn {
             width: 36px; height: 36px; border: none; border-radius: 50%; background: var(--primary-light);
-            color: var(--primary); cursor: pointer; display: flex; align-items: center; justify-content: center;
+            color: var(--ink); cursor: pointer; display: flex; align-items: center; justify-content: center;
             font-size: 16px; flex-shrink: 0; transition: background 0.2s, transform 0.15s;
         }
-        .voice-mic-btn:hover { background: #bae6fd; }
+        .voice-mic-btn:hover { background: #c8f3ee; }
         .voice-mic-btn.listening { background: #fee2e2; color: #dc2626; animation: mic-pulse 1s ease-in-out infinite; }
         .voice-mic-btn.processing { background: #fef3c7; color: #b45309; }
         @keyframes mic-pulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.08); } }
         .voice-status {
             position: absolute; top: calc(100% + 8px); left: 0; right: 0;
-            background: #1e293b; color: #fff; font-size: 13px; font-weight: 600;
-            padding: 10px 14px; border-radius: 12px; display: flex; align-items: center; gap: 10px;
+            background: var(--ink); color: #fff; font-size: 13px; font-weight: 600;
+            padding: 10px 14px; border-radius: 14px; display: flex; align-items: center; gap: 10px;
             box-shadow: 0 8px 24px rgba(0,0,0,0.18); z-index: 20; pointer-events: none;
         }
         .voice-status.hidden { display: none; }
@@ -344,12 +384,25 @@
             animation: voice-dot 1s ease-in-out infinite;
         }
         @keyframes voice-dot { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.4; transform: scale(0.7); } }
-        .brand-logo { font-weight: 900; color: var(--primary); font-size: 20px; }
-        .header-btn { height: 48px; background: white; border-radius: 25px; border: none; box-shadow: 0 4px 20px rgba(0,0,0,0.08); cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 14px; font-weight: 700; pointer-events: auto; }
+        .brand-logo { display: none; }
+        .header-btn {
+            height: 48px; background: white; border-radius: 999px; border: none;
+            box-shadow: 0 8px 28px rgba(11,13,16,0.1); cursor: pointer;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 14px; font-weight: 800; pointer-events: auto; font-family: inherit;
+        }
         .profile-wrap { position: relative; pointer-events: auto; }
         .profile-btn { width: 48px; height: 48px; border-radius: 50%; font-size: 18px; padding: 0; flex-shrink: 0; }
-        .profile-btn.logged-in { background: #e0f2fe; border: 2px solid var(--primary); }
-        .add-business-btn { padding: 0 20px; color: white; background: var(--success); white-space: nowrap; }
+        .profile-btn.logged-in { background: var(--primary-light); border: 2px solid var(--primary); }
+        .login-btn {
+            padding: 0 18px; color: #fff; background: var(--ink); gap: 8px; white-space: nowrap;
+        }
+        .login-btn:hover { background: #22262c; }
+        .login-btn.hidden { display: none; }
+        .profile-btn.hidden,
+        .hidden { display: none !important; }
+        .add-business-btn { padding: 0 18px; color: var(--ink); background: var(--primary); white-space: nowrap; }
+        .add-business-btn:hover { filter: brightness(0.96); }
         .user-menu {
             display: none;
             position: absolute;
@@ -357,8 +410,8 @@
             right: 0;
             min-width: 200px;
             background: white;
-            border-radius: 12px;
-            box-shadow: 0 10px 40px rgba(0,0,0,0.12);
+            border-radius: 18px;
+            box-shadow: 0 12px 40px rgba(0,0,0,0.12);
             border: 1px solid var(--border);
             overflow: hidden;
             z-index: 1000;
@@ -366,11 +419,11 @@
         .user-menu.show { display: block; }
         .user-menu-header {
             padding: 12px 14px;
-            background: #f8fafc;
+            background: var(--bg);
             border-bottom: 1px solid var(--border);
             font-size: 12px;
             font-weight: 700;
-            color: #64748b;
+            color: var(--muted);
         }
         .user-menu-header strong { display: block; color: var(--dark); font-size: 14px; margin-top: 2px; }
         .user-menu-item {
@@ -385,23 +438,24 @@
             color: var(--dark);
             cursor: pointer;
             text-decoration: none;
+            font-family: inherit;
         }
-        .user-menu-item:hover { background: #f1f5f9; }
-        .user-menu-item.danger { color: #dc2626; }
+        .user-menu-item:hover { background: var(--bg); }
+        .user-menu-item.danger { color: var(--danger); }
 
         #geo-btn {
             position: absolute; bottom: 14px; right: 14px; z-index: 10;
             width: 46px; height: 46px; background: white; border-radius: 50%; border: none;
             box-shadow: 0 4px 15px rgba(0,0,0,0.15); cursor: pointer;
             display: flex; align-items: center; justify-content: center; font-size: 18px;
-            touch-action: manipulation;
+            touch-action: manipulation; color: var(--ink);
         }
-        .user-location-marker { width: 14px; height: 14px; background: #007bff; border: 3px solid white; border-radius: 50%; box-shadow: 0 0 8px rgba(0,123,255,0.5); }
+        .user-location-marker { width: 14px; height: 14px; background: var(--primary); border: 3px solid white; border-radius: 50%; box-shadow: 0 0 8px rgba(18,196,181,0.5); }
 
         /* МАРКЕРИ */
         .mapfix-marker-category { width: 36px; height: 36px; background: white; border: 3px solid var(--primary); border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 16px; box-shadow: 0 4px 10px rgba(0,0,0,0.15); }
-        .mapfix-marker-price { background: white; border: 2px solid var(--primary); color: var(--dark); font-weight: 800; font-size: 11px; padding: 4px 8px; border-radius: 6px; box-shadow: 0 4px 10px rgba(0,0,0,0.15); white-space: nowrap; position: relative; }
-        .mapfix-marker-price::after { content: ''; position: absolute; bottom: -6px; left: 50%; transform: translateX(-50%); border-width: 6px 6px 0; border-style: solid; border-color: var(--primary) transparent; }
+        .mapfix-marker-price { background: white; border: 2px solid var(--ink); color: var(--dark); font-weight: 800; font-size: 11px; padding: 4px 8px; border-radius: 999px; box-shadow: 0 4px 10px rgba(0,0,0,0.15); white-space: nowrap; position: relative; }
+        .mapfix-marker-price::after { content: ''; position: absolute; bottom: -6px; left: 50%; transform: translateX(-50%); border-width: 6px 6px 0; border-style: solid; border-color: var(--ink) transparent; }
 
         /* ========== DESKTOP (≥769px) — повноцінний сервіс: широка карта + sidebar-сітка ========== */
         @media (min-width: 769px) {
@@ -486,7 +540,7 @@
             }
 
             #geo-btn { bottom: 28px; right: 28px; }
-            .top-header { top: 18px; left: 18px; right: 18px; max-width: 720px; }
+            .top-header { top: 18px; left: 18px; right: 18px; max-width: 860px; }
         }
 
         @media (min-width: 1200px) {
@@ -496,7 +550,7 @@
 
         /* ========== MOBILE (≤768px) — карта 65% + bottom sheet 35%, max-width 520px ========== */
         @media (max-width: 768px) {
-            body { background: #e2e8f0; }
+            body { background: var(--bg); }
 
             #app-shell {
                 flex-direction: column;
@@ -518,7 +572,14 @@
                 height: var(--map-h);
                 flex-shrink: 0;
                 transition: height 0.38s var(--ease-sheet);
+                border-radius: 0 0 24px 24px;
+                overflow: hidden;
             }
+
+            .brand-chip-name { display: none; }
+            .brand-chip { padding: 0 8px; width: 48px; justify-content: center; }
+            .login-btn span { display: none; }
+            .login-btn { width: 48px; padding: 0; }
 
             #sidebar {
                 height: var(--sheet-h);
@@ -643,19 +704,26 @@
     <div id="app-shell">
     <div id="map-container">
         <div class="top-header">
-            <div class="search-container">
-                <span class="brand-logo">Mapfix</span>
-                <input type="text" id="searchInput" placeholder="Пошук послуг чи майстрів поруч..." autocomplete="off">
-                <button type="button" class="voice-mic-btn" id="voiceSearchBtn" title="Голосовий пошук" aria-label="Голосовий пошук">🎤</button>
-                <div id="voiceStatus" class="voice-status hidden" role="status" aria-live="polite">
-                    <span class="voice-pulse"></span>
-                    <span id="voiceStatusText">Слухаю...</span>
+            <div class="top-header-row">
+                <a class="brand-chip" href="/" aria-label="Mapfix">
+                    <span class="brand-chip-mark">M</span>
+                    <span class="brand-chip-name">Mapfix</span>
+                </a>
+                <div class="search-container">
+                    <i class="fa-solid fa-magnifying-glass" style="color:#9ca3af;font-size:14px" aria-hidden="true"></i>
+                    <input type="text" id="searchInput" placeholder="Пошук послуги, майстра або адреси..." autocomplete="off">
+                    <button type="button" class="voice-mic-btn" id="voiceSearchBtn" title="Голосовий пошук" aria-label="Голосовий пошук">🎤</button>
+                    <div id="voiceStatus" class="voice-status hidden" role="status" aria-live="polite">
+                        <span class="voice-pulse"></span>
+                        <span id="voiceStatusText">Слухаю...</span>
+                    </div>
                 </div>
-            </div>
-            <button type="button" class="header-btn add-business-btn" id="addBusinessBtn"><span class="btn-label">Додати </span><i class="fa-solid fa-plus"></i></button>
-            <div class="profile-wrap">
-                <button type="button" class="header-btn profile-btn" id="profileBtn" title="Профіль" aria-haspopup="true" aria-expanded="false">👤</button>
-                <div class="user-menu" id="userMenu" role="menu"></div>
+                <button type="button" class="header-btn add-business-btn" id="addBusinessBtn"><span class="btn-label">Додати </span><i class="fa-solid fa-plus"></i></button>
+                <a class="header-btn login-btn" id="loginHeaderBtn" href="/login.html"><i class="fa-solid fa-right-to-bracket"></i><span>Вхід</span></a>
+                <div class="profile-wrap">
+                    <button type="button" class="header-btn profile-btn hidden" id="profileBtn" title="Профіль" aria-haspopup="true" aria-expanded="false">👤</button>
+                    <div class="user-menu" id="userMenu" role="menu"></div>
+                </div>
             </div>
         </div>
 
@@ -803,7 +871,10 @@
 
             function updateHeaderAuthUI() {
                 const u = State.currentUser;
+                const loginBtn = document.getElementById('loginHeaderBtn');
                 profileBtn.classList.toggle('logged-in', !!u);
+                profileBtn.classList.toggle('hidden', !u);
+                if (loginBtn) loginBtn.classList.toggle('hidden', !!u);
                 profileBtn.title = u ? u.login : 'Увійти або зареєструватись';
 
                 if (!u) {

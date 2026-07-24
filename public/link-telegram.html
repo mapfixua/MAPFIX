@@ -4,89 +4,21 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Mapfix — Підключити Telegram</title>
-  <style>
-    * { box-sizing: border-box; }
-    body {
-      margin: 0;
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-      background: #f1f5f9;
-      color: #1e293b;
-      min-height: 100vh;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      padding: 24px 16px;
-    }
-    .wrap { width: 100%; max-width: 440px; }
-    h1 { font-size: 1.5rem; margin: 0 0 8px; text-align: center; }
-    .sub { color: #64748b; margin-bottom: 24px; font-size: 0.95rem; text-align: center; line-height: 1.45; }
-    .card {
-      background: #fff;
-      border-radius: 12px;
-      padding: 24px;
-      box-shadow: 0 4px 20px rgba(0,0,0,0.06);
-      border: 1px solid #e2e8f0;
-    }
-    .steps {
-      margin: 0 0 18px;
-      padding-left: 18px;
-      color: #475569;
-      font-size: 0.92rem;
-      line-height: 1.55;
-    }
-    label { display: block; font-weight: 600; font-size: 0.85rem; margin-bottom: 6px; }
-    input {
-      width: 100%;
-      padding: 10px 12px;
-      border: 1px solid #cbd5e1;
-      border-radius: 8px;
-      font-size: 1rem;
-      margin-bottom: 16px;
-    }
-    button, .btn {
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      width: 100%;
-      padding: 12px;
-      background: #007bff;
-      color: #fff;
-      border: none;
-      border-radius: 8px;
-      font-size: 1rem;
-      font-weight: 600;
-      cursor: pointer;
-      text-decoration: none;
-      min-height: 46px;
-    }
-    button:hover, .btn:hover { background: #0069d9; }
-    button:disabled { opacity: 0.65; cursor: not-allowed; }
-    .msg { margin-top: 16px; padding: 12px; border-radius: 8px; font-size: 0.9rem; display: none; line-height: 1.45; }
-    .msg.err { display: block; background: #fee2e2; color: #991b1b; }
-    .msg.ok { display: block; background: #dcfce7; color: #166534; }
-    .links { margin-top: 20px; text-align: center; font-size: 0.9rem; }
-    .links a { color: #007bff; text-decoration: none; margin: 0 6px; }
-    .hidden { display: none !important; }
-    .spinner {
-      width: 18px;
-      height: 18px;
-      border: 2px solid rgba(255,255,255,0.35);
-      border-top-color: #fff;
-      border-radius: 50%;
-      animation: spin 0.7s linear infinite;
-      margin-right: 8px;
-    }
-    @keyframes spin { to { transform: rotate(360deg); } }
-  </style>
+  <link rel="stylesheet" href="/css/mapfix-ui.css">
 </head>
-<body>
-  <div class="wrap">
-    <h1>Підключити Telegram</h1>
-    <p class="sub">Після підключення ви зможете входити за кодом із бота Mapfix</p>
+<body class="mf-auth-body">
+  <div class="mf-auth-wrap">
+    <a class="mf-back" href="/">← На головну</a>
+    <div class="mf-card">
+      <div class="mf-brand">
+        <span class="mf-brand-mark" aria-hidden="true">M</span>
+        <span class="mf-brand-name">Mapfix</span>
+      </div>
+      <h1 class="mf-title">Telegram</h1>
+      <p class="mf-sub">Після підключення ви зможете входити за кодом із бота Mapfix.</p>
 
-    <div class="card">
       <div id="needLogin" class="hidden">
-        <p class="sub" style="margin-bottom: 16px;">Спочатку увійдіть або зареєструйтесь, потім поверніться сюди.</p>
+        <p class="mf-sub" style="margin-bottom: 16px;">Спочатку увійдіть або зареєструйтесь, потім поверніться сюди.</p>
         <a class="btn" href="/login.html?next=/link-telegram.html">Увійти</a>
         <p class="links"><a href="/register.html">Реєстрація</a></p>
       </div>
@@ -98,11 +30,11 @@
           <li>У боті натисніть <strong>Start</strong> — акаунт буде привʼязано.</li>
         </ol>
 
-        <label for="phone">Номер телефону</label>
-        <input id="phone" type="tel" inputmode="tel" autocomplete="tel" placeholder="050 123 45 67">
+        <label class="mf-label" for="phone">Номер телефону</label>
+        <input id="phone" type="tel" inputmode="tel" autocomplete="tel" placeholder="+380">
 
         <button type="button" id="linkBtn"><span id="linkBtnText">Отримати посилання</span></button>
-        <a id="openBotBtn" class="btn hidden" href="#" target="_blank" rel="noopener">Відкрити Telegram-бота</a>
+        <a id="openBotBtn" class="btn hidden" href="#" target="_blank" rel="noopener" style="margin-top:10px;background:var(--mf-ink);color:#fff">Відкрити Telegram-бота</a>
       </div>
 
       <div id="message" class="msg" role="alert"></div>
@@ -110,7 +42,6 @@
 
     <p class="links">
       <a href="/login.html">← До входу</a>
-      <a href="/">На карту</a>
     </p>
   </div>
 

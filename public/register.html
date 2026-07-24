@@ -4,297 +4,65 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Mapfix — Реєстрація</title>
-  <style>
-    * { box-sizing: border-box; }
-    body {
-      margin: 0;
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-      background: #f1f5f9;
-      color: #1e293b;
-      min-height: 100vh;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      padding: 24px 16px;
-    }
-    .wrap { width: 100%; max-width: 520px; }
-    h1 { font-size: 1.5rem; margin: 0 0 8px; text-align: center; }
-    .sub { color: #64748b; margin-bottom: 24px; font-size: 0.95rem; text-align: center; }
-    .card {
-      background: #fff;
-      border-radius: 12px;
-      padding: 24px;
-      box-shadow: 0 4px 20px rgba(0,0,0,0.06);
-      border: 1px solid #e2e8f0;
-    }
-    label { display: block; font-weight: 600; font-size: 0.85rem; margin-bottom: 6px; }
-    input, select {
-      width: 100%;
-      padding: 10px 12px;
-      border: 1px solid #cbd5e1;
-      border-radius: 8px;
-      font-size: 1rem;
-      margin-bottom: 14px;
-      background: #fff;
-    }
-    button {
-      width: 100%;
-      padding: 12px;
-      background: #007bff;
-      color: #fff;
-      border: none;
-      border-radius: 8px;
-      font-size: 1rem;
-      font-weight: 600;
-      cursor: pointer;
-    }
-    button:hover { background: #0069d9; }
-    button:disabled { opacity: 0.6; cursor: not-allowed; }
-    .password-field {
-      display: flex;
-      align-items: stretch;
-      gap: 8px;
-      margin-bottom: 14px;
-    }
-    .password-field input {
-      flex: 1;
-      min-width: 0;
-      margin-bottom: 0;
-      padding-right: 12px;
-    }
-    button.password-toggle {
-      position: static;
-      z-index: 2;
-      width: auto;
-      max-width: none;
-      min-width: 48px;
-      height: auto;
-      min-height: 44px;
-      padding: 0 12px;
-      margin: 0;
-      flex-shrink: 0;
-      background: #f1f5f9;
-      color: #0f172a;
-      border: 1px solid #cbd5e1;
-      border-radius: 8px;
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      font-size: 0.8rem;
-      font-weight: 600;
-      line-height: 1;
-      cursor: pointer;
-      -webkit-tap-highlight-color: transparent;
-      touch-action: manipulation;
-      user-select: none;
-    }
-    button.password-toggle:hover,
-    button.password-toggle:active {
-      background: #e2e8f0;
-      color: #0f172a;
-    }
-    button.password-toggle .eye-label {
-      font-size: 0.78rem;
-      font-weight: 700;
-      letter-spacing: 0.01em;
-      white-space: nowrap;
-    }
-    .password-field input::-ms-reveal,
-    .password-field input::-ms-clear {
-      display: none;
-    }
-    .msg { margin-top: 16px; padding: 12px; border-radius: 8px; font-size: 0.9rem; display: none; }
-    .msg.ok { display: block; background: #dcfce7; color: #166534; }
-    .msg.err { display: block; background: #fee2e2; color: #991b1b; }
-    .links { margin-top: 20px; text-align: center; }
-    .links a { color: #007bff; text-decoration: none; }
-    .hidden { display: none !important; }
-    .field-hint {
-      font-size: 0.8rem;
-      color: #64748b;
-      margin: -8px 0 10px;
-      line-height: 1.35;
-    }
-    .services-tree {
-      margin-bottom: 14px;
-      max-height: 360px;
-      overflow-y: auto;
-      padding: 10px;
-      border: 1px solid #e2e8f0;
-      border-radius: 8px;
-      background: #f8fafc;
-    }
-    .cat-block {
-      background: #fff;
-      border: 1px solid #e2e8f0;
-      border-radius: 10px;
-      margin-bottom: 10px;
-      overflow: hidden;
-    }
-    .cat-block:last-child { margin-bottom: 0; }
-    .cat-head {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      padding: 10px 12px;
-      background: #f1f5f9;
-      border-bottom: 1px solid #e2e8f0;
-      cursor: pointer;
-      font-weight: 800;
-      font-size: 0.92rem;
-      margin: 0;
-    }
-    .cat-head input { width: auto; margin: 0; accent-color: #007bff; }
-    .sub-block { padding: 8px 12px 10px; border-bottom: 1px dashed #e2e8f0; }
-    .sub-block:last-child { border-bottom: none; }
-    .sub-title {
-      font-size: 0.82rem;
-      font-weight: 800;
-      color: #475569;
-      margin: 0 0 6px;
-      text-transform: uppercase;
-      letter-spacing: 0.3px;
-    }
-    .check-row {
-      display: flex;
-      align-items: flex-start;
-      gap: 8px;
-      padding: 6px 8px;
-      border-radius: 6px;
-      cursor: pointer;
-      user-select: none;
-      margin-bottom: 4px;
-    }
-    .check-row:hover { background: #f0f9ff; }
-    .check-row input {
-      width: auto;
-      margin: 3px 0 0;
-      accent-color: #007bff;
-      flex-shrink: 0;
-    }
-    .check-row span {
-      font-size: 0.88rem;
-      font-weight: 600;
-      line-height: 1.35;
-    }
-    .check-row.sub-pick {
-      background: #ecfdf5;
-      border: 1px solid #a7f3d0;
-      font-weight: 700;
-      margin-bottom: 8px;
-    }
-    .check-row.sub-all {
-      background: #eff6ff;
-      border: 1px solid #bfdbfe;
-      font-weight: 700;
-    }
-    .check-row.service-row span {
-      font-weight: 500;
-      color: #334155;
-      padding-left: 8px;
-    }
-    .loading-cats { font-size: 0.85rem; color: #64748b; margin-bottom: 14px; }
-    .custom-subs {
-      margin-bottom: 14px;
-      padding: 12px;
-      border: 1px dashed #cbd5e1;
-      border-radius: 10px;
-      background: #fffbeb;
-    }
-    .custom-subs h3 {
-      margin: 0 0 6px;
-      font-size: 0.92rem;
-    }
-    .custom-row {
-      background: #fff;
-      border: 1px solid #e2e8f0;
-      border-radius: 8px;
-      padding: 10px;
-      margin-bottom: 10px;
-    }
-    .custom-row:last-child { margin-bottom: 0; }
-    .custom-row label { margin-top: 4px; }
-    .custom-row input, .custom-row select, .custom-row textarea {
-      margin-bottom: 8px;
-    }
-    .custom-row textarea {
-      min-height: 56px;
-      resize: vertical;
-      font-family: inherit;
-    }
-    .btn-secondary {
-      width: auto;
-      padding: 8px 14px;
-      background: #fff;
-      color: #007bff;
-      border: 1px solid #007bff;
-      font-size: 0.88rem;
-      margin-top: 4px;
-    }
-    .btn-secondary:hover { background: #eff6ff; }
-    .btn-remove {
-      width: auto;
-      padding: 6px 10px;
-      background: #fee2e2;
-      color: #991b1b;
-      border: none;
-      font-size: 0.82rem;
-      margin: 4px 0 0;
-    }
-    .btn-remove:hover { background: #fecaca; }
-  </style>
+  <link rel="stylesheet" href="/css/mapfix-ui.css">
 </head>
-<body>
-  <div class="wrap">
-    <h1>Реєстрація Mapfix</h1>
-    <p class="sub">Створіть обліковий запис</p>
-    <div class="card">
+<body class="mf-auth-body">
+  <div class="mf-auth-wrap" style="max-width:520px">
+    <a class="mf-back" href="/">← На головну</a>
+    <div class="mf-card">
+      <div class="mf-brand">
+        <span class="mf-brand-mark" aria-hidden="true">M</span>
+        <span class="mf-brand-name">Mapfix</span>
+      </div>
+      <h1 class="mf-title">Реєстрація</h1>
+      <p class="mf-sub">Створіть акаунт клієнта або майстра.</p>
+      <nav class="mf-seg" aria-label="Вхід або реєстрація">
+        <a href="/login.html">Вхід</a>
+        <a class="active" href="/register.html">Реєстрація</a>
+      </nav>
       <form id="registerForm">
-        <label for="login">Логін</label>
-        <input id="login" type="text" required autocomplete="username">
+        <label class="mf-label" for="login">Логін / імʼя</label>
+        <input id="login" type="text" required autocomplete="username" placeholder="Імʼя або логін">
 
-        <label for="password">Пароль</label>
-        <div class="password-field">
-          <input id="password" type="password" required minlength="6" autocomplete="new-password">
-          <button
-            type="button"
-            class="password-toggle"
-            id="passwordToggle"
-            aria-label="Показати пароль"
-            aria-pressed="false"
-            title="Показати пароль"
-          >
+        <label class="mf-label" for="password">Пароль</label>
+        <div class="mf-password">
+          <input id="password" type="password" required minlength="6" autocomplete="new-password" placeholder="Пароль (мін. 6 символів)">
+          <button type="button" class="mf-toggle-eye" id="passwordToggle" aria-label="Показати пароль" aria-pressed="false" title="Показати пароль">
             <span class="eye-label">Показати</span>
           </button>
         </div>
 
-        <label for="email">Email (для відновлення пароля)</label>
+        <label class="mf-label" for="email">Email (для відновлення пароля)</label>
         <input id="email" type="email" autocomplete="email" placeholder="you@example.com">
 
-        <label for="role">Роль</label>
-        <select id="role" required>
-          <option value="client">Клієнт (замовлення послуг)</option>
-          <option value="provider">Майстер / бізнес (провайдер)</option>
+        <p class="mf-label">Хто ви?</p>
+        <div class="mf-role" role="group" aria-label="Роль">
+          <button type="button" class="active" id="roleClientBtn" data-role="client">Я клієнт</button>
+          <button type="button" id="roleProviderBtn" data-role="provider">Я майстер</button>
+        </div>
+        <select id="role" required class="mf-hidden" aria-hidden="true" tabindex="-1">
+          <option value="client">Клієнт</option>
+          <option value="provider">Майстер / бізнес</option>
         </select>
 
         <div id="providerFields" class="hidden">
-          <label for="companyName">Назва компанії або ПІБ майстра</label>
+          <label class="mf-label" for="companyName">Назва компанії або ПІБ майстра</label>
           <input id="companyName" type="text" placeholder="напр. Nail Art Студія">
 
-          <label for="phone">Телефон</label>
-          <input id="phone" type="text" placeholder="+38 (0__) ___-__-__">
+          <label class="mf-label" for="phone">Телефон</label>
+          <input id="phone" type="text" placeholder="+380">
 
-          <label>Категорії та послуги</label>
-          <p class="field-hint">
-            Оберіть категорію, існуючу підкатегорію з каталогу або окремі послуги.
-            Можна також додати власну підкатегорію, якої ще немає в списку.
+          <label class="mf-label">Категорії та послуги</label>
+          <p class="mf-hint">
+            Оберіть категорію, підкатегорію з каталогу або окремі послуги.
+            Можна також додати власну підкатегорію.
           </p>
           <p id="catalogLoading" class="loading-cats">Завантаження каталогу…</p>
           <div id="servicesTree" class="services-tree hidden" role="group" aria-label="Категорії та послуги"></div>
 
           <div id="customSubsSection" class="custom-subs hidden">
             <h3>Своя підкатегорія</h3>
-            <p class="field-hint" style="margin-bottom: 10px;">
+            <p class="mf-hint" style="margin-bottom: 10px;">
               Якщо вашої ніші немає в каталозі — вкажіть категорію, назву підкатегорії
               та послуги (через кому, необовʼязково).
             </p>
@@ -303,12 +71,13 @@
           </div>
         </div>
 
-        <button type="submit" id="submitBtn">Зареєструватися</button>
+        <button type="submit" class="mf-btn mf-btn-primary" id="submitBtn">Створити акаунт</button>
       </form>
       <div id="message" class="msg"></div>
     </div>
-    <p class="links">
-      <a href="/login.html">Вже є акаунт? Увійти</a> · <a href="/">На карту</a>
+    <p class="mf-foot">
+      Підтвердження через Telegram буде доступне на сторінці
+      <a href="/link-telegram.html">звʼязку з Telegram</a>.
     </p>
   </div>
   <script>
@@ -518,6 +287,20 @@
       roleSel.value = 'provider';
       toggleProviderFields();
     }
+
+    (function initRolePills() {
+      const buttons = [
+        document.getElementById('roleClientBtn'),
+        document.getElementById('roleProviderBtn'),
+      ];
+      function setRole(role) {
+        roleSel.value = role;
+        buttons.forEach((btn) => btn.classList.toggle('active', btn.dataset.role === role));
+        toggleProviderFields();
+      }
+      buttons.forEach((btn) => btn.addEventListener('click', () => setRole(btn.dataset.role)));
+      setRole(roleSel.value === 'provider' ? 'provider' : 'client');
+    })();
 
     function redirectByRole(role) {
       if (role === 'admin' || role === 'provider') location.href = '/admin';

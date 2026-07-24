@@ -4,254 +4,51 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Mapfix — Вхід</title>
-  <style>
-    * { box-sizing: border-box; }
-    body {
-      margin: 0;
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-      background: #f1f5f9;
-      color: #1e293b;
-      min-height: 100vh;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      padding: 24px 16px;
-    }
-    .wrap { width: 100%; max-width: 400px; }
-    h1 { font-size: 1.5rem; margin: 0 0 8px; text-align: center; }
-    .sub { color: #64748b; margin-bottom: 24px; font-size: 0.95rem; text-align: center; line-height: 1.45; }
-    .card {
-      background: #fff;
-      border-radius: 12px;
-      padding: 24px;
-      box-shadow: 0 4px 20px rgba(0,0,0,0.06);
-      border: 1px solid #e2e8f0;
-    }
-    .step-label {
-      display: inline-block;
-      font-size: 0.75rem;
-      font-weight: 700;
-      letter-spacing: 0.04em;
-      text-transform: uppercase;
-      color: #007bff;
-      background: #eff6ff;
-      padding: 4px 10px;
-      border-radius: 999px;
-      margin-bottom: 12px;
-    }
-    label {
-      display: block;
-      font-weight: 600;
-      font-size: 0.85rem;
-      margin-bottom: 6px;
-    }
-    .field-hint {
-      font-size: 0.8rem;
-      color: #64748b;
-      margin: -8px 0 14px;
-      line-height: 1.4;
-    }
-    input {
-      width: 100%;
-      padding: 10px 12px;
-      border: 1px solid #cbd5e1;
-      border-radius: 8px;
-      font-size: 1rem;
-      margin-bottom: 16px;
-    }
-    input:focus {
-      outline: none;
-      border-color: #007bff;
-      box-shadow: 0 0 0 3px rgba(0,123,255,0.15);
-    }
-    .password-field {
-      display: flex;
-      align-items: stretch;
-      gap: 8px;
-      margin-bottom: 16px;
-    }
-    .password-field input {
-      flex: 1;
-      min-width: 0;
-      margin-bottom: 0;
-      padding-right: 12px;
-    }
-    .password-field input::-ms-reveal,
-    .password-field input::-ms-clear {
-      display: none;
-    }
-    #otpCode {
-      text-align: center;
-      letter-spacing: 0.35em;
-      font-size: 1.35rem;
-      font-weight: 600;
-      padding-left: 18px;
-    }
-    button {
-      width: 100%;
-      padding: 12px;
-      background: #007bff;
-      color: #fff;
-      border: none;
-      border-radius: 8px;
-      font-size: 1rem;
-      font-weight: 600;
-      cursor: pointer;
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      gap: 8px;
-      min-height: 46px;
-    }
-    button:hover:not(:disabled) { background: #0069d9; }
-    button:disabled { opacity: 0.65; cursor: not-allowed; }
-    button.secondary {
-      background: #fff;
-      color: #334155;
-      border: 1px solid #cbd5e1;
-      margin-top: 10px;
-    }
-    button.secondary:hover:not(:disabled) { background: #f8fafc; }
-    button.linkish {
-      width: auto;
-      min-height: auto;
-      padding: 0;
-      background: none;
-      color: #007bff;
-      font-size: 0.9rem;
-      font-weight: 600;
-      margin-top: 12px;
-    }
-    button.linkish:hover:not(:disabled) { background: none; text-decoration: underline; }
-    button.password-toggle {
-      position: static;
-      z-index: 2;
-      width: auto;
-      max-width: none;
-      min-width: 48px;
-      height: auto;
-      min-height: 46px;
-      padding: 0 12px;
-      margin: 0;
-      gap: 0;
-      flex-shrink: 0;
-      background: #f1f5f9;
-      color: #0f172a;
-      border: 1px solid #cbd5e1;
-      border-radius: 8px;
-      box-shadow: none;
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      font-size: 0.8rem;
-      font-weight: 600;
-      line-height: 1;
-      cursor: pointer;
-      -webkit-tap-highlight-color: transparent;
-      touch-action: manipulation;
-      user-select: none;
-    }
-    button.password-toggle:hover:not(:disabled),
-    button.password-toggle:active:not(:disabled) {
-      background: #e2e8f0;
-      color: #0f172a;
-    }
-    button.password-toggle .eye-label {
-      font-size: 0.78rem;
-      font-weight: 700;
-      letter-spacing: 0.01em;
-      white-space: nowrap;
-    }
-    .msg {
-      margin-top: 16px;
-      padding: 12px;
-      border-radius: 8px;
-      font-size: 0.9rem;
-      display: none;
-      line-height: 1.45;
-    }
-    .msg.err { display: block; background: #fee2e2; color: #991b1b; }
-    .msg.ok { display: block; background: #dcfce7; color: #166534; }
-    .msg a { color: #1d4ed8; font-weight: 600; }
-    .hidden { display: none !important; }
-    .phone-sent {
-      font-size: 0.9rem;
-      color: #475569;
-      margin-bottom: 14px;
-      padding: 10px 12px;
-      background: #f8fafc;
-      border-radius: 8px;
-      border: 1px solid #e2e8f0;
-    }
-    .phone-sent strong { color: #0f172a; }
-    .resend-row { margin-top: 8px; text-align: center; }
-    .spinner {
-      width: 18px;
-      height: 18px;
-      border: 2px solid rgba(255,255,255,0.35);
-      border-top-color: #fff;
-      border-radius: 50%;
-      animation: spin 0.7s linear infinite;
-    }
-    button.secondary .spinner {
-      border-color: rgba(51,65,85,0.2);
-      border-top-color: #334155;
-    }
-    @keyframes spin { to { transform: rotate(360deg); } }
-    .divider {
-      margin: 22px 0 16px;
-      border: none;
-      border-top: 1px solid #e2e8f0;
-    }
-    .classic-toggle {
-      text-align: center;
-      margin-top: 4px;
-    }
-    .classic-toggle button {
-      width: auto;
-      min-height: auto;
-      padding: 0;
-      background: none;
-      color: #64748b;
-      font-size: 0.88rem;
-      font-weight: 500;
-    }
-    .classic-toggle button:hover { color: #007bff; background: none; text-decoration: underline; }
-    .links { margin-top: 20px; text-align: center; font-size: 0.9rem; }
-    .links a { color: #007bff; text-decoration: none; margin: 0 6px; }
-    .links a:hover { text-decoration: underline; }
-  </style>
+  <link rel="stylesheet" href="/css/mapfix-ui.css">
 </head>
-<body>
-  <div class="wrap">
-    <h1>Mapfix</h1>
-    <p class="sub">Увійдіть за номером телефону — код надійде в Telegram</p>
+<body class="mf-auth-body">
+  <div class="mf-auth-wrap">
+    <a class="mf-back" href="/">← На головну</a>
 
-    <div class="card">
+    <div class="mf-card">
+      <div class="mf-brand">
+        <span class="mf-brand-mark" aria-hidden="true">M</span>
+        <span class="mf-brand-name">Mapfix</span>
+      </div>
+
+      <h1 class="mf-title">Вхід</h1>
+      <p class="mf-sub">Увійдіть за номером телефону — код надійде в Telegram.</p>
+
+      <nav class="mf-seg" aria-label="Вхід або реєстрація">
+        <a class="active" href="/login.html">Вхід</a>
+        <a href="/register.html">Реєстрація</a>
+      </nav>
+
       <div id="stepPhone">
-        <span class="step-label">Крок 1 з 2</span>
-        <label for="phone">Номер телефону</label>
+        <span class="mf-step-chip">Крок 1 з 2</span>
+        <label class="mf-label" for="phone">Номер телефону</label>
         <input
           id="phone"
           name="phone"
           type="tel"
           inputmode="tel"
           autocomplete="tel"
-          placeholder="050 123 45 67"
+          placeholder="+380"
           required
         >
-        <p class="field-hint">Формат: 0501234567 або +380501234567</p>
-        <button type="button" id="requestBtn">
+        <p class="mf-hint">Формат: 0501234567 або +380501234567</p>
+        <button type="button" class="mf-btn mf-btn-primary" id="requestBtn">
           <span id="requestBtnText">Отримати код</span>
         </button>
       </div>
 
-      <div id="stepOtp" class="hidden">
-        <span class="step-label">Крок 2 з 2</span>
-        <p class="phone-sent">Код надіслано на номер <strong id="phoneDisplay"></strong></p>
-        <label for="otpCode">Код з Telegram</label>
+      <div id="stepOtp" class="mf-hidden">
+        <span class="mf-step-chip">Крок 2 з 2</span>
+        <p class="mf-phone-sent">Код надіслано на номер <strong id="phoneDisplay"></strong></p>
+        <label class="mf-label" for="otpCode">Код з Telegram</label>
         <input
           id="otpCode"
+          class="mf-otp-input"
           name="otpCode"
           type="text"
           inputmode="numeric"
@@ -261,28 +58,28 @@
           placeholder="000000"
           required
         >
-        <p class="field-hint">Введіть 6-значний код із повідомлення бота</p>
-        <button type="button" id="verifyBtn">
+        <p class="mf-hint">Введіть 6-значний код із повідомлення бота</p>
+        <button type="button" class="mf-btn mf-btn-primary" id="verifyBtn">
           <span id="verifyBtnText">Увійти</span>
         </button>
-        <div class="resend-row">
-          <button type="button" id="resendBtn" class="linkish" disabled>
+        <div class="mf-resend">
+          <button type="button" id="resendBtn" class="mf-btn mf-btn-link" disabled>
             Надіслати код повторно (<span id="resendCountdown">60</span> с)
           </button>
         </div>
-        <button type="button" id="changePhoneBtn" class="secondary">Змінити номер</button>
+        <button type="button" id="changePhoneBtn" class="mf-btn mf-btn-ghost">Змінити номер</button>
       </div>
 
-      <form id="classicForm" class="hidden">
-        <hr class="divider">
-        <label for="login">Логін</label>
-        <input id="login" name="login" type="text" autocomplete="username">
-        <label for="password">Пароль</label>
-        <div class="password-field">
-          <input id="password" name="password" type="password" autocomplete="current-password">
+      <form id="classicForm" class="mf-hidden">
+        <hr class="mf-divider">
+        <label class="mf-label" for="login">Логін</label>
+        <input id="login" name="login" type="text" autocomplete="username" placeholder="Логін">
+        <label class="mf-label" for="password">Пароль</label>
+        <div class="mf-password">
+          <input id="password" name="password" type="password" autocomplete="current-password" placeholder="Пароль">
           <button
             type="button"
-            class="password-toggle"
+            class="mf-toggle-eye"
             id="passwordToggle"
             aria-label="Показати пароль"
             aria-pressed="false"
@@ -291,23 +88,24 @@
             <span class="eye-label">Показати</span>
           </button>
         </div>
-        <button type="submit" id="classicSubmitBtn">
+        <button type="submit" class="mf-btn mf-btn-dark" id="classicSubmitBtn">
           <span id="classicSubmitText">Увійти за паролем</span>
         </button>
       </form>
 
-      <div class="classic-toggle">
-        <button type="button" id="toggleClassicBtn">Класичний вхід (логін і пароль)</button>
+      <div style="text-align:center;margin-top:8px">
+        <button type="button" id="toggleClassicBtn" class="mf-btn mf-btn-link">Класичний вхід (логін і пароль)</button>
       </div>
 
-      <div id="message" class="msg" role="alert"></div>
+      <div id="message" class="mf-msg" role="alert"></div>
     </div>
 
-    <p class="links">
-      <a href="/register.html">Реєстрація</a>
+    <p class="mf-foot">
+      Підтвердження через Telegram також доступне на сторінці
+      <a href="/link-telegram.html">звʼязку з Telegram</a>.
+    </p>
+    <p class="mf-links">
       <a href="/forgot-password.html">Забули пароль?</a>
-      <a href="/link-telegram.html">Підключити Telegram</a>
-      <a href="/">На карту</a>
     </p>
   </div>
 
@@ -342,36 +140,33 @@
 
     function clearMessage() {
       message.textContent = '';
-      message.className = 'msg';
+      message.className = 'mf-msg';
       message.innerHTML = '';
     }
 
     function showError(text, html) {
-      if (html) {
-        message.innerHTML = html;
-      } else {
-        message.textContent = text;
-      }
-      message.className = 'msg err';
+      if (html) message.innerHTML = html;
+      else message.textContent = text;
+      message.className = 'mf-msg err';
     }
 
     function showSuccess(text) {
       message.textContent = text;
-      message.className = 'msg ok';
+      message.className = 'mf-msg ok';
     }
 
     function setButtonLoading(button, textEl, loading, idleText, loadingText) {
       button.disabled = loading;
       if (loading) {
-        textEl.innerHTML = '<span class="spinner" aria-hidden="true"></span>' + loadingText;
+        textEl.innerHTML = '<span class="mf-spinner" aria-hidden="true"></span>' + loadingText;
       } else {
         textEl.textContent = idleText;
       }
     }
 
     function showPhoneStep() {
-      stepPhone.classList.remove('hidden');
-      stepOtp.classList.add('hidden');
+      stepPhone.classList.remove('mf-hidden');
+      stepOtp.classList.add('mf-hidden');
       stopResendTimer();
       setResendReady();
       otpInput.value = '';
@@ -380,8 +175,8 @@
     function showOtpStep(phone) {
       savedPhone = phone;
       phoneDisplay.textContent = phone;
-      stepPhone.classList.add('hidden');
-      stepOtp.classList.remove('hidden');
+      stepPhone.classList.add('mf-hidden');
+      stepOtp.classList.remove('mf-hidden');
       otpInput.focus();
       startResendTimer();
     }
@@ -557,8 +352,8 @@
     });
 
     toggleClassicBtn.addEventListener('click', () => {
-      const willShow = classicForm.classList.contains('hidden');
-      classicForm.classList.toggle('hidden', !willShow);
+      const willShow = classicForm.classList.contains('mf-hidden');
+      classicForm.classList.toggle('mf-hidden', !willShow);
       toggleClassicBtn.textContent = willShow
         ? 'Сховати класичний вхід'
         : 'Класичний вхід (логін і пароль)';
@@ -596,7 +391,6 @@
       toggle.addEventListener('click', () => {
         const show = input.type === 'password';
         input.type = show ? 'text' : 'password';
-        toggle.classList.toggle('is-visible', show);
         toggle.setAttribute('aria-pressed', show ? 'true' : 'false');
         toggle.setAttribute('aria-label', show ? 'Сховати пароль' : 'Показати пароль');
         toggle.title = show ? 'Сховати пароль' : 'Показати пароль';
