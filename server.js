@@ -977,6 +977,131 @@ app.post('/api/add-item', requireAuth, requireAdmin, async (req, res) => {
   }
 });
 
+app.post('/api/admin/catalog/category', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const name = String(req.body?.name || '').trim();
+    const iconRaw = String(req.body?.icon || '').trim();
+    if (name.length < 2) {
+      return res.status(400).json({ error: 'Назва категорії має містити щонайменше 2 символи' });
+    }
+
+    const data = await readData();
+    const catalog = data.masterCatalog || (data.masterCatalog = {});
+    const exists = Object.values(catalog).some(
+      (c) => String(c.name || '').toLowerCase() === name.toLowerCase()
+    );
+    if (exists) {
+      return res.status(409).json({ error: 'Категорія з такою назвою вже існує' });
+    }
+
+    const icon = firstEmoji(iconRaw || name);
+    const displayName = icon && !name.startsWith(icon) ? `${icon} ${name}` : name;
+    const catKey = makeKey(name, Object.keys(catalog));
+    catalog[catKey] = {
+      name: displayName,
+      icon,
+      subcats: {},
+    };
+
+    await writeData(data);
+    res.json({ ok: true, categoryKey: catKey, category: catalog[catKey] });
+  } catch (err) {
+    console.error('[POST /api/admin/catalog/category]', err);
+    res.status(500).json({ error: 'Не вдалося створити категорію' });
+  }
+});
+
+app.post('/api/admin/catalog/subcategory', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const categoryKey = String(req.body?.categoryKey || '').trim();
+    const name = String(req.body?.name || '').trim();
+    if (!categoryKey) {
+      return res.status(400).json({ error: 'Оберіть категорію' });
+    }
+    if (name.length < 2) {
+      return res.status(400).json({ error: 'Назва підкатегорії має містити щонайменше 2 символи' });
+    }
+
+    const data = await readData();
+    const catalog = data.masterCatalog || {};
+    const cat = catalog[categoryKey];
+    if (!cat) {
+      return res.status(404).json({ error: 'Категорію не знайдено' });
+    }
+    if (!cat.subcats || typeof cat.subcats !== 'object') cat.subcats = {};
+
+    const exists = Object.values(cat.subcats).some(
+      (s) => String(s.name || '').toLowerCase() === name.toLowerCase()
+    );
+    if (exists) {
+      return res.status(409).json({ error: 'Підкатегорія з такою назвою вже є в цій категорії' });
+    }
+
+    const subKey = makeKey(name, Object.keys(cat.subcats));
+    cat.subcats[subKey] = {
+      name,
+      tags: [name.toLowerCase()],
+      items: [],
+    };
+
+    await writeData(data);
+    res.json({ ok: true, categoryKey, subcategoryKey: subKey, subcategory: cat.subcats[subKey] });
+  } catch (err) {
+    console.error('[POST /api/admin/catalog/subcategory]', err);
+    res.status(500).json({ error: 'Не вдалося створити підкатегорію' });
+  }
+});
+
+app.post('/api/admin/catalog/service', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const categoryKey = String(req.body?.categoryKey || '').trim();
+    const subcategoryKey = String(req.body?.subcategoryKey || '').trim();
+    const name = String(req.body?.name || req.body?.service || '').trim();
+    const price = String(req.body?.price || '').trim();
+
+    if (!categoryKey || !subcategoryKey) {
+      return res.status(400).json({ error: 'Оберіть категорію та підкатегорію' });
+    }
+    if (name.length < 2) {
+      return res.status(400).json({ error: 'Назва послуги має містити щонайменше 2 символи' });
+    }
+    if (!price) {
+      return res.status(400).json({ error: 'Вкажіть орієнтовну ціну' });
+    }
+
+    const data = await readData();
+    const catalog = data.masterCatalog || {};
+    const cat = catalog[categoryKey];
+    const sub = cat?.subcats?.[subcategoryKey];
+    if (!sub) {
+      return res.status(404).json({ error: 'Підкатегорію не знайдено' });
+    }
+    if (!Array.isArray(sub.items)) sub.items = [];
+
+    const priceStr = formatPrice(price);
+    const existing = sub.items.find((i) => String(i.name).toLowerCase() === name.toLowerCase());
+    if (existing) {
+      existing.price = priceStr;
+    } else {
+      sub.items.push({ name, price: priceStr });
+      const tag = name.toLowerCase();
+      if (!Array.isArray(sub.tags)) sub.tags = [];
+      if (!sub.tags.includes(tag)) sub.tags.push(tag);
+    }
+
+    await writeData(data);
+    res.json({
+      ok: true,
+      categoryKey,
+      subcategoryKey,
+      updated: Boolean(existing),
+    });
+  } catch (err) {
+    console.error('[POST /api/admin/catalog/service]', err);
+    res.status(500).json({ error: 'Не вдалося додати послугу' });
+  }
+});
+
 app.get('/api/provider/dashboard', requireAuth, rejectClientFromPanel, requireProviderOrAdmin, async (req, res) => {
   try {
     const user = getSessionUser(req);

@@ -109,7 +109,45 @@
     .tab:hover { background: #f1f5f9; color: #0f172a; }
     .tab.active { background: #007bff; color: #fff; border-color: #007bff; }
     .tab.active:hover { background: #0069d9; color: #fff; }
-    .hidden { display: none !important; }
+    .catalog-tree {
+      max-height: 320px;
+      overflow: auto;
+      border: 1px solid #e2e8f0;
+      border-radius: 10px;
+      background: #f8fafc;
+      padding: 10px;
+      margin-bottom: 16px;
+    }
+    .catalog-tree-cat {
+      margin-bottom: 10px;
+      background: #fff;
+      border: 1px solid #e2e8f0;
+      border-radius: 10px;
+      padding: 10px 12px;
+    }
+    .catalog-tree-cat:last-child { margin-bottom: 0; }
+    .catalog-tree-cat-title { font-weight: 800; font-size: 0.92rem; margin: 0 0 6px; }
+    .catalog-tree-sub { margin: 0 0 6px 8px; font-size: 0.86rem; color: #334155; }
+    .catalog-tree-sub strong { font-weight: 700; }
+    .catalog-tree-items { margin: 2px 0 0 14px; color: #64748b; font-size: 0.8rem; line-height: 1.4; }
+    .catalog-forms-grid {
+      display: grid;
+      gap: 14px;
+    }
+    @media (min-width: 700px) {
+      .catalog-forms-grid { grid-template-columns: 1fr 1fr; }
+      .catalog-forms-grid .span-2 { grid-column: 1 / -1; }
+    }
+    .catalog-form-card {
+      border: 1px solid #e2e8f0;
+      border-radius: 12px;
+      padding: 14px;
+      background: #fff;
+    }
+    .catalog-form-card h3 {
+      margin: 0 0 10px;
+      font-size: 0.95rem;
+    }
     .loading { color: #64748b; }
     .links { margin-top: 20px; text-align: center; }
     .links a { color: #007bff; text-decoration: none; }
@@ -252,26 +290,62 @@
       </div>
 
       <div id="tabCatalog" class="card hidden">
-        <h2>Додати послугу в глобальний каталог</h2>
-        <form id="adminCatalogForm">
-          <div class="field-block">
-            <label>Категорія</label>
-            <select id="adminCat" required></select>
+        <h2>Глобальний каталог</h2>
+        <p class="field-hint">Додайте нову категорію, підкатегорію або послугу. Зміни одразу з’являться на карті та в реєстрації майстрів.</p>
+
+        <h3 style="font-size:0.95rem;margin:0 0 8px">Поточний каталог</h3>
+        <div id="adminCatalogTree" class="catalog-tree">
+          <p class="list-item-meta">Завантаження…</p>
+        </div>
+
+        <div class="catalog-forms-grid">
+          <div class="catalog-form-card">
+            <h3>Нова категорія</h3>
+            <form id="adminNewCategoryForm">
+              <label>Назва</label>
+              <input type="text" id="newCatName" required minlength="2" placeholder="напр. Краса">
+              <label>Іконка (емодзі, необовʼязково)</label>
+              <input type="text" id="newCatIcon" maxlength="4" placeholder="✂️">
+              <button type="submit">Додати категорію</button>
+            </form>
           </div>
-          <div class="field-block">
-            <label>Підкатегорія</label>
-            <select id="adminSub" disabled required></select>
+
+          <div class="catalog-form-card">
+            <h3>Нова підкатегорія</h3>
+            <form id="adminNewSubcategoryForm">
+              <label>Категорія</label>
+              <select id="newSubCat" required></select>
+              <label>Назва підкатегорії</label>
+              <input type="text" id="newSubName" required minlength="2" placeholder="напр. Нігтьовий сервіс">
+              <button type="submit">Додати підкатегорію</button>
+            </form>
           </div>
-          <div class="field-block">
-            <label>Послуга</label>
-            <input type="text" id="adminService" required>
+
+          <div class="catalog-form-card span-2">
+            <h3>Нова послуга</h3>
+            <form id="adminCatalogForm">
+              <div class="row2">
+                <div class="field-block">
+                  <label>Категорія</label>
+                  <select id="adminCat" required></select>
+                </div>
+                <div class="field-block">
+                  <label>Підкатегорія</label>
+                  <select id="adminSub" disabled required></select>
+                </div>
+              </div>
+              <div class="field-block">
+                <label>Послуга</label>
+                <input type="text" id="adminService" required minlength="2" placeholder="напр. Манікюр + гель-лак">
+              </div>
+              <div class="field-block">
+                <label>Орієнтовна ціна</label>
+                <input type="text" id="adminPrice" placeholder="800" required>
+              </div>
+              <button type="submit">Додати послугу</button>
+            </form>
           </div>
-          <div class="field-block">
-            <label>Орієнтовна ціна</label>
-            <input type="text" id="adminPrice" placeholder="800" required>
-          </div>
-          <button type="submit">Додати в каталог</button>
-        </form>
+        </div>
       </div>
     </div>
 
@@ -662,12 +736,21 @@
 
     function fillAdminCatalogSelects() {
       const catSel = document.getElementById('adminCat');
-      catSel.innerHTML = '<option value="">— Категорія —</option>';
-      Object.entries(adminCatalog).forEach(([k, c]) => {
-        catSel.innerHTML += `<option value="${k}">${esc(c.name)}</option>`;
-      });
+      const newSubCat = document.getElementById('newSubCat');
+      const entries = Object.entries(adminCatalog || {});
+
+      const catOptions =
+        '<option value="">— Категорія —</option>' +
+        entries.map(([k, c]) => `<option value="${k}">${esc(c.name)}</option>`).join('');
+
+      catSel.innerHTML = catOptions;
+      if (newSubCat) newSubCat.innerHTML = catOptions;
+
+      const subSel = document.getElementById('adminSub');
+      subSel.innerHTML = '<option value="">— Підкатегорія —</option>';
+      subSel.disabled = true;
+
       catSel.onchange = () => {
-        const subSel = document.getElementById('adminSub');
         subSel.innerHTML = '<option value="">— Підкатегорія —</option>';
         const cat = adminCatalog[catSel.value];
         if (!cat) {
@@ -679,31 +762,115 @@
           subSel.innerHTML += `<option value="${k}">${esc(s.name)}</option>`;
         });
       };
+
+      renderAdminCatalogTree();
     }
+
+    function renderAdminCatalogTree() {
+      const el = document.getElementById('adminCatalogTree');
+      if (!el) return;
+      const entries = Object.entries(adminCatalog || {});
+      if (!entries.length) {
+        el.innerHTML = '<p class="list-item-meta">Каталог порожній — додайте першу категорію</p>';
+        return;
+      }
+
+      el.innerHTML = entries
+        .map(([catKey, cat]) => {
+          const subs = Object.entries(cat.subcats || {});
+          const subsHtml = subs.length
+            ? subs
+                .map(([subKey, sub]) => {
+                  const items = Array.isArray(sub.items) ? sub.items : [];
+                  const itemsHtml = items.length
+                    ? `<div class="catalog-tree-items">${items
+                        .map((i) => `${esc(i.name)} — ${esc(i.price || '—')}`)
+                        .join('<br>')}</div>`
+                    : `<div class="catalog-tree-items">Послуг ще немає</div>`;
+                  return `<div class="catalog-tree-sub"><strong>${esc(sub.name)}</strong> <span class="list-item-meta">(${items.length})</span>${itemsHtml}</div>`;
+                })
+                .join('')
+            : `<div class="catalog-tree-sub list-item-meta">Підкатегорій ще немає</div>`;
+
+          return `<div class="catalog-tree-cat" data-cat="${esc(catKey)}">
+            <div class="catalog-tree-cat-title">${esc(cat.name)} <span class="list-item-meta">· ${subs.length} підкат.</span></div>
+            ${subsHtml}
+          </div>`;
+        })
+        .join('');
+    }
+
+    async function reloadAdminCatalog() {
+      const catRes = await apiFetch('/api/data');
+      adminCatalog = catRes.masterCatalog || {};
+      catalog = adminCatalog;
+      fillAdminCatalogSelects();
+    }
+
+    document.getElementById('adminNewCategoryForm').onsubmit = async (e) => {
+      e.preventDefault();
+      const name = document.getElementById('newCatName').value.trim();
+      const icon = document.getElementById('newCatIcon').value.trim();
+      const r = await fetch('/api/admin/catalog/category', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, icon }),
+      });
+      const j = await r.json();
+      if (!r.ok) return showMessage(j.error || 'Помилка', true);
+      showMessage('Категорію додано');
+      e.target.reset();
+      await reloadAdminCatalog();
+    };
+
+    document.getElementById('adminNewSubcategoryForm').onsubmit = async (e) => {
+      e.preventDefault();
+      const categoryKey = document.getElementById('newSubCat').value;
+      const name = document.getElementById('newSubName').value.trim();
+      const r = await fetch('/api/admin/catalog/subcategory', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ categoryKey, name }),
+      });
+      const j = await r.json();
+      if (!r.ok) return showMessage(j.error || 'Помилка', true);
+      showMessage('Підкатегорію додано');
+      document.getElementById('newSubName').value = '';
+      await reloadAdminCatalog();
+      document.getElementById('newSubCat').value = categoryKey;
+      document.getElementById('adminCat').value = categoryKey;
+      document.getElementById('adminCat').dispatchEvent(new Event('change'));
+      if (j.subcategoryKey) document.getElementById('adminSub').value = j.subcategoryKey;
+    };
 
     document.getElementById('adminCatalogForm').onsubmit = async (e) => {
       e.preventDefault();
-      const catKey = document.getElementById('adminCat').value;
-      const subKey = document.getElementById('adminSub').value;
-      const cat = adminCatalog[catKey];
-      const sub = cat?.subcats?.[subKey];
-      if (!sub) return showMessage('Оберіть категорію та підкатегорію', true);
+      const categoryKey = document.getElementById('adminCat').value;
+      const subcategoryKey = document.getElementById('adminSub').value;
+      if (!categoryKey || !subcategoryKey) {
+        return showMessage('Оберіть категорію та підкатегорію', true);
+      }
 
       const body = {
-        category: cat.name,
-        subcategory: sub.name,
-        service: document.getElementById('adminService').value.trim(),
+        categoryKey,
+        subcategoryKey,
+        name: document.getElementById('adminService').value.trim(),
         price: document.getElementById('adminPrice').value.trim(),
       };
-      const r = await fetch('/api/add-item', {
+      const r = await fetch('/api/admin/catalog/service', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
       });
       const j = await r.json();
-      if (!r.ok) return showMessage(j.error, true);
-      showMessage('Послугу додано в глобальний каталог');
-      e.target.reset();
+      if (!r.ok) return showMessage(j.error || 'Помилка', true);
+      showMessage(j.updated ? 'Ціну послуги оновлено' : 'Послугу додано в каталог');
+      document.getElementById('adminService').value = '';
+      document.getElementById('adminPrice').value = '';
+      await reloadAdminCatalog();
+      document.getElementById('adminCat').value = categoryKey;
+      document.getElementById('adminCat').dispatchEvent(new Event('change'));
+      document.getElementById('adminSub').value = subcategoryKey;
     };
 
     /* ---- Provider ---- */
