@@ -72,6 +72,14 @@ const CATEGORY_OSM_FILTERS = {
     'leisure=stadium',
     'sport=fitness',
   ],
+  rental: [
+    'shop=rental',
+    'amenity=car_rental',
+    'shop=car_rental',
+    'office=rental',
+    'shop=tool_hire',
+    'shop=hardware',
+  ],
 };
 
 const CATEGORY_SUBCAT_HINTS = {
@@ -82,6 +90,7 @@ const CATEGORY_SUBCAT_HINTS = {
   home: ['plumber', 'electric'],
   education: ['school'],
   sport: ['fitness'],
+  rental: ['tools', 'vehicles', 'equipment', 'spaces'],
 };
 
 function makeLocationId(seed) {
@@ -244,6 +253,7 @@ async function fetchGooglePlaces({ city, category, apiKey }) {
     home: 'сантехнік електрик будівельні послуги',
     education: 'школа курси репетитор',
     sport: 'спортзал фітнес',
+    rental: 'прокат оренда інструментів авто обладнання',
   };
 
   const textQuery = `${catNames[cat] || cat} ${preset.name}`;

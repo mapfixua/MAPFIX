@@ -40,6 +40,11 @@ const {
   fetchLocationsFromSupabase,
   syncAllLocationsToSupabase,
 } = require('./locations-store.js');
+const {
+  fetchCatalogFromSupabase,
+  upsertCatalogToSupabase,
+  mergeCatalog,
+} = require('./catalog-store.js');
 
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY || '';
 const IS_VERCEL = !!process.env.VERCEL;
@@ -98,6 +103,14 @@ function formatPrice(price) {
   const p = String(price).trim();
   if (/грн/i.test(p)) return p;
   return `${p} грн`;
+}
+
+function catalogWriteError(writeResult) {
+  if (writeResult?.catalogOk || writeResult?.localOk) return null;
+  if (writeResult?.catalogMissing) {
+    return 'Виконайте міграцію 007_catalog_snapshots.sql у Supabase (таблиця catalog_snapshots)';
+  }
+  return 'Не вдалося зберегти каталог. Перевірте Supabase або права запису';
 }
 
 function getSessionUser(req) {
@@ -306,6 +319,7 @@ function ensureDataShape(data) {
 async function readData() {
   const raw = await fsPromises.readFile(DATA_FILE, 'utf8');
   const data = ensureDataShape(JSON.parse(raw));
+  const fileCatalog = data.masterCatalog;
 
   // Prefer Supabase locations when table is populated (Vercel-safe persistence)
   try {
@@ -317,18 +331,45 @@ async function readData() {
     console.warn('[readData] Supabase locations skip:', err.message);
   }
 
+  // Merge seeded data.json catalog with live Supabase snapshot (admin edits)
+  try {
+    const remoteCat = await fetchCatalogFromSupabase();
+    if (remoteCat.ok && remoteCat.catalog) {
+      data.masterCatalog = mergeCatalog(fileCatalog, remoteCat.catalog);
+    }
+  } catch (err) {
+    console.warn('[readData] Supabase catalog skip:', err.message);
+  }
+
   return data;
 }
 
 async function writeData(data) {
   const payload = ensureDataShape(data);
   console.log('[writeData]', DATA_FILE, 'locations:', payload.mockLocations?.length ?? 0);
+  let localOk = false;
   try {
     await fsPromises.writeFile(DATA_FILE, JSON.stringify(payload, null, 2), 'utf8');
+    localOk = true;
     console.log('[writeData] OK');
   } catch (err) {
     // On Vercel filesystem is read-only — continue to Supabase sync
     console.warn('[writeData] local file skip:', err.message);
+  }
+
+  let catalogOk = false;
+  let catalogMissing = false;
+  try {
+    const catSync = await upsertCatalogToSupabase(payload.masterCatalog);
+    catalogOk = Boolean(catSync.ok);
+    catalogMissing = Boolean(catSync.missing);
+    if (catSync.ok) {
+      console.log('[writeData] Supabase catalog synced');
+    } else if (catSync.error) {
+      console.warn('[writeData] Supabase catalog sync:', catSync.error.message);
+    }
+  } catch (err) {
+    console.warn('[writeData] Supabase catalog error:', err.message);
   }
 
   try {
@@ -341,6 +382,8 @@ async function writeData(data) {
   } catch (err) {
     console.warn('[writeData] Supabase locations error:', err.message);
   }
+
+  return { localOk, catalogOk, catalogMissing };
 }
 
 async function readUsers() {
@@ -1003,7 +1046,9 @@ app.post('/api/admin/catalog/category', requireAuth, requireAdmin, async (req, r
       subcats: {},
     };
 
-    await writeData(data);
+    const writeResult = await writeData(data);
+    const writeErr = catalogWriteError(writeResult);
+    if (writeErr) return res.status(503).json({ error: writeErr });
     res.json({ ok: true, categoryKey: catKey, category: catalog[catKey] });
   } catch (err) {
     console.error('[POST /api/admin/catalog/category]', err);
@@ -1044,7 +1089,9 @@ app.post('/api/admin/catalog/subcategory', requireAuth, requireAdmin, async (req
       items: [],
     };
 
-    await writeData(data);
+    const writeResult = await writeData(data);
+    const writeErr = catalogWriteError(writeResult);
+    if (writeErr) return res.status(503).json({ error: writeErr });
     res.json({ ok: true, categoryKey, subcategoryKey: subKey, subcategory: cat.subcats[subKey] });
   } catch (err) {
     console.error('[POST /api/admin/catalog/subcategory]', err);
@@ -1089,7 +1136,9 @@ app.post('/api/admin/catalog/service', requireAuth, requireAdmin, async (req, re
       if (!sub.tags.includes(tag)) sub.tags.push(tag);
     }
 
-    await writeData(data);
+    const writeResult = await writeData(data);
+    const writeErr = catalogWriteError(writeResult);
+    if (writeErr) return res.status(503).json({ error: writeErr });
     res.json({
       ok: true,
       categoryKey,
