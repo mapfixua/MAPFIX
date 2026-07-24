@@ -28,11 +28,22 @@ const {
   normalizePhone,
 } = require('./telegram-auth.js');
 const { createAuthRouter } = require('./routes/auth.js');
-const {
-  oauthPublicConfig,
-  signInWithGoogle,
-  signInWithApple,
-} = require('./oauth-auth.js');
+let oauthPublicConfig = () => ({
+  googleClientId: '',
+  appleClientId: '',
+  googleEnabled: false,
+  appleEnabled: false,
+});
+let signInWithGoogle = async () => ({ ok: false, error: 'google_not_configured' });
+let signInWithApple = async () => ({ ok: false, error: 'apple_not_configured' });
+try {
+  const oauth = require('./oauth-auth.js');
+  oauthPublicConfig = oauth.oauthPublicConfig;
+  signInWithGoogle = oauth.signInWithGoogle;
+  signInWithApple = oauth.signInWithApple;
+} catch (oauthLoadErr) {
+  console.error('[oauth] module unavailable:', oauthLoadErr.message);
+}
 const {
   fetchOsmPlaces,
   fetchGooglePlaces,
@@ -639,16 +650,20 @@ app.post('/api/register', async (req, res) => {
     }
 
     if (role === 'provider') {
-      const data = await readData();
-      data.providerProfiles[newUser.id] = {
-        companyName,
-        phone: normalizedPhone || phoneRaw || '',
-        serviceCategories,
-        serviceSubcategories: [],
-        customSubcategories: [],
-        createdAt: new Date().toISOString(),
-      };
-      await writeData(data);
+      try {
+        const data = await readData();
+        data.providerProfiles[newUser.id] = {
+          companyName,
+          phone: normalizedPhone || phoneRaw || '',
+          serviceCategories,
+          serviceSubcategories: [],
+          customSubcategories: [],
+          createdAt: new Date().toISOString(),
+        };
+        await writeData(data);
+      } catch (profileErr) {
+        console.warn('[register] provider profile skip:', profileErr.message);
+      }
     }
 
     setSessionUser(res, newUser);

@@ -1,12 +1,15 @@
 'use strict';
 
+/**
+ * Google / Apple Sign-In without heavy deps (jose, google-auth-library).
+ * Keeps the Vercel serverless bundle small and CJS-safe.
+ */
+
 const crypto = require('crypto');
-const { createRemoteJWKSet, jwtVerify } = require('jose');
-const { OAuth2Client } = require('google-auth-library');
 const { supabaseClient, USERS_TABLE, mapUserRow, toUserRow } = require('./supabaseClient.js');
 
-const googleClient = new OAuth2Client();
-const appleJwks = createRemoteJWKSet(new URL('https://appleid.apple.com/auth/keys'));
+let googleCertsCache = { expiresAt: 0, byKid: {} };
+let appleKeysCache = { expiresAt: 0, byKid: {} };
 
 function getGoogleClientIds() {
   return [
@@ -53,6 +56,155 @@ function makeLoginFromEmail(email, provider) {
     .slice(0, 24);
   const base = local.length >= 3 ? local : `${provider}_user`;
   return `${base}_${crypto.randomBytes(2).toString('hex')}`;
+}
+
+function decodeJwtPart(part) {
+  return JSON.parse(Buffer.from(String(part || ''), 'base64url').toString('utf8'));
+}
+
+function parseJwt(token) {
+  const parts = String(token || '').split('.');
+  if (parts.length !== 3) throw new Error('invalid_jwt');
+  return {
+    header: decodeJwtPart(parts[0]),
+    payload: decodeJwtPart(parts[1]),
+    signingInput: `${parts[0]}.${parts[1]}`,
+    signature: Buffer.from(parts[2], 'base64url'),
+  };
+}
+
+function pemFromModExp(n, e) {
+  const nBuf = Buffer.from(n, 'base64url');
+  const eBuf = Buffer.from(e, 'base64url');
+  const encodeLen = (len) => {
+    if (len < 0x80) return Buffer.from([len]);
+    const bytes = [];
+    let v = len;
+    while (v > 0) {
+      bytes.unshift(v & 0xff);
+      v >>= 8;
+    }
+    return Buffer.from([0x80 | bytes.length, ...bytes]);
+  };
+  const encodeInt = (buf) => {
+    let b = buf;
+    if (b[0] & 0x80) b = Buffer.concat([Buffer.from([0x00]), b]);
+    return Buffer.concat([Buffer.from([0x02]), encodeLen(b.length), b]);
+  };
+  const seq = Buffer.concat([encodeInt(nBuf), encodeInt(eBuf)]);
+  const body = Buffer.concat([Buffer.from([0x30]), encodeLen(seq.length), seq]);
+  const b64 = body.toString('base64').match(/.{1,64}/g).join('\n');
+  return `-----BEGIN RSA PUBLIC KEY-----\n${b64}\n-----END RSA PUBLIC KEY-----\n`;
+}
+
+async function fetchJson(url) {
+  const res = await fetch(url, { headers: { Accept: 'application/json' } });
+  if (!res.ok) throw new Error(`fetch_failed_${res.status}`);
+  return res.json();
+}
+
+async function getGoogleCertPem(kid) {
+  const now = Date.now();
+  if (!googleCertsCache.byKid[kid] || googleCertsCache.expiresAt < now) {
+    const res = await fetch('https://www.googleapis.com/oauth2/v1/certs');
+    if (!res.ok) throw new Error('google_certs_failed');
+    const certs = await res.json();
+    const age = Number(String(res.headers.get('cache-control') || '').match(/max-age=(\d+)/)?.[1] || 3600);
+    googleCertsCache = {
+      expiresAt: now + age * 1000,
+      byKid: certs,
+    };
+  }
+  const pem = googleCertsCache.byKid[kid];
+  if (!pem) throw new Error('unknown_kid');
+  return pem;
+}
+
+async function getApplePublicKey(kid) {
+  const now = Date.now();
+  if (!appleKeysCache.byKid[kid] || appleKeysCache.expiresAt < now) {
+    const data = await fetchJson('https://appleid.apple.com/auth/keys');
+    const byKid = {};
+    for (const jwk of data.keys || []) {
+      byKid[jwk.kid] = crypto.createPublicKey(pemFromModExp(jwk.n, jwk.e));
+    }
+    appleKeysCache = { expiresAt: now + 6 * 60 * 60 * 1000, byKid };
+  }
+  const key = appleKeysCache.byKid[kid];
+  if (!key) throw new Error('unknown_kid');
+  return key;
+}
+
+function assertAud(aud, allowed) {
+  const values = Array.isArray(aud) ? aud : [aud];
+  return values.some((v) => allowed.includes(String(v)));
+}
+
+async function verifyGoogleIdToken(idToken) {
+  const audiences = getGoogleClientIds();
+  if (!audiences.length) return { ok: false, error: 'google_not_configured' };
+  try {
+    const { header, payload, signingInput, signature } = parseJwt(idToken);
+    if (header.alg !== 'RS256' || !header.kid) return { ok: false, error: 'invalid_token' };
+    const pem = await getGoogleCertPem(header.kid);
+    const ok = crypto.verify('RSA-SHA256', Buffer.from(signingInput), pem, signature);
+    if (!ok) return { ok: false, error: 'invalid_token' };
+
+    const now = Math.floor(Date.now() / 1000);
+    if (payload.iss !== 'https://accounts.google.com' && payload.iss !== 'accounts.google.com') {
+      return { ok: false, error: 'invalid_token' };
+    }
+    if (!assertAud(payload.aud, audiences)) return { ok: false, error: 'invalid_token' };
+    if (payload.exp && Number(payload.exp) < now) return { ok: false, error: 'invalid_token' };
+    if (!payload.sub) return { ok: false, error: 'invalid_token' };
+
+    return {
+      ok: true,
+      googleId: String(payload.sub),
+      email: payload.email || null,
+      emailVerified: Boolean(payload.email_verified),
+      name: payload.name || payload.given_name || null,
+    };
+  } catch (err) {
+    console.error('[oauth] google verify:', err.message);
+    return { ok: false, error: 'invalid_token' };
+  }
+}
+
+async function verifyAppleIdToken(idToken, rawNonce) {
+  const audiences = getAppleClientIds();
+  if (!audiences.length) return { ok: false, error: 'apple_not_configured' };
+  try {
+    const { header, payload, signingInput, signature } = parseJwt(idToken);
+    if (header.alg !== 'RS256' || !header.kid) return { ok: false, error: 'invalid_token' };
+    const key = await getApplePublicKey(header.kid);
+    const ok = crypto.verify('RSA-SHA256', Buffer.from(signingInput), key, signature);
+    if (!ok) return { ok: false, error: 'invalid_token' };
+
+    const now = Math.floor(Date.now() / 1000);
+    if (payload.iss !== 'https://appleid.apple.com') return { ok: false, error: 'invalid_token' };
+    if (!assertAud(payload.aud, audiences)) return { ok: false, error: 'invalid_token' };
+    if (payload.exp && Number(payload.exp) < now) return { ok: false, error: 'invalid_token' };
+    if (!payload.sub) return { ok: false, error: 'invalid_token' };
+
+    if (rawNonce) {
+      const expected = crypto.createHash('sha256').update(String(rawNonce)).digest('hex');
+      if (payload.nonce && payload.nonce !== expected) {
+        return { ok: false, error: 'invalid_nonce' };
+      }
+    }
+
+    return {
+      ok: true,
+      appleId: String(payload.sub),
+      email: payload.email ? String(payload.email).toLowerCase() : null,
+      emailVerified: payload.email_verified === true || payload.email_verified === 'true',
+      name: null,
+    };
+  } catch (err) {
+    console.error('[oauth] apple verify:', err.message);
+    return { ok: false, error: 'invalid_token' };
+  }
 }
 
 async function findUserByOauth({ googleId, appleId, email }) {
@@ -137,16 +289,11 @@ async function createOauthUser({
   if (appleId) user.appleId = appleId;
 
   const row = toUserRow(user);
-  if (googleId) {
-    row.googleId = googleId;
-  }
-  if (appleId) {
-    row.appleId = appleId;
-  }
+  if (googleId) row.googleId = googleId;
+  if (appleId) row.appleId = appleId;
 
   const { error } = await supabaseClient.from(USERS_TABLE).insert(row);
   if (error) {
-    // Retry without oauth columns if migration not applied yet
     if (/google|apple/i.test(String(error.message || ''))) {
       const { error: err2 } = await supabaseClient.from(USERS_TABLE).insert(toUserRow(user));
       if (err2) throw new Error(err2.message);
@@ -156,63 +303,6 @@ async function createOauthUser({
   }
 
   return { user, companyName: role === 'provider' ? companyName || name || login : null };
-}
-
-async function verifyGoogleIdToken(idToken) {
-  const audiences = getGoogleClientIds();
-  if (!audiences.length) {
-    return { ok: false, error: 'google_not_configured' };
-  }
-  try {
-    const ticket = await googleClient.verifyIdToken({
-      idToken: String(idToken || ''),
-      audience: audiences.length === 1 ? audiences[0] : audiences,
-    });
-    const payload = ticket.getPayload() || {};
-    if (!payload.sub) return { ok: false, error: 'invalid_token' };
-    return {
-      ok: true,
-      googleId: payload.sub,
-      email: payload.email || null,
-      emailVerified: Boolean(payload.email_verified),
-      name: payload.name || payload.given_name || null,
-    };
-  } catch (err) {
-    console.error('[oauth] google verify:', err.message);
-    return { ok: false, error: 'invalid_token' };
-  }
-}
-
-async function verifyAppleIdToken(idToken, rawNonce) {
-  const audiences = getAppleClientIds();
-  if (!audiences.length) {
-    return { ok: false, error: 'apple_not_configured' };
-  }
-  try {
-    const { payload } = await jwtVerify(String(idToken || ''), appleJwks, {
-      issuer: 'https://appleid.apple.com',
-      audience: audiences,
-    });
-    if (!payload.sub) return { ok: false, error: 'invalid_token' };
-
-    if (rawNonce) {
-      const expected = crypto.createHash('sha256').update(String(rawNonce)).digest('hex');
-      if (payload.nonce && payload.nonce !== expected) {
-        return { ok: false, error: 'invalid_nonce' };
-      }
-    }
-
-    return {
-      ok: true,
-      appleId: String(payload.sub),
-      email: payload.email ? String(payload.email).toLowerCase() : null,
-      emailVerified: payload.email_verified === true || payload.email_verified === 'true',
-      name: null,
-    };
-  } catch (err) {
-    console.error('[oauth] apple verify:', err.message);
-    return { ok: false, error: 'invalid_token' };
-  }
 }
 
 async function signInWithGoogle({ idToken, role, companyName }) {
