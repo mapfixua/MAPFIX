@@ -785,6 +785,7 @@
             const data = await res.json();
             window.masterCatalog = data.masterCatalog || {};
             window.mockLocations = data.mockLocations || [];
+            window.catalogClicks = data.catalogClicks || {};
         }
 
         document.addEventListener("DOMContentLoaded", async () => {
@@ -1044,9 +1045,67 @@
                 sidebarListView.classList.add('sheet-content-enter');
             }
 
+            function getCatalogClicks(key) {
+                return Number((window.catalogClicks || {})[key]) || 0;
+            }
+
+            function catClickKey(catKey) {
+                return 'cat:' + catKey;
+            }
+
+            function subClickKey(catKey, subKey) {
+                return 'sub:' + catKey + ':' + subKey;
+            }
+
+            function svcClickKey(catKey, subKey, serviceName) {
+                return (
+                    'svc:' +
+                    catKey +
+                    ':' +
+                    subKey +
+                    ':' +
+                    String(serviceName || '')
+                      .trim()
+                      .toLowerCase()
+                );
+            }
+
+            function sortByClicksThenName(entries, getKey, getName) {
+                return [...entries].sort((a, b) => {
+                    const ca = getCatalogClicks(getKey(a));
+                    const cb = getCatalogClicks(getKey(b));
+                    if (cb !== ca) return cb - ca;
+                    return String(getName(a) || '').localeCompare(String(getName(b) || ''), 'uk');
+                });
+            }
+
+            function trackCatalogClick(payload) {
+                let key = '';
+                if (payload.type === 'category') key = catClickKey(payload.categoryKey);
+                else if (payload.type === 'subcategory') {
+                    key = subClickKey(payload.categoryKey, payload.subcategoryKey);
+                } else if (payload.type === 'service') {
+                    key = svcClickKey(payload.categoryKey, payload.subcategoryKey, payload.serviceName);
+                }
+                if (key) {
+                    window.catalogClicks = window.catalogClicks || {};
+                    window.catalogClicks[key] = getCatalogClicks(key) + 1;
+                }
+                fetch('/api/catalog/click', {
+                    method: 'POST',
+                    credentials: 'same-origin',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload),
+                }).catch(() => {});
+            }
+
             function renderCategoryStrip() {
                 categoryStrip.innerHTML = '';
-                const cats = Object.entries(window.masterCatalog || {});
+                const cats = sortByClicksThenName(
+                    Object.entries(window.masterCatalog || {}),
+                    ([catKey]) => catClickKey(catKey),
+                    ([, catData]) => catData?.name || ''
+                );
                 if (!cats.length) {
                     categoryStrip.innerHTML = '<p class="nav-hint" style="padding:8px 16px">Каталог порожній</p>';
                     return;
@@ -1135,7 +1194,11 @@
 
                 if (!State.subcategory) {
                     navTitle.textContent = categoryLabel(catData.name);
-                    const subs = Object.entries(catData.subcats || {});
+                    const subs = sortByClicksThenName(
+                        Object.entries(catData.subcats || {}),
+                        ([subKey]) => subClickKey(State.category, subKey),
+                        ([, subData]) => subData?.name || ''
+                    );
                     if (subs.length === 0) {
                         catalogNav.innerHTML = '<p class="nav-hint">Немає підкатегорій</p>';
                     } else {
@@ -1157,7 +1220,11 @@
 
                 const subData = catData.subcats[State.subcategory];
                 navTitle.textContent = subData.name;
-                const items = subData.items || [];
+                const items = sortByClicksThenName(
+                    subData.items || [],
+                    (srv) => svcClickKey(State.category, State.subcategory, srv.name),
+                    (srv) => srv?.name || ''
+                );
                 if (items.length === 0) {
                     catalogNav.innerHTML = '<p class="nav-hint">Немає послуг у цій підкатегорії</p>';
                 } else {
@@ -1504,6 +1571,7 @@
             }
 
             function handleL1Click(catId) {
+                trackCatalogClick({ type: 'category', categoryKey: catId });
                 State.category = catId;
                 State.subcategory = null;
                 State.service = null;
@@ -1513,6 +1581,11 @@
             }
 
             function handleL2Click(subId) {
+                trackCatalogClick({
+                    type: 'subcategory',
+                    categoryKey: State.category,
+                    subcategoryKey: subId,
+                });
                 State.subcategory = subId;
                 State.service = null;
                 State.selectedLocation = null;
@@ -1521,6 +1594,12 @@
             }
 
             function handleL3Click(srv) {
+                trackCatalogClick({
+                    type: 'service',
+                    categoryKey: State.category,
+                    subcategoryKey: State.subcategory,
+                    serviceName: srv.name,
+                });
                 State.service = { name: srv.name, price: srv.price };
                 State.selectedLocation = null;
                 expandBottomSheet();

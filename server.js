@@ -72,6 +72,13 @@ const {
   fetchProviderProfilesMap,
   upsertProviderProfile,
 } = require('./provider-profiles-store.js');
+const {
+  categoryClickKey,
+  subcategoryClickKey,
+  serviceClickKey,
+  fetchCatalogClicksMap,
+  incrementCatalogClick,
+} = require('./catalog-clicks-store.js');
 
 const LOGIN_RE = /^[a-z0-9._-]{3,32}$/;
 
@@ -951,10 +958,59 @@ app.get('/api/data', async (req, res) => {
   try {
     res.set('Cache-Control', 'no-store');
     const data = await readData();
-    res.json(data);
+    let catalogClicks = {};
+    try {
+      const clicksRes = await fetchCatalogClicksMap();
+      if (clicksRes.ok) catalogClicks = clicksRes.clicks || {};
+    } catch (err) {
+      console.warn('[GET /api/data] catalog clicks skip:', err.message);
+    }
+    res.json({ ...data, catalogClicks });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Не вдалося прочитати data.json' });
+  }
+});
+
+app.post('/api/catalog/click', async (req, res) => {
+  try {
+    const type = String(req.body?.type || '').trim();
+    const categoryKey = String(req.body?.categoryKey || '').trim();
+    const subcategoryKey = String(req.body?.subcategoryKey || '').trim();
+    const serviceName = String(req.body?.serviceName || '').trim();
+
+    let clickKey = '';
+    if (type === 'category') {
+      if (!categoryKey) return res.status(400).json({ error: 'categoryKey required' });
+      clickKey = categoryClickKey(categoryKey);
+    } else if (type === 'subcategory') {
+      if (!categoryKey || !subcategoryKey) {
+        return res.status(400).json({ error: 'categoryKey and subcategoryKey required' });
+      }
+      clickKey = subcategoryClickKey(categoryKey, subcategoryKey);
+    } else if (type === 'service') {
+      if (!categoryKey || !subcategoryKey || !serviceName) {
+        return res.status(400).json({ error: 'categoryKey, subcategoryKey and serviceName required' });
+      }
+      clickKey = serviceClickKey(categoryKey, subcategoryKey, serviceName);
+    } else {
+      return res.status(400).json({ error: 'type must be category | subcategory | service' });
+    }
+
+    const result = await incrementCatalogClick(clickKey);
+    if (!result.ok) {
+      if (result.missing) {
+        return res.status(503).json({
+          error: 'Виконайте міграцію 011_catalog_clicks.sql у Supabase',
+        });
+      }
+      throw result.error || new Error('increment failed');
+    }
+
+    res.json({ ok: true, clickKey, clicks: result.clicks });
+  } catch (err) {
+    console.error('[POST /api/catalog/click]', err);
+    res.status(500).json({ error: 'Не вдалося зберегти клік' });
   }
 });
 
