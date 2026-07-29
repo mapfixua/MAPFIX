@@ -62,6 +62,7 @@ const {
   fetchLocationsFromSupabase,
   syncAllLocationsToSupabase,
   upsertLocationsToSupabase,
+  deleteLocationsFromSupabase,
 } = require('./locations-store.js');
 const {
   fetchCatalogFromSupabase,
@@ -343,12 +344,49 @@ function mergeProviderServiceCategories(categories, subcategorySelections, custo
   return [...merged];
 }
 
+function isLocationTrashed(loc) {
+  return Boolean(loc && loc.deletedAt);
+}
+
+function isImportedLocation(loc) {
+  if (!loc) return false;
+  if (loc.importSource) return true;
+  if (String(loc.id || '').startsWith('loc-imp-')) return true;
+  return false;
+}
+
+function activeLocations(list) {
+  return (list || []).filter((l) => !isLocationTrashed(l));
+}
+
+function trashedLocations(list) {
+  return (list || []).filter((l) => isLocationTrashed(l));
+}
+
+function locationMatchesBulkFilter(loc, filter = {}) {
+  if (!loc) return false;
+  if (filter.onlyImported && !isImportedLocation(loc)) return false;
+  if (filter.onlyActive && isLocationTrashed(loc)) return false;
+  if (filter.onlyTrashed && !isLocationTrashed(loc)) return false;
+  if (filter.cat && loc.cat !== filter.cat) return false;
+  if (filter.subcategory) {
+    const subs = Array.isArray(loc.subcats) ? loc.subcats : [];
+    if (!subs.includes(filter.subcategory)) return false;
+  }
+  if (Array.isArray(filter.ids) && filter.ids.length) {
+    if (!filter.ids.includes(loc.id)) return false;
+  }
+  return true;
+}
+
 function ensureDataShape(data) {
   if (!data.providerProfiles) data.providerProfiles = {};
   if (!data.mockLocations) data.mockLocations = [];
   if (!data.masterCatalog) data.masterCatalog = {};
   data.mockLocations.forEach((loc) => {
     if (loc.providerId === undefined) loc.providerId = null;
+    if (!Array.isArray(loc.subcats)) loc.subcats = loc.subcats ? [].concat(loc.subcats) : [];
+    if (!Array.isArray(loc.photos)) loc.photos = [];
   });
   Object.values(data.providerProfiles).forEach((profile) => {
     if (!Array.isArray(profile.serviceCategories)) profile.serviceCategories = [];
@@ -972,7 +1010,11 @@ app.get('/api/data', async (req, res) => {
     } catch (err) {
       console.warn('[GET /api/data] catalog clicks skip:', err.message);
     }
-    res.json({ ...data, catalogClicks });
+    res.json({
+      ...data,
+      mockLocations: activeLocations(data.mockLocations),
+      catalogClicks,
+    });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Не вдалося прочитати data.json' });
@@ -1061,7 +1103,7 @@ app.get('/api/admin/overview', requireAuth, requireAdmin, async (req, res) => {
     const [data, users, orders] = await Promise.all([readData(), readUsers(), readOrders()]);
 
     const locByProvider = new Map();
-    data.mockLocations.forEach((loc) => {
+    activeLocations(data.mockLocations).forEach((loc) => {
       if (!loc.providerId) return;
       if (!locByProvider.has(loc.providerId)) locByProvider.set(loc.providerId, []);
       locByProvider.get(loc.providerId).push(loc);
@@ -1113,11 +1155,12 @@ app.get('/api/admin/overview', requireAuth, requireAdmin, async (req, res) => {
         hasPassword: Boolean(u.passwordHash),
       }));
 
-    const locations = data.mockLocations.map((loc) => ({
+    const locations = activeLocations(data.mockLocations).map((loc) => ({
       id: loc.id,
       title: loc.title,
       providerId: loc.providerId,
       cat: loc.cat,
+      subcats: Array.isArray(loc.subcats) ? loc.subcats : [],
       address: loc.address,
       openStatus: loc.openStatus,
       servicesCount: Object.keys(loc.prices || {}).length,
@@ -1125,6 +1168,19 @@ app.get('/api/admin/overview', requireAuth, requireAdmin, async (req, res) => {
       rating: loc.rating || 0,
       reviewsCount: loc.reviewsCount || 0,
       phone: loc.phone || '',
+      importSource: loc.importSource || null,
+      imported: isImportedLocation(loc),
+    }));
+
+    const trash = trashedLocations(data.mockLocations).map((loc) => ({
+      id: loc.id,
+      title: loc.title,
+      cat: loc.cat,
+      address: loc.address || '',
+      importSource: loc.importSource || null,
+      imported: isImportedLocation(loc),
+      deletedAt: loc.deletedAt,
+      deletedReason: loc.deletedReason || '',
     }));
 
     res.json({
@@ -1133,6 +1189,9 @@ app.get('/api/admin/overview', requireAuth, requireAdmin, async (req, res) => {
       admins,
       usersTotal: users.length,
       locations,
+      trash,
+      trashCount: trash.length,
+      importedCount: locations.filter((l) => l.imported).length,
       catalogCategories: Object.keys(data.masterCatalog).length,
       ordersTotal: orders.length,
       importCities: CITY_PRESETS,
@@ -1316,11 +1375,27 @@ app.post('/api/admin/import-places', requireAuth, requireAdmin, async (req, res)
     const city = req.body?.city || 'kotsyubynske';
     const category = req.body?.category || 'beauty';
     const dryRun = Boolean(req.body?.dryRun);
+    const selectedIds = Array.isArray(req.body?.selectedIds)
+      ? req.body.selectedIds.map(String)
+      : null;
+    const providedLocations = Array.isArray(req.body?.locations) ? req.body.locations : null;
 
     let incoming = [];
     let meta = {};
 
-    if (source === 'osm') {
+    if (providedLocations && providedLocations.length && !dryRun) {
+      incoming = providedLocations
+        .filter((l) => l && l.title && Number.isFinite(Number(l.lat)) && Number.isFinite(Number(l.lng)))
+        .map((l) => ({
+          ...l,
+          lat: Number(l.lat),
+          lng: Number(l.lng),
+          cat: l.cat || category,
+          providerId: null,
+          importSource: l.importSource || source,
+        }));
+      meta = { source, locations: incoming };
+    } else if (source === 'osm') {
       meta = await fetchOsmPlaces({ city, category });
       incoming = meta.locations;
     } else if (source === 'places' || source === 'google') {
@@ -1332,13 +1407,36 @@ app.post('/api/admin/import-places', requireAuth, requireAdmin, async (req, res)
       });
     }
 
+    if (selectedIds && selectedIds.length && !providedLocations) {
+      const allow = new Set(selectedIds);
+      incoming = incoming.filter((l) => allow.has(l.id));
+    }
+
     const data = await readData();
-    const merged = mergeLocations(data.mockLocations, incoming);
+    const active = activeLocations(data.mockLocations);
+    const trash = trashedLocations(data.mockLocations);
+    const merged = mergeLocations(active, incoming);
 
     if (!dryRun) {
-      data.mockLocations = merged.locations;
+      data.mockLocations = [...merged.locations, ...trash];
       await writeData(data);
     }
+
+    const preview = incoming.map((l) => ({
+      id: l.id,
+      title: l.title,
+      phone: l.phone || '',
+      address: l.address || '',
+      lat: l.lat,
+      lng: l.lng,
+      rating: l.rating || 0,
+      cat: l.cat || category,
+      text: l.text || '',
+      openStatus: l.openStatus || 'open',
+      importSource: l.importSource || meta.source || source,
+      willAdd: merged.added.includes(l.id),
+      willSkip: Boolean(merged.skipped.find((s) => s.id === l.id)),
+    }));
 
     res.json({
       ok: true,
@@ -1349,20 +1447,132 @@ app.post('/api/admin/import-places', requireAuth, requireAdmin, async (req, res)
       found: incoming.length,
       added: merged.added.length,
       skipped: merged.skipped.length,
-      total: dryRun ? data.mockLocations.length : merged.locations.length,
-      preview: incoming.slice(0, 10).map((l) => ({
-        id: l.id,
-        title: l.title,
-        phone: l.phone,
-        address: l.address,
-        lat: l.lat,
-        lng: l.lng,
-        rating: l.rating,
-      })),
+      skippedDetails: merged.skipped.slice(0, 50),
+      total: dryRun ? active.length : merged.locations.length,
+      candidates: preview,
+      preview: preview.slice(0, 20),
     });
   } catch (err) {
     console.error('[POST /api/admin/import-places]', err);
     res.status(500).json({ error: err.message || 'Помилка імпорту' });
+  }
+});
+
+app.post('/api/admin/locations/trash', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const reason = String(req.body?.reason || 'admin_trash').slice(0, 120);
+    const filter = {
+      onlyActive: true,
+      onlyImported: Boolean(req.body?.onlyImported),
+      cat: req.body?.cat ? String(req.body.cat) : '',
+      subcategory: req.body?.subcategory ? String(req.body.subcategory) : '',
+      ids: Array.isArray(req.body?.ids) ? req.body.ids.map(String) : [],
+    };
+
+    const data = await readData();
+    const now = new Date().toISOString();
+    const changed = [];
+    for (const loc of data.mockLocations) {
+      if (!locationMatchesBulkFilter(loc, filter)) continue;
+      // If ids empty and no cat/imported flag — refuse full wipe without confirm flag
+      if (!filter.ids.length && !filter.cat && !filter.onlyImported && !req.body?.all) {
+        continue;
+      }
+      loc.deletedAt = now;
+      loc.deletedReason = reason;
+      changed.push(loc);
+    }
+
+    if (!changed.length) {
+      return res.status(400).json({
+        error: 'Немає точок для переміщення в кошик. Уточніть фільтр (категорія / імпорт / ids).',
+      });
+    }
+
+    await persistLocationsPatch(data, changed);
+    res.json({
+      ok: true,
+      trashed: changed.length,
+      ids: changed.map((l) => l.id),
+      remainingActive: activeLocations(data.mockLocations).length,
+      trashCount: trashedLocations(data.mockLocations).length,
+    });
+  } catch (err) {
+    console.error('[POST /api/admin/locations/trash]', err);
+    res.status(500).json({ error: err.message || 'Помилка кошика' });
+  }
+});
+
+app.post('/api/admin/locations/restore', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const filter = {
+      onlyTrashed: true,
+      onlyImported: Boolean(req.body?.onlyImported),
+      cat: req.body?.cat ? String(req.body.cat) : '',
+      subcategory: req.body?.subcategory ? String(req.body.subcategory) : '',
+      ids: Array.isArray(req.body?.ids) ? req.body.ids.map(String) : [],
+      all: Boolean(req.body?.all),
+    };
+    const data = await readData();
+    const changed = [];
+    for (const loc of data.mockLocations) {
+      if (!locationMatchesBulkFilter(loc, filter)) continue;
+      if (!filter.ids.length && !filter.cat && !filter.onlyImported && !filter.all) continue;
+      loc.deletedAt = null;
+      loc.deletedReason = null;
+      changed.push(loc);
+    }
+    if (!changed.length) {
+      return res.status(400).json({ error: 'Немає точок для відновлення' });
+    }
+    await persistLocationsPatch(data, changed);
+    res.json({
+      ok: true,
+      restored: changed.length,
+      remainingTrash: trashedLocations(data.mockLocations).length,
+    });
+  } catch (err) {
+    console.error('[POST /api/admin/locations/restore]', err);
+    res.status(500).json({ error: err.message || 'Помилка відновлення' });
+  }
+});
+
+app.post('/api/admin/locations/purge', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const filter = {
+      onlyTrashed: true,
+      onlyImported: Boolean(req.body?.onlyImported),
+      cat: req.body?.cat ? String(req.body.cat) : '',
+      subcategory: req.body?.subcategory ? String(req.body.subcategory) : '',
+      ids: Array.isArray(req.body?.ids) ? req.body.ids.map(String) : [],
+      all: Boolean(req.body?.all),
+    };
+    const data = await readData();
+    const toDelete = data.mockLocations.filter((loc) => {
+      if (!locationMatchesBulkFilter(loc, filter)) return false;
+      if (!filter.ids.length && !filter.cat && !filter.onlyImported && !filter.all) return false;
+      return true;
+    });
+    if (!toDelete.length) {
+      return res.status(400).json({ error: 'Немає точок для остаточного видалення' });
+    }
+    const ids = new Set(toDelete.map((l) => l.id));
+    data.mockLocations = data.mockLocations.filter((l) => !ids.has(l.id));
+    try {
+      await fsPromises.writeFile(DATA_FILE, JSON.stringify(ensureDataShape(data), null, 2), 'utf8');
+    } catch (e) {
+      console.warn('[purge] local skip:', e.message);
+    }
+    await deleteLocationsFromSupabase([...ids]);
+    res.json({
+      ok: true,
+      purged: toDelete.length,
+      remainingTrash: trashedLocations(data.mockLocations).length,
+      remainingActive: activeLocations(data.mockLocations).length,
+    });
+  } catch (err) {
+    console.error('[POST /api/admin/locations/purge]', err);
+    res.status(500).json({ error: err.message || 'Помилка очищення' });
   }
 });
 
@@ -1385,12 +1595,27 @@ app.post('/api/admin/sync-locations-supabase', requireAuth, requireAdmin, async 
 
 app.delete('/api/admin/locations/:id', requireAuth, requireAdmin, async (req, res) => {
   try {
+    const permanent = String(req.query.permanent || req.body?.permanent || '') === '1';
     const data = await readData();
     const idx = data.mockLocations.findIndex((l) => l.id === req.params.id);
     if (idx === -1) return res.status(404).json({ error: 'Локацію не знайдено' });
-    data.mockLocations.splice(idx, 1);
-    await writeData(data);
-    res.json({ ok: true });
+
+    if (permanent || isLocationTrashed(data.mockLocations[idx])) {
+      const [removed] = data.mockLocations.splice(idx, 1);
+      try {
+        await fsPromises.writeFile(DATA_FILE, JSON.stringify(ensureDataShape(data), null, 2), 'utf8');
+      } catch (e) {
+        console.warn('[admin delete] local skip:', e.message);
+      }
+      await deleteLocationsFromSupabase([removed.id]);
+      return res.json({ ok: true, purged: true });
+    }
+
+    const loc = data.mockLocations[idx];
+    loc.deletedAt = new Date().toISOString();
+    loc.deletedReason = 'admin_delete';
+    await persistLocationsPatch(data, [loc]);
+    res.json({ ok: true, trashed: true });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Помилка видалення' });
@@ -1625,7 +1850,7 @@ app.get('/api/provider/dashboard', requireAuth, rejectClientFromPanel, requirePr
       (user.role === 'admin'
         ? { companyName: 'Адміністратор' }
         : { companyName: 'Моя компанія' });
-    const locations = data.mockLocations.filter((l) => l.providerId === user.id);
+    const locations = data.mockLocations.filter((l) => l.providerId === user.id && !isLocationTrashed(l));
 
     res.json({
       profile,

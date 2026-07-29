@@ -26,6 +26,8 @@ function toDbRow(loc) {
     views: Number(loc.views) || 0,
     photos: Array.isArray(loc.photos) ? loc.photos : [],
     import_source: loc.importSource || loc.importMeta?.source || null,
+    deleted_at: loc.deletedAt || null,
+    deleted_reason: loc.deletedReason || null,
     updated_at: new Date().toISOString(),
   };
 }
@@ -53,6 +55,8 @@ function fromDbRow(row) {
     views: Number(row.views) || 0,
     photos: Array.isArray(row.photos) ? row.photos : [],
     importSource: row.import_source || null,
+    deletedAt: row.deleted_at || null,
+    deletedReason: row.deleted_reason || null,
   };
 }
 
@@ -74,24 +78,44 @@ async function upsertLocationsToSupabase(locations) {
   if (!Array.isArray(locations) || locations.length === 0) {
     return { ok: true, count: 0 };
   }
-  const rows = locations.map(toDbRow);
+  let rows = locations.map(toDbRow);
   let { error } = await supabaseClient.from(LOCATIONS_TABLE).upsert(rows, { onConflict: 'id' });
-  if (error && /photos/i.test(String(error.message || ''))) {
-    const withoutPhotos = rows.map(({ photos, ...rest }) => rest);
-    ({ error } = await supabaseClient
-      .from(LOCATIONS_TABLE)
-      .upsert(withoutPhotos, { onConflict: 'id' }));
+
+  // Drop optional columns gradually if migration not applied yet
+  const stripMatchers = [
+    [/deleted_at|deleted_reason/i, (r) => {
+      const { deleted_at, deleted_reason, ...rest } = r;
+      return rest;
+    }],
+    [/photos/i, (r) => {
+      const { photos, ...rest } = r;
+      return rest;
+    }],
+    [/views/i, (r) => {
+      const { views, ...rest } = r;
+      return rest;
+    }],
+  ];
+
+  for (const [re, stripFn] of stripMatchers) {
+    if (error && re.test(String(error.message || ''))) {
+      rows = rows.map(stripFn);
+      ({ error } = await supabaseClient.from(LOCATIONS_TABLE).upsert(rows, { onConflict: 'id' }));
+    }
   }
-  if (error && /views/i.test(String(error.message || ''))) {
-    const withoutViews = rows.map(({ views, photos, ...rest }) => rest);
-    ({ error } = await supabaseClient
-      .from(LOCATIONS_TABLE)
-      .upsert(withoutViews, { onConflict: 'id' }));
-  }
+
   if (error) {
     return { ok: false, error };
   }
   return { ok: true, count: rows.length };
+}
+
+async function deleteLocationsFromSupabase(ids) {
+  const list = (Array.isArray(ids) ? ids : []).map((id) => String(id)).filter(Boolean);
+  if (!list.length) return { ok: true, count: 0 };
+  const { error } = await supabaseClient.from(LOCATIONS_TABLE).delete().in('id', list);
+  if (error) return { ok: false, error };
+  return { ok: true, count: list.length };
 }
 
 async function syncAllLocationsToSupabase(locations) {
@@ -102,6 +126,7 @@ module.exports = {
   LOCATIONS_TABLE,
   fetchLocationsFromSupabase,
   upsertLocationsToSupabase,
+  deleteLocationsFromSupabase,
   syncAllLocationsToSupabase,
   toDbRow,
   fromDbRow,

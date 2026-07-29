@@ -394,6 +394,7 @@
           <button type="button" data-admin-nav="users">Користувачі <span class="nav-count" id="navCountUsers">0</span></button>
           <button type="button" data-admin-nav="providers">Провайдери <span class="nav-count" id="navCountProviders">0</span></button>
           <button type="button" data-admin-nav="locations">Локації <span class="nav-count" id="navCountLocations">0</span></button>
+          <button type="button" data-admin-nav="trash">Кошик <span class="nav-count" id="navCountTrash">0</span></button>
           <button type="button" data-admin-nav="catalog">Каталог <span class="nav-count" id="navCountCatalog">0</span></button>
           <button type="button" data-admin-nav="import">Імпорт</button>
         </aside>
@@ -424,16 +425,53 @@
           <div id="adminPaneLocations" class="admin-pane card">
             <div id="locationsListView">
               <h2>Усі точки на карті</h2>
+              <div style="border:1px solid #e5e7eb;border-radius:12px;padding:12px;margin-bottom:14px;background:#fafafa">
+                <h3 style="margin:0 0 8px;font-size:0.95rem">Масове видалення в кошик</h3>
+                <p class="field-hint">Спочатку в кошик (можна відновити). Остаточне видалення — у розділі «Кошик».</p>
+                <div class="row2">
+                  <div class="field-block">
+                    <label>Категорія</label>
+                    <select id="bulkTrashCat">
+                      <option value="">— усі / не фільтрувати —</option>
+                    </select>
+                  </div>
+                  <div class="field-block">
+                    <label>Підкатегорія (ключ)</label>
+                    <select id="bulkTrashSub">
+                      <option value="">— не фільтрувати —</option>
+                    </select>
+                  </div>
+                </div>
+                <label class="subcat-pick-row" style="margin-bottom:10px">
+                  <input type="checkbox" id="bulkTrashImportedOnly" checked>
+                  <span>Лише імпортовані точки (без акаунтів провайдерів)</span>
+                </label>
+                <div style="display:flex;gap:8px;flex-wrap:wrap">
+                  <button type="button" id="bulkTrashBtn" class="btn-danger" style="width:auto">У кошик за фільтром</button>
+                  <button type="button" id="bulkTrashAllImportedBtn" class="btn-danger" style="width:auto;background:#991b1b">Усі імпортовані → кошик</button>
+                </div>
+                <div id="bulkTrashResult" class="msg" style="display:none;margin-top:10px"></div>
+              </div>
               <div id="adminLocationsList"></div>
             </div>
             <div id="locationsDetailView" class="hidden"></div>
           </div>
 
+          <div id="adminPaneTrash" class="admin-pane card">
+            <h2>Кошик локацій</h2>
+            <p class="field-hint">Тут точки, прибрані з карти. Можна відновити або видалити назавжди.</p>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">
+              <button type="button" id="trashRestoreAllBtn" class="btn-secondary" style="width:auto">Відновити все</button>
+              <button type="button" id="trashPurgeAllBtn" class="btn-danger" style="width:auto">Очистити кошик назавжди</button>
+            </div>
+            <div id="adminTrashList"><p class="list-item-meta">Порожньо</p></div>
+            <div id="trashActionResult" class="msg" style="display:none;margin-top:10px"></div>
+          </div>
+
           <div id="adminPaneImport" class="admin-pane card">
             <h2>Імпорт надавачів (Google / OSM)</h2>
             <p class="field-hint" style="margin-bottom:14px">
-              OSM — безкоштовно (без рейтингів). Google Places — якщо задано
-              <code>GOOGLE_PLACES_API_KEY</code>. Після імпорту точки зʼявляться на карті.
+              1) Заповніть форму → <b>Перевірити перед імпортом</b>. 2) Зніміть галочки з некоректних точок. 3) Імпортуйте лише вибрані.
             </p>
             <div class="field-block">
               <label>Джерело</label>
@@ -454,11 +492,23 @@
               <select id="importCategory"></select>
             </div>
             <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">
-              <button type="button" id="importPreviewBtn" class="btn-secondary" style="width:auto">Перегляд</button>
-              <button type="button" id="importWriteBtn" style="width:auto">Імпортувати на карту</button>
+              <button type="button" id="importPreviewBtn" class="btn-secondary" style="width:auto">Перевірити перед імпортом</button>
+              <button type="button" id="importWriteBtn" style="width:auto" disabled>Імпортувати вибрані</button>
               <button type="button" id="syncSupabaseBtn" class="btn-secondary" style="width:auto">Синхронізувати в Supabase</button>
             </div>
             <div id="importResult" class="msg" style="display:none;margin-top:14px"></div>
+
+            <div id="importReviewBox" class="hidden" style="margin-top:16px;border:1px solid #e5e7eb;border-radius:12px;padding:12px;background:#fff">
+              <div style="display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:10px">
+                <h3 style="margin:0;font-size:1rem">Перевірка точок <span id="importReviewCount" class="list-item-meta"></span></h3>
+                <div style="display:flex;gap:8px;flex-wrap:wrap">
+                  <button type="button" id="importSelectAllBtn" class="btn-secondary" style="width:auto">Обрати всі</button>
+                  <button type="button" id="importSelectNoneBtn" class="btn-secondary" style="width:auto">Зняти всі</button>
+                  <button type="button" id="importSelectAddableBtn" class="btn-secondary" style="width:auto">Лише нові</button>
+                </div>
+              </div>
+              <div id="importReviewList" style="max-height:420px;overflow:auto;display:flex;flex-direction:column;gap:8px"></div>
+            </div>
           </div>
 
           <div id="adminPaneCatalog" class="admin-pane card">
@@ -814,6 +864,7 @@
       if (name === 'users') showUsersList();
       if (name === 'providers') showProvidersList();
       if (name === 'locations') showLocationsList();
+      if (name === 'trash') renderTrashList();
     }
 
     document.querySelectorAll('[data-admin-nav]').forEach((btn) => {
@@ -1020,7 +1071,7 @@
           <div class="inline-actions">
             <a class="btn-secondary" style="width:auto;display:inline-flex;align-items:center;text-decoration:none;padding:10px 16px;border-radius:8px;background:#64748b;color:#fff;font-weight:600" href="/?loc=${encodeURIComponent(l.id)}" target="_blank" rel="noopener">Відкрити на карті</a>
             ${l.provider ? `<button type="button" class="btn-secondary" style="width:auto" id="goProvFromLoc">Картка провайдера</button>` : ''}
-            <button type="button" class="btn-danger" style="width:auto" id="delLocBtn">Видалити точку</button>
+            <button type="button" class="btn-danger" style="width:auto" id="delLocBtn">У кошик</button>
           </div>
           <div class="detail-section">
             <h3>Послуги</h3>
@@ -1030,11 +1081,12 @@
           </div>`;
         document.getElementById('locationsBackBtn').onclick = showLocationsList;
         document.getElementById('delLocBtn').onclick = async () => {
-          if (!confirm('Видалити цю точку з карти?')) return;
+          if (!confirm('Перемістити цю точку в кошик?')) return;
           const r = await fetch('/api/admin/locations/' + l.id, { method: 'DELETE' });
           const j = await r.json();
           if (!r.ok) return showMessage(j.error, true);
-          showMessage('Точку видалено');
+          showMessage(j.trashed ? 'Точку переміщено в кошик' : 'Точку видалено');
+          notifyMapDataChanged();
           showLocationsList();
           initAdmin();
         };
@@ -1051,30 +1103,79 @@
       }
     }
 
+    let importCandidates = [];
+
+    function renderImportReview(candidates) {
+      importCandidates = Array.isArray(candidates) ? candidates : [];
+      const box = document.getElementById('importReviewBox');
+      const list = document.getElementById('importReviewList');
+      const countEl = document.getElementById('importReviewCount');
+      const writeBtn = document.getElementById('importWriteBtn');
+      if (!box || !list) return;
+      if (!importCandidates.length) {
+        box.classList.add('hidden');
+        if (writeBtn) writeBtn.disabled = true;
+        return;
+      }
+      box.classList.remove('hidden');
+      if (countEl) countEl.textContent = `(${importCandidates.length})`;
+      list.innerHTML = importCandidates
+        .map((p, idx) => {
+          const skip = p.willSkip ? ' · вже на карті' : '';
+          const checked = p.willAdd !== false && !p.willSkip ? 'checked' : '';
+          return `
+            <label class="list-item" style="display:flex;gap:10px;align-items:flex-start;cursor:pointer">
+              <input type="checkbox" class="import-cand-cb" data-idx="${idx}" ${checked} style="width:auto;margin-top:4px">
+              <span style="min-width:0">
+                <strong>${esc(p.title || '—')}</strong>
+                <div class="list-item-meta">${esc(p.address || 'без адреси')}${p.phone ? ' · ' + esc(p.phone) : ''}${skip}</div>
+                <div class="list-item-meta">${Number(p.lat).toFixed(5)}, ${Number(p.lng).toFixed(5)}</div>
+              </span>
+            </label>`;
+        })
+        .join('');
+      if (writeBtn) writeBtn.disabled = false;
+    }
+
+    function getSelectedImportCandidates() {
+      return [...document.querySelectorAll('.import-cand-cb:checked')]
+        .map((cb) => importCandidates[Number(cb.dataset.idx)])
+        .filter(Boolean);
+    }
+
     async function runPlacesImport(dryRun) {
       const resultEl = document.getElementById('importResult');
       resultEl.style.display = 'block';
       resultEl.className = 'msg';
-      resultEl.textContent = dryRun ? 'Пошук…' : 'Імпорт…';
+      resultEl.textContent = dryRun ? 'Перевірка…' : 'Імпорт вибраних…';
       try {
+        const body = {
+          source: document.getElementById('importSource').value,
+          city: document.getElementById('importCity').value,
+          category: document.getElementById('importCategory').value,
+          dryRun: Boolean(dryRun),
+        };
+        if (!dryRun) {
+          const selected = getSelectedImportCandidates();
+          if (!selected.length) throw new Error('Оберіть хоча б одну точку після перевірки');
+          body.locations = selected;
+          body.selectedIds = selected.map((s) => s.id);
+        }
         const data = await apiFetch('/api/admin/import-places', {
           method: 'POST',
-          body: JSON.stringify({
-            source: document.getElementById('importSource').value,
-            city: document.getElementById('importCity').value,
-            category: document.getElementById('importCategory').value,
-            dryRun: Boolean(dryRun),
-          }),
+          body: JSON.stringify(body),
         });
-        const lines = (data.preview || [])
-          .map((p) => `• ${p.title}${p.phone ? ' — ' + p.phone : ''}`)
-          .join('\n');
-        resultEl.className = 'msg ok';
-        resultEl.textContent =
-          (dryRun ? 'Перегляд: ' : 'Імпортовано: ') +
-          `знайдено ${data.found}, додано ${data.added}, пропущено ${data.skipped}` +
-          (lines ? '\n' + lines : '');
-        if (!dryRun) {
+        if (dryRun) {
+          renderImportReview(data.candidates || data.preview || []);
+          resultEl.className = 'msg ok';
+          resultEl.textContent =
+            `Перевірка: знайдено ${data.found}, нових ~${data.added}, дублікатів ~${data.skipped}. Зніміть зайві галочки й натисніть «Імпортувати вибрані».`;
+        } else {
+          resultEl.className = 'msg ok';
+          resultEl.textContent = `Імпортовано: додано ${data.added}, пропущено ${data.skipped}`;
+          importCandidates = [];
+          document.getElementById('importReviewBox')?.classList.add('hidden');
+          document.getElementById('importWriteBtn').disabled = true;
           notifyMapDataChanged();
           await initAdmin();
         }
@@ -1086,6 +1187,23 @@
 
     document.getElementById('importPreviewBtn')?.addEventListener('click', () => runPlacesImport(true));
     document.getElementById('importWriteBtn')?.addEventListener('click', () => runPlacesImport(false));
+    document.getElementById('importSelectAllBtn')?.addEventListener('click', () => {
+      document.querySelectorAll('.import-cand-cb').forEach((cb) => {
+        cb.checked = true;
+      });
+    });
+    document.getElementById('importSelectNoneBtn')?.addEventListener('click', () => {
+      document.querySelectorAll('.import-cand-cb').forEach((cb) => {
+        cb.checked = false;
+      });
+    });
+    document.getElementById('importSelectAddableBtn')?.addEventListener('click', () => {
+      document.querySelectorAll('.import-cand-cb').forEach((cb) => {
+        const item = importCandidates[Number(cb.dataset.idx)];
+        cb.checked = Boolean(item && item.willAdd && !item.willSkip);
+      });
+    });
+
     document.getElementById('syncSupabaseBtn')?.addEventListener('click', async () => {
       const resultEl = document.getElementById('importResult');
       resultEl.style.display = 'block';
@@ -1098,6 +1216,162 @@
       } catch (err) {
         resultEl.className = 'msg err';
         resultEl.textContent = err.message;
+      }
+    });
+
+    function fillBulkTrashFilters(catalog) {
+      const catSel = document.getElementById('bulkTrashCat');
+      const subSel = document.getElementById('bulkTrashSub');
+      if (!catSel || !subSel) return;
+      const entries = Object.entries(catalog || {});
+      catSel.innerHTML =
+        '<option value="">— усі / не фільтрувати —</option>' +
+        entries.map(([k, c]) => `<option value="${esc(k)}">${esc(c.name || k)}</option>`).join('');
+      const refillSubs = () => {
+        const cat = catalog?.[catSel.value];
+        const subs = Object.entries(cat?.subcats || {});
+        subSel.innerHTML =
+          '<option value="">— не фільтрувати —</option>' +
+          subs.map(([k, s]) => `<option value="${esc(k)}">${esc(s.name || k)}</option>`).join('');
+      };
+      catSel.onchange = refillSubs;
+      refillSubs();
+    }
+
+    async function runBulkTrash(payload) {
+      const resultEl = document.getElementById('bulkTrashResult');
+      resultEl.style.display = 'block';
+      resultEl.className = 'msg';
+      resultEl.textContent = 'Переміщення в кошик…';
+      try {
+        const data = await apiFetch('/api/admin/locations/trash', {
+          method: 'POST',
+          body: JSON.stringify(payload),
+        });
+        resultEl.className = 'msg ok';
+        resultEl.textContent = `У кошик: ${data.trashed}. Активних лишилось: ${data.remainingActive}`;
+        notifyMapDataChanged();
+        await initAdmin();
+        showAdminPane('trash');
+      } catch (err) {
+        resultEl.className = 'msg err';
+        resultEl.textContent = err.message;
+      }
+    }
+
+    document.getElementById('bulkTrashBtn')?.addEventListener('click', async () => {
+      const cat = document.getElementById('bulkTrashCat').value;
+      const subcategory = document.getElementById('bulkTrashSub').value;
+      const onlyImported = document.getElementById('bulkTrashImportedOnly').checked;
+      if (!cat && !onlyImported) {
+        return showMessage('Оберіть категорію або увімкніть «лише імпортовані»', true);
+      }
+      const label = [
+        onlyImported ? 'імпортовані' : 'усі',
+        cat ? `кат. ${cat}` : '',
+        subcategory ? `підкат. ${subcategory}` : '',
+      ]
+        .filter(Boolean)
+        .join(', ');
+      if (!confirm(`Перемістити в кошик: ${label}?`)) return;
+      await runBulkTrash({
+        cat: cat || undefined,
+        subcategory: subcategory || undefined,
+        onlyImported,
+        reason: 'bulk_filter',
+      });
+    });
+
+    document.getElementById('bulkTrashAllImportedBtn')?.addEventListener('click', async () => {
+      if (!confirm('Усі імпортовані точки (без провайдерських акаунтів) → у кошик?')) return;
+      await runBulkTrash({ onlyImported: true, reason: 'all_imported' });
+    });
+
+    function renderTrashList() {
+      const el = document.getElementById('adminTrashList');
+      const trash = adminOverviewCache?.trash || [];
+      if (!el) return;
+      if (!trash.length) {
+        el.innerHTML = '<p class="list-item-meta">Кошик порожній</p>';
+        return;
+      }
+      el.innerHTML = trash
+        .map(
+          (l) => `
+        <div class="list-item" style="display:flex;justify-content:space-between;gap:10px;align-items:flex-start;flex-wrap:wrap">
+          <div class="row-main">
+            <div class="row-title">${esc(l.title || l.id)}</div>
+            <div class="row-meta">${esc(l.cat || '')} · ${esc(l.address || '—')} · ${l.imported ? 'імпорт' : 'інше'} · ${esc(String(l.deletedAt || '').slice(0, 19))}</div>
+          </div>
+          <div class="inline-actions">
+            <button type="button" class="btn-secondary" style="width:auto" data-restore-id="${esc(l.id)}">Відновити</button>
+            <button type="button" class="btn-danger" style="width:auto" data-purge-id="${esc(l.id)}">Видалити</button>
+          </div>
+        </div>`
+        )
+        .join('');
+      el.querySelectorAll('[data-restore-id]').forEach((btn) => {
+        btn.onclick = async () => {
+          try {
+            await apiFetch('/api/admin/locations/restore', {
+              method: 'POST',
+              body: JSON.stringify({ ids: [btn.dataset.restoreId] }),
+            });
+            notifyMapDataChanged();
+            await initAdmin();
+            showAdminPane('trash');
+          } catch (err) {
+            showMessage(err.message, true);
+          }
+        };
+      });
+      el.querySelectorAll('[data-purge-id]').forEach((btn) => {
+        btn.onclick = async () => {
+          if (!confirm('Видалити назавжди?')) return;
+          try {
+            await apiFetch('/api/admin/locations/purge', {
+              method: 'POST',
+              body: JSON.stringify({ ids: [btn.dataset.purgeId] }),
+            });
+            await initAdmin();
+            showAdminPane('trash');
+          } catch (err) {
+            showMessage(err.message, true);
+          }
+        };
+      });
+    }
+
+    document.getElementById('trashRestoreAllBtn')?.addEventListener('click', async () => {
+      if (!confirm('Відновити всі точки з кошика?')) return;
+      try {
+        await apiFetch('/api/admin/locations/restore', {
+          method: 'POST',
+          body: JSON.stringify({ all: true }),
+        });
+        notifyMapDataChanged();
+        await initAdmin();
+        showAdminPane('trash');
+      } catch (err) {
+        showMessage(err.message, true);
+      }
+    });
+
+    document.getElementById('trashPurgeAllBtn')?.addEventListener('click', async () => {
+      if (!confirm('Очистити кошик назавжди? Це незворотно.')) return;
+      try {
+        const data = await apiFetch('/api/admin/locations/purge', {
+          method: 'POST',
+          body: JSON.stringify({ all: true }),
+        });
+        const msg = document.getElementById('trashActionResult');
+        msg.style.display = 'block';
+        msg.className = 'msg ok';
+        msg.textContent = `Видалено назавжди: ${data.purged}`;
+        await initAdmin();
+        showAdminPane('trash');
+      } catch (err) {
+        showMessage(err.message, true);
       }
     });
 
@@ -1125,6 +1399,7 @@
       document.getElementById('navCountUsers').textContent = String(data.usersTotal || usersCount);
       document.getElementById('navCountProviders').textContent = String(data.providers?.length || 0);
       document.getElementById('navCountLocations').textContent = String(data.locations?.length || 0);
+      document.getElementById('navCountTrash').textContent = String(data.trashCount || data.trash?.length || 0);
       document.getElementById('navCountCatalog').textContent = String(data.catalogCategories || 0);
 
       document.getElementById('overviewStats').innerHTML = [
@@ -1132,6 +1407,8 @@
         ['Провайдери', data.providers?.length || 0],
         ['Клієнти', data.clients?.length || 0],
         ['Локації', data.locations?.length || 0],
+        ['Імпортовані', data.importedCount || 0],
+        ['Кошик', data.trashCount || 0],
         ['Категорії', data.catalogCategories || 0],
         ['Замовлення', data.ordersTotal || 0],
       ]
@@ -1192,7 +1469,7 @@
         <button type="button" class="click-row" data-loc-id="${esc(l.id)}">
           <div class="row-main">
             <div class="row-title">${esc(l.title)}</div>
-            <div class="row-meta">${esc(l.address || '—')} · ${l.servicesCount} послуг · ${l.views || 0} переглядів · ${l.providerId ? 'провайдер' : 'системна'}</div>
+            <div class="row-meta">${esc(l.cat || '')} · ${esc(l.address || '—')} · ${l.servicesCount} послуг · ${l.imported ? 'імпорт' : l.providerId ? 'провайдер' : 'системна'}</div>
           </div>
           <span class="row-chevron">›</span>
         </button>`
@@ -1206,6 +1483,8 @@
       const catRes = await apiFetch('/api/data');
       adminCatalog = catRes.masterCatalog || {};
       fillAdminCatalogSelects();
+      fillBulkTrashFilters(adminCatalog);
+      renderTrashList();
 
       const importCat = document.getElementById('importCategory');
       if (importCat) {
