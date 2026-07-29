@@ -9,7 +9,11 @@ const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
 
-const OVERPASS_URL = 'https://overpass-api.de/api/interpreter';
+const OVERPASS_URLS = [
+  'https://overpass-api.de/api/interpreter',
+  'https://overpass.kumi.systems/api/interpreter',
+  'https://overpass.private.coffee/api/interpreter',
+];
 
 const CITY_PRESETS = {
   kotsyubynske: {
@@ -148,11 +152,11 @@ function buildOverpassQuery(city, category) {
     .join('\n    ');
 
   return `
-[out:json][timeout:60];
+[out:json][timeout:25];
 (
   ${clauses}
 );
-out center tags;
+out center tags qt;
 `.trim();
 }
 
@@ -206,21 +210,49 @@ async function fetchOsmPlaces({ city, category }) {
   const cat = category && CATEGORY_OSM_FILTERS[category] ? category : 'beauty';
   const query = buildOverpassQuery(preset, cat);
 
-  const res = await fetch(OVERPASS_URL, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/x-www-form-urlencoded',
-      Accept: 'application/json',
-      'User-Agent': 'MapfixImport/1.0 (https://mapfix-wine.vercel.app; local-dev)',
-    },
-    body: 'data=' + encodeURIComponent(query),
-  });
+  // Public Overpass instances can temporarily return 429/502/504.
+  // Ask several independent mirrors in parallel and use the first valid response.
+  const controllers = OVERPASS_URLS.map(() => new AbortController());
+  const requestOne = async (url, index) => {
+    const controller = controllers[index];
+    const timer = setTimeout(() => controller.abort(), 22000);
+    try {
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+          Accept: 'application/json',
+          'User-Agent': 'MapfixImport/1.0 (https://mapfix-wine.vercel.app)',
+        },
+        body: 'data=' + encodeURIComponent(query),
+        signal: controller.signal,
+      });
+      if (!res.ok) throw new Error(`${new URL(url).hostname}: HTTP ${res.status}`);
+      const json = await res.json();
+      if (!json || !Array.isArray(json.elements)) {
+        throw new Error(`${new URL(url).hostname}: некоректна відповідь`);
+      }
+      return json;
+    } finally {
+      clearTimeout(timer);
+    }
+  };
 
-  if (!res.ok) {
-    throw new Error(`Overpass HTTP ${res.status}`);
+  let json;
+  try {
+    json = await Promise.any(OVERPASS_URLS.map(requestOne));
+  } catch (err) {
+    const details = (err?.errors || [])
+      .map((item) => item?.message)
+      .filter(Boolean)
+      .join('; ');
+    throw new Error(
+      'Сервіси OpenStreetMap тимчасово перевантажені. Повторіть перевірку через 1–2 хвилини' +
+        (details ? ` (${details})` : '')
+    );
+  } finally {
+    controllers.forEach((controller) => controller.abort());
   }
-
-  const json = await res.json();
   const elements = Array.isArray(json.elements) ? json.elements : [];
   const locations = [];
   const seen = new Set();
