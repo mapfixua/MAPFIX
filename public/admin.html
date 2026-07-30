@@ -529,6 +529,27 @@
             </div>
             <div id="gmapsResult" class="msg" style="display:none;margin-top:14px"></div>
             <div id="gmapsPreviewBox" class="hidden" style="margin-top:14px;border:1px solid #e5e7eb;border-radius:12px;padding:14px;background:#fafafa"></div>
+
+            <hr style="margin:24px 0;border:none;border-top:1px solid #e5e7eb">
+
+            <h2>Масовий імпорт Excel / CSV</h2>
+            <p class="field-hint" style="margin-bottom:14px">
+              Колонка <code>maps_url</code> з посиланнями Google Maps, або колонки
+              <code>title, address, phone, working_hours, lat, lng, cat</code>.
+            </p>
+            <div class="field-block">
+              <label>Категорія за замовчуванням</label>
+              <select id="adminExcelDefaultCat"></select>
+            </div>
+            <div class="field-block">
+              <label>Файл .csv / .xlsx</label>
+              <input type="file" id="adminExcelFile" accept=".csv,.xlsx,.xls,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet">
+            </div>
+            <div style="margin:10px 0">
+              <a class="btn-secondary" style="width:auto;display:inline-block;text-decoration:none;padding:10px 14px" href="/api/provider/import/template">Скачати шаблон</a>
+              <button type="button" id="adminExcelImportBtn" style="width:auto;margin-left:8px">Імпортувати файл</button>
+            </div>
+            <div id="adminExcelResult" class="msg" style="display:none;margin-top:10px"></div>
           </div>
 
           <div id="adminPaneCatalog" class="admin-pane card">
@@ -631,11 +652,14 @@
 
           <div id="providerPaneImport" class="admin-pane card">
             <h2>Імпорт точок</h2>
-            <p class="field-hint">Лише два способи: таблиця Mapfix (Excel/CSV) або одне місце з Google Maps.</p>
+            <p class="field-hint">Excel/CSV з посиланнями Google Maps або колонками назва/адреса/телефон/графік, або одне місце з Google пошуку.</p>
 
             <div style="border:1px solid #e5e7eb;border-radius:12px;padding:14px;margin:0 0 16px;background:#fff">
-              <h3 style="margin:0 0 8px;font-size:1rem">1) Excel / CSV (наш шаблон)</h3>
-              <p class="field-hint">Колонки: <code>title, address, phone, lat, lng, cat, text, status</code>. <code>cat</code> — ключ категорії (напр. rental, beauty, home).</p>
+              <h3 style="margin:0 0 8px;font-size:1rem">1) Excel / CSV (багато точок)</h3>
+              <p class="field-hint">
+                Варіант A: колонка <code>maps_url</code> з посиланнями Google Maps.<br>
+                Варіант B: <code>title, address, phone, working_hours, lat, lng, cat</code>.
+              </p>
               <div style="margin-bottom:10px">
                 <a class="btn-secondary" style="width:auto;display:inline-block;text-decoration:none;padding:10px 14px" href="/api/provider/import/template">Скачати шаблон CSV</a>
               </div>
@@ -685,10 +709,31 @@
               </div>
               <label>Категорія на карті</label>
               <select id="locCat"></select>
-              <label>Підкатегорії</label>
-              <p class="field-hint">Оберіть одну або кілька підкатегорій з каталогу для цієї точки.</p>
+              <label>Підкатегорії та послуги</label>
+              <p class="field-hint">Оберіть галочками підкатегорії. Можна додати свою підкатегорію або послугу. «Вибрати все» відзначає всі підкатегорії й послуги.</p>
               <div id="locSubcatsPicker" class="subcat-picker">
                 <p class="list-item-meta">Спочатку оберіть категорію</p>
+              </div>
+              <div class="field-block" style="margin-top:10px">
+                <label>Додати свою підкатегорію</label>
+                <div style="display:flex;gap:8px;flex-wrap:wrap">
+                  <input type="text" id="locCustomSubcatName" placeholder="напр. Мій манікюр" style="flex:1;min-width:160px">
+                  <button type="button" id="locAddCustomSubcatBtn" class="btn-secondary" style="width:auto">Додати</button>
+                </div>
+              </div>
+              <div id="priceServicesBlock" style="margin-top:12px">
+                <label>Послуги для прайсу</label>
+                <div id="priceServicesPicker" class="subcat-picker">
+                  <p class="list-item-meta">Спочатку оберіть підкатегорії</p>
+                </div>
+                <div class="field-block" style="margin-top:10px">
+                  <label>Додати свою послугу</label>
+                  <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end">
+                    <input type="text" id="priceServiceCustom" placeholder="Назва послуги" style="flex:1;min-width:140px">
+                    <input type="text" id="priceValue" placeholder="Ціна" style="width:120px">
+                    <button type="button" id="locAddCustomServiceBtn" class="btn-secondary" style="width:auto">Додати</button>
+                  </div>
+                </div>
               </div>
               <label>Статус</label>
               <select id="locStatus">
@@ -711,20 +756,9 @@
             </div>
 
             <hr style="margin:20px 0;border:none;border-top:1px solid #e2e8f0">
-            <h2>Послуги та ціни цієї точки</h2>
+            <h2>Поточний прайс точки</h2>
             <div id="locPricesList"></div>
-            <form id="priceForm" class="hidden">
-              <label>Послуги з каталогу</label>
-              <p class="field-hint">Оберіть послуги для прайсу. Галочка «Всі послуги» обирає всі з обраних підкатегорій.</p>
-              <div id="priceServicesPicker" class="subcat-picker">
-                <p class="list-item-meta">Спочатку оберіть категорію та підкатегорії</p>
-              </div>
-              <label>Або нова назва послуги</label>
-              <input type="text" id="priceServiceCustom" placeholder="Якщо немає в списку">
-              <label>Ваша ціна</label>
-              <input type="text" id="priceValue" placeholder="Якщо порожньо — орієнтовна ціна з каталогу">
-              <button type="submit">Додати / оновити ціну</button>
-            </form>
+            <form id="priceForm" class="hidden"></form>
           </div>
         </div>
       </div>
@@ -1353,6 +1387,39 @@
     document.getElementById('gmapsPreviewBtn')?.addEventListener('click', () => runGmapsImport(true));
     document.getElementById('gmapsImportBtn')?.addEventListener('click', () => runGmapsImport(false));
 
+    document.getElementById('adminExcelImportBtn')?.addEventListener('click', async () => {
+      const resultEl = document.getElementById('adminExcelResult');
+      const file = document.getElementById('adminExcelFile')?.files?.[0];
+      resultEl.style.display = 'block';
+      resultEl.className = 'msg';
+      if (!file) {
+        resultEl.className = 'msg err';
+        resultEl.textContent = 'Оберіть файл CSV або Excel';
+        return;
+      }
+      resultEl.textContent = 'Імпорт…';
+      try {
+        const rows = await readImportFile(file);
+        const data = await apiFetch('/api/admin/import/excel', {
+          method: 'POST',
+          body: JSON.stringify({
+            rows,
+            defaultCat: document.getElementById('adminExcelDefaultCat').value || 'home',
+          }),
+        });
+        resultEl.className = 'msg ok';
+        resultEl.textContent =
+          `Додано ${data.added}` +
+          (data.skipped ? `, пропущено ${data.skipped}` : '') +
+          (data.errors?.length ? `, помилок рядків: ${data.errors.length}` : '');
+        notifyMapDataChanged();
+        await initAdmin();
+      } catch (err) {
+        resultEl.className = 'msg err';
+        resultEl.textContent = err.message;
+      }
+    });
+
     function fillBulkTrashFilters(catalog) {
       const catSel = document.getElementById('bulkTrashCat');
       const subSel = document.getElementById('bulkTrashSub');
@@ -1630,6 +1697,12 @@
           })
           .join('');
       }
+      const adminExcelCat = document.getElementById('adminExcelDefaultCat');
+      if (adminExcelCat) {
+        adminExcelCat.innerHTML = Object.entries(adminCatalog)
+          .map(([k, c]) => `<option value="${esc(k)}">${esc(c.name || k)}</option>`)
+          .join('');
+      }
       if (data.googlePlacesConfigured === false) {
         const src = document.getElementById('importSource');
         if (src) {
@@ -1813,19 +1886,32 @@
     }
 
     function syncLocSubcatsSelectAll() {
-      const allCb = document.getElementById('locSubcatsSelectAll');
-      const cbs = [...document.querySelectorAll('.loc-subcat-cb')];
-      if (!allCb || !cbs.length) return;
-      const checked = cbs.filter((cb) => cb.checked).length;
-      allCb.checked = checked === cbs.length;
-      allCb.indeterminate = checked > 0 && checked < cbs.length;
+      const allCb = document.getElementById('locSelectAllEverything');
+      const subCbs = [...document.querySelectorAll('.loc-subcat-cb')];
+      const svcCbs = [...document.querySelectorAll('.price-service-cb')];
+      const all = [...subCbs, ...svcCbs];
+      if (!allCb || !all.length) return;
+      const checked = all.filter((cb) => cb.checked).length;
+      allCb.checked = checked === all.length;
+      allCb.indeterminate = checked > 0 && checked < all.length;
+    }
+
+    let locCustomSubcats = {};
+    let locDraftPrices = {};
+
+    function slugifyCustomKey(name) {
+      const base = String(name || '')
+        .toLowerCase()
+        .trim()
+        .replace(/[^a-zа-яіїєґ0-9]+/gi, '_')
+        .replace(/^_+|_+$/g, '')
+        .slice(0, 40);
+      return 'custom_' + (base || Date.now().toString(36));
     }
 
     function onLocSubcatsChanged() {
       syncLocSubcatsSelectAll();
-      if (document.getElementById('editLocId').value) {
-        renderPriceServicesPicker(document.getElementById('locCat').value);
-      }
+      renderPriceServicesPicker(document.getElementById('locCat').value);
     }
 
     function renderLocSubcatsPicker(catKey, selectedKeys) {
@@ -1837,8 +1923,9 @@
         return;
       }
       const selected = new Set(selectedKeys || []);
-      const subs = Object.entries(cat.subcats || {});
-      if (!subs.length) {
+      const catalogSubs = Object.entries(cat.subcats || {});
+      const customSubs = Object.entries(locCustomSubcats || {}).filter(([, meta]) => !meta.category || meta.category === catKey);
+      if (!catalogSubs.length && !customSubs.length) {
         el.innerHTML = '<p class="list-item-meta">Немає підкатегорій у цій категорії</p>';
         return;
       }
@@ -1847,20 +1934,25 @@
       allRow.className = 'subcat-pick-row pick-all-row';
       const allCb = document.createElement('input');
       allCb.type = 'checkbox';
-      allCb.id = 'locSubcatsSelectAll';
+      allCb.id = 'locSelectAllEverything';
       allCb.addEventListener('change', () => {
         document.querySelectorAll('.loc-subcat-cb').forEach((cb) => {
           cb.checked = allCb.checked;
         });
         onLocSubcatsChanged();
+        document.querySelectorAll('.price-service-cb').forEach((cb) => {
+          cb.checked = allCb.checked;
+        });
+        syncPriceServicesSelectAll();
+        syncLocSubcatsSelectAll();
       });
       allRow.appendChild(allCb);
       const allSpan = document.createElement('span');
-      allSpan.textContent = 'Всі підкатегорії';
+      allSpan.textContent = 'Вибрати всі підкатегорії та послуги';
       allRow.appendChild(allSpan);
       el.appendChild(allRow);
 
-      subs.forEach(([key, sub]) => {
+      catalogSubs.forEach(([key, sub]) => {
         const label = document.createElement('label');
         label.className = 'subcat-pick-row';
         const cb = document.createElement('input');
@@ -1876,6 +1968,22 @@
         code.className = 'sub-key';
         code.textContent = key;
         span.appendChild(code);
+        label.appendChild(span);
+        el.appendChild(label);
+      });
+
+      customSubs.forEach(([key, meta]) => {
+        const label = document.createElement('label');
+        label.className = 'subcat-pick-row';
+        const cb = document.createElement('input');
+        cb.type = 'checkbox';
+        cb.className = 'loc-subcat-cb';
+        cb.value = key;
+        cb.checked = selected.has(key);
+        cb.addEventListener('change', onLocSubcatsChanged);
+        label.appendChild(cb);
+        const span = document.createElement('span');
+        span.textContent = (meta.name || key) + ' (своя)';
         label.appendChild(span);
         el.appendChild(label);
       });
@@ -1929,10 +2037,16 @@
       document.getElementById('locText').value = '';
       document.getElementById('locAddress').value = '';
       document.getElementById('locPhone').value = '';
+      document.getElementById('locCustomSubcatName').value = '';
+      document.getElementById('priceServiceCustom').value = '';
+      document.getElementById('priceValue').value = '';
+      locCustomSubcats = {};
+      locDraftPrices = {};
       resetLocPickMap();
       renderLocSubcatsPicker('', []);
       document.getElementById('locStatus').value = 'open';
       document.getElementById('locPricesList').innerHTML = '';
+      renderPriceServicesPicker('');
     }
 
     function renderMyLocations() {
@@ -1964,7 +2078,7 @@
       editor.classList.remove('hidden');
       document.getElementById('locDeleteBtn').classList.toggle('hidden', !locId);
       document.getElementById('locEditorTitle').textContent = locId ? 'Редагування локації' : 'Нова локація';
-      document.getElementById('priceForm').classList.toggle('hidden', !locId);
+      document.getElementById('priceForm').classList.add('hidden');
       document.getElementById('locPhotosBlock').classList.toggle('hidden', !locId);
 
       if (!locId) {
@@ -1978,6 +2092,8 @@
 
       const loc = providerData.locations.find((l) => l.id === locId);
       if (!loc) return;
+      locCustomSubcats = loc.customSubcats && typeof loc.customSubcats === 'object' ? { ...loc.customSubcats } : {};
+      locDraftPrices = loc.prices && typeof loc.prices === 'object' ? { ...loc.prices } : {};
       document.getElementById('editLocId').value = loc.id;
       document.getElementById('locTitle').value = loc.title;
       document.getElementById('locText').value = loc.text || '';
@@ -2165,12 +2281,29 @@
         ? selectedSubs
         : Object.keys(cat.subcats || {});
       const list = [];
+      const seen = new Set();
       subKeys.forEach((subKey) => {
         const sub = cat.subcats?.[subKey];
-        if (!sub) return;
-        (sub.items || []).forEach((item) => {
-          list.push({ name: item.name, refPrice: item.price });
-        });
+        if (sub) {
+          (sub.items || []).forEach((item) => {
+            if (seen.has(item.name)) return;
+            seen.add(item.name);
+            list.push({ name: item.name, refPrice: item.price });
+          });
+        }
+        const custom = locCustomSubcats[subKey];
+        if (custom) {
+          (custom.services || []).forEach((name) => {
+            if (seen.has(name)) return;
+            seen.add(name);
+            list.push({ name, refPrice: locDraftPrices[name] || '' });
+          });
+        }
+      });
+      Object.keys(locDraftPrices).forEach((name) => {
+        if (seen.has(name)) return;
+        seen.add(name);
+        list.push({ name, refPrice: locDraftPrices[name] });
       });
       return list;
     }
@@ -2182,6 +2315,7 @@
       const checked = cbs.filter((cb) => cb.checked).length;
       allCb.checked = checked === cbs.length;
       allCb.indeterminate = checked > 0 && checked < cbs.length;
+      syncLocSubcatsSelectAll();
     }
 
     function getSelectedPriceServices() {
@@ -2189,6 +2323,16 @@
         name: cb.value,
         refPrice: cb.dataset.refPrice || '',
       }));
+    }
+
+    function buildPricesPayload() {
+      const prices = { ...locDraftPrices };
+      getSelectedPriceServices().forEach((svc) => {
+        if (!prices[svc.name]) {
+          prices[svc.name] = svc.refPrice || 'за домовленістю';
+        }
+      });
+      return prices;
     }
 
     function renderPriceServicesPicker(catKey) {
@@ -2205,7 +2349,7 @@
         return;
       }
       if (!services.length) {
-        el.innerHTML = '<p class="list-item-meta">Немає послуг у обраних підкатегоріях</p>';
+        el.innerHTML = '<p class="list-item-meta">Немає послуг у обраних підкатегоріях. Додайте свою нижче.</p>';
         return;
       }
 
@@ -2234,10 +2378,11 @@
         cb.className = 'price-service-cb';
         cb.value = item.name;
         cb.dataset.refPrice = item.refPrice || '';
+        cb.checked = Boolean(locDraftPrices[item.name]);
         cb.addEventListener('change', syncPriceServicesSelectAll);
         label.appendChild(cb);
         const span = document.createElement('span');
-        span.textContent = `${item.name} (${item.refPrice})`;
+        span.textContent = item.refPrice ? `${item.name} (${item.refPrice})` : item.name;
         label.appendChild(span);
         el.appendChild(label);
       });
@@ -2584,9 +2729,10 @@
 
       const subcats = getSelectedLocSubcats();
       if (!subcats.length) {
-        return showMessage('Оберіть хоча б одну підкатегорію з каталогу', true);
+        return showMessage('Оберіть хоча б одну підкатегорію або додайте свою', true);
       }
 
+      const prices = buildPricesPayload();
       const body = {
         title,
         text: document.getElementById('locText').value.trim(),
@@ -2596,6 +2742,8 @@
         lng,
         cat,
         subcats,
+        customSubcats: locCustomSubcats,
+        prices,
         openStatus: document.getElementById('locStatus').value,
       };
 
@@ -2645,58 +2793,43 @@
       showMessage('Локацію видалено');
     };
 
+    document.getElementById('locAddCustomSubcatBtn')?.addEventListener('click', () => {
+      const cat = document.getElementById('locCat').value;
+      const name = document.getElementById('locCustomSubcatName').value.trim();
+      if (!cat) return showMessage('Спочатку оберіть категорію', true);
+      if (name.length < 2) return showMessage('Вкажіть назву своєї підкатегорії', true);
+      const key = slugifyCustomKey(name);
+      locCustomSubcats[key] = { category: cat, name, services: locCustomSubcats[key]?.services || [] };
+      document.getElementById('locCustomSubcatName').value = '';
+      const selected = [...getSelectedLocSubcats(), key];
+      renderLocSubcatsPicker(cat, selected);
+      renderPriceServicesPicker(cat);
+      showMessage('Підкатегорію додано. Збережіть локацію, щоб застосувати.');
+    });
+
+    document.getElementById('locAddCustomServiceBtn')?.addEventListener('click', () => {
+      const name = document.getElementById('priceServiceCustom').value.trim();
+      const price = document.getElementById('priceValue').value.trim() || 'за домовленістю';
+      const cat = document.getElementById('locCat').value;
+      if (!name) return showMessage('Вкажіть назву послуги', true);
+      locDraftPrices[name] = price;
+      const selectedSubs = getSelectedLocSubcats();
+      if (selectedSubs.length) {
+        const key = selectedSubs[selectedSubs.length - 1];
+        if (locCustomSubcats[key]) {
+          const services = new Set(locCustomSubcats[key].services || []);
+          services.add(name);
+          locCustomSubcats[key].services = [...services];
+        }
+      }
+      document.getElementById('priceServiceCustom').value = '';
+      document.getElementById('priceValue').value = '';
+      renderPriceServicesPicker(cat);
+      showMessage('Послугу додано до прайсу. Збережіть локацію.');
+    });
+
     document.getElementById('priceForm').onsubmit = async (e) => {
       e.preventDefault();
-      const locId = document.getElementById('editLocId').value;
-      if (!locId) return showMessage('Спочатку збережіть локацію', true);
-
-      const selectedServices = getSelectedPriceServices();
-      const customName = document.getElementById('priceServiceCustom').value.trim();
-      const priceInput = document.getElementById('priceValue').value.trim();
-      const cat = document.getElementById('locCat').value;
-      const subcats = getSelectedLocSubcats();
-
-      if (!selectedServices.length && !customName) {
-        return showMessage('Оберіть послуги з каталогу або вкажіть нову назву', true);
-      }
-
-      const toSave = [...selectedServices];
-      if (customName) toSave.push({ name: customName, refPrice: '' });
-
-      if (!priceInput && toSave.some((s) => !s.refPrice)) {
-        return showMessage('Вкажіть ціну або оберіть послуги з каталогу (є орієнтовна ціна)', true);
-      }
-
-      const submitBtn = e.target.querySelector('button[type="submit"]');
-      if (submitBtn) submitBtn.disabled = true;
-      try {
-        for (const svc of toSave) {
-          const r = await fetch(`/api/provider/locations/${locId}/prices`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              serviceName: svc.name,
-              price: priceInput || svc.refPrice,
-              cat,
-              subcats,
-            }),
-          });
-          const j = await r.json();
-          if (!r.ok) throw new Error(j.error || 'Помилка збереження послуги');
-        }
-        await reloadProvider();
-        openLocationEditor(locId);
-        document.getElementById('priceValue').value = '';
-        document.getElementById('priceServiceCustom').value = '';
-        notifyMapDataChanged();
-        showMessage(
-          toSave.length > 1 ? `Збережено ${toSave.length} послуг` : 'Ціну збережено'
-        );
-      } catch (err) {
-        showMessage(err.message, true);
-      } finally {
-        if (submitBtn) submitBtn.disabled = false;
-      }
     };
 
     document.getElementById('backToMapLink').addEventListener('click', () => {

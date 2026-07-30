@@ -19,7 +19,7 @@
       </div>
 
       <h1 class="mf-title">Вхід</h1>
-      <p class="mf-sub">Увійдіть логіном і паролем, Google / Apple або кодом з Telegram (якщо бот уже підключений).</p>
+      <p class="mf-sub">Увійдіть за номером телефону, через Google / Apple або логіном і паролем.</p>
 
       <nav class="mf-seg" aria-label="Вхід або реєстрація">
         <a class="active" href="/login.html">Вхід</a>
@@ -32,38 +32,38 @@
       </div>
       <div id="oauthOr" class="mf-or mf-hidden">або</div>
 
-      <form id="classicForm">
-        <label class="mf-label" for="login">Логін</label>
-        <input id="login" name="login" type="text" autocomplete="username" placeholder="Ваш логін" required>
-        <label class="mf-label" for="password">Пароль</label>
-        <div class="mf-password">
-          <input id="password" name="password" type="password" autocomplete="current-password" placeholder="Пароль" required>
-          <button type="button" class="mf-toggle-eye" id="passwordToggle"><span class="eye-label">Показати</span></button>
-        </div>
-        <button type="submit" class="mf-btn mf-btn-primary" id="classicSubmitBtn">
-          <span id="classicSubmitText">Увійти</span>
-        </button>
-      </form>
-
-      <hr class="mf-divider">
-
-      <button type="button" class="mf-btn mf-btn-ghost" id="toggleTelegramBtn">Вхід через Telegram-код</button>
-
-      <div id="telegramBlock" class="mf-hidden" style="margin-top:14px">
+      <div id="telegramBlock">
         <div id="stepPhone">
           <label class="mf-label" for="phone">Номер телефону</label>
           <input id="phone" type="tel" inputmode="tel" autocomplete="tel" placeholder="+380661486347">
-          <p class="mf-hint">Працює лише якщо Telegram уже підключено до акаунта</p>
-          <button type="button" class="mf-btn mf-btn-dark" id="requestBtn"><span id="requestBtnText">Отримати код</span></button>
+          <p class="mf-hint">Код прийде в Telegram, якщо бот уже підключено до акаунта</p>
+          <button type="button" class="mf-btn mf-btn-primary" id="requestBtn"><span id="requestBtnText">Отримати код</span></button>
         </div>
         <div id="stepOtp" class="mf-hidden">
           <p class="mf-phone-sent">Код надіслано на <strong id="phoneDisplay"></strong></p>
           <label class="mf-label" for="otpCode">Код з Telegram</label>
           <input id="otpCode" class="mf-otp-input" type="text" inputmode="numeric" maxlength="6" placeholder="000000">
-          <button type="button" class="mf-btn mf-btn-dark" id="verifyBtn"><span id="verifyBtnText">Підтвердити</span></button>
+          <button type="button" class="mf-btn mf-btn-primary" id="verifyBtn"><span id="verifyBtnText">Підтвердити</span></button>
           <button type="button" class="mf-btn mf-btn-link" id="changePhoneBtn">Змінити номер</button>
         </div>
       </div>
+
+      <hr class="mf-divider">
+
+      <button type="button" class="mf-btn mf-btn-ghost" id="toggleClassicBtn">Вхід логіном і паролем</button>
+
+      <form id="classicForm" class="mf-hidden" style="margin-top:14px">
+        <label class="mf-label" for="login">Логін</label>
+        <input id="login" name="login" type="text" autocomplete="username" placeholder="Ваш логін">
+        <label class="mf-label" for="password">Пароль</label>
+        <div class="mf-password">
+          <input id="password" name="password" type="password" autocomplete="current-password" placeholder="Пароль">
+          <button type="button" class="mf-toggle-eye" id="passwordToggle"><span class="eye-label">Показати</span></button>
+        </div>
+        <button type="submit" class="mf-btn mf-btn-dark" id="classicSubmitBtn">
+          <span id="classicSubmitText">Увійти</span>
+        </button>
+      </form>
 
       <div id="message" class="mf-msg" role="alert"></div>
     </div>
@@ -78,7 +78,6 @@
   <script>
     const classicForm = document.getElementById('classicForm');
     const message = document.getElementById('message');
-    const telegramBlock = document.getElementById('telegramBlock');
     const stepPhone = document.getElementById('stepPhone');
     const stepOtp = document.getElementById('stepOtp');
     let oauthConfig = {};
@@ -105,8 +104,8 @@
       message.innerHTML = '';
     }
 
-    document.getElementById('toggleTelegramBtn').onclick = () => {
-      telegramBlock.classList.toggle('mf-hidden');
+    document.getElementById('toggleClassicBtn').onclick = () => {
+      classicForm.classList.toggle('mf-hidden');
     };
 
     classicForm.onsubmit = async (e) => {
@@ -119,16 +118,16 @@
       try {
         const res = await fetch('/api/login', {
           method: 'POST',
-          credentials: 'same-origin',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            login: classicForm.login.value.trim().toLowerCase(),
-            password: classicForm.password.value,
+            login: document.getElementById('login').value.trim(),
+            password: document.getElementById('password').value,
           }),
         });
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || 'Помилка входу');
-        redirectByRole(data.user.role);
+        showSuccess('Успішний вхід');
+        redirectByRole(data.user?.role);
       } catch (err) {
         showError(err.message);
       } finally {
@@ -137,33 +136,30 @@
       }
     };
 
+    document.getElementById('passwordToggle')?.addEventListener('click', () => {
+      const input = document.getElementById('password');
+      const label = document.querySelector('#passwordToggle .eye-label');
+      const show = input.type === 'password';
+      input.type = show ? 'text' : 'password';
+      if (label) label.textContent = show ? 'Сховати' : 'Показати';
+    });
+
     document.getElementById('requestBtn').onclick = async () => {
       clearMessage();
       const phone = document.getElementById('phone').value.trim();
       if (!phone) return showError('Вкажіть номер телефону');
-      document.getElementById('requestBtn').disabled = true;
+      const btn = document.getElementById('requestBtn');
+      const text = document.getElementById('requestBtnText');
+      btn.disabled = true;
+      text.textContent = 'Надсилаємо…';
       try {
         const res = await fetch('/api/auth/otp/request', {
           method: 'POST',
-          credentials: 'same-origin',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ phone }),
         });
-        const data = await res.json().catch(() => ({}));
-        if (!res.ok) {
-          if (data.error === 'telegram_not_linked') {
-            showError(
-              null,
-              'Telegram ще не підключено до цього номера. Увійдіть логіном/паролем, потім <a href="/link-telegram.html">підключіть Telegram</a> — і коди почнуть приходити.'
-            );
-            return;
-          }
-          if (data.error === 'user_not_found') {
-            showError(null, 'Акаунта з цим номером немає. <a href="/register.html">Зареєструйтесь</a>.');
-            return;
-          }
-          throw new Error(data.message || data.error || 'Не вдалося надіслати код');
-        }
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || data.message || 'Не вдалося надіслати код');
         savedPhone = data.phone || phone;
         document.getElementById('phoneDisplay').textContent = savedPhone;
         stepPhone.classList.add('mf-hidden');
@@ -172,26 +168,34 @@
       } catch (err) {
         showError(err.message);
       } finally {
-        document.getElementById('requestBtn').disabled = false;
+        btn.disabled = false;
+        text.textContent = 'Отримати код';
       }
     };
 
     document.getElementById('verifyBtn').onclick = async () => {
       clearMessage();
-      const code = document.getElementById('otpCode').value.replace(/\D/g, '');
-      if (!/^\d{6}$/.test(code)) return showError('Введіть 6-значний код');
+      const code = document.getElementById('otpCode').value.trim();
+      if (!code) return showError('Введіть код');
+      const btn = document.getElementById('verifyBtn');
+      const text = document.getElementById('verifyBtnText');
+      btn.disabled = true;
+      text.textContent = 'Перевіряємо…';
       try {
         const res = await fetch('/api/auth/otp/verify', {
           method: 'POST',
-          credentials: 'same-origin',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ phone: savedPhone, code }),
         });
-        const data = await res.json().catch(() => ({}));
-        if (!res.ok) throw new Error(data.message || data.error || 'Невірний код');
-        redirectByRole(data.user.role);
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Невірний код');
+        showSuccess('Успішний вхід');
+        redirectByRole(data.user?.role);
       } catch (err) {
         showError(err.message);
+      } finally {
+        btn.disabled = false;
+        text.textContent = 'Підтвердити';
       }
     };
 
@@ -201,42 +205,26 @@
       clearMessage();
     };
 
-    document.getElementById('passwordToggle').onclick = () => {
-      const input = document.getElementById('password');
-      const show = input.type === 'password';
-      input.type = show ? 'text' : 'password';
-      document.querySelector('#passwordToggle .eye-label').textContent = show ? 'Сховати' : 'Показати';
-    };
-
-    function makeNonce() {
-      const bytes = new Uint8Array(16);
-      crypto.getRandomValues(bytes);
-      return Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
-    }
-    async function sha256Hex(value) {
-      const hash = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(value));
-      return Array.from(new Uint8Array(hash), (b) => b.toString(16).padStart(2, '0')).join('');
-    }
-
-    async function finishOauth(path, body) {
-      showSuccess('Вхід…');
-      const res = await fetch(path, {
+    async function finishOauth(url, payload) {
+      clearMessage();
+      const res = await fetch(url, {
         method: 'POST',
-        credentials: 'same-origin',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
+        body: JSON.stringify(payload),
       });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.message || data.error || 'Помилка OAuth');
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Помилка OAuth');
+      showSuccess('Успішний вхід');
       redirectByRole(data.user?.role);
     }
 
-    async function initOauth() {
+    async function setupOauth() {
       try {
         const res = await fetch('/api/auth/oauth-config', { cache: 'no-store' });
         oauthConfig = await res.json();
-      } catch (_) { return; }
-
+      } catch (_) {
+        oauthConfig = {};
+      }
       const show = oauthConfig.googleEnabled || oauthConfig.appleEnabled;
       document.getElementById('oauthBlock').classList.toggle('mf-hidden', !show);
       document.getElementById('oauthOr').classList.toggle('mf-hidden', !show);
@@ -259,25 +247,23 @@
       document.getElementById('googleBtn').onclick = () => {
         if (!oauthConfig.googleEnabled) return showError('Додайте GOOGLE_CLIENT_ID у Vercel Env');
         if (window.google?.accounts?.id) google.accounts.id.prompt();
-        else showError('Google SDK ще завантажується');
+        else showError('Google SDK ще завантажується, спробуйте знову');
       };
 
       document.getElementById('appleBtn').onclick = async () => {
         if (!oauthConfig.appleEnabled) return showError('Додайте APPLE_CLIENT_ID у Vercel Env');
-        if (!window.AppleID) return showError('Apple SDK ще завантажується');
         try {
-          const rawNonce = makeNonce();
           AppleID.auth.init({
             clientId: oauthConfig.appleClientId,
             scope: 'name email',
-            redirectURI: location.origin + '/login.html',
+            redirectURI: window.location.origin + '/login.html',
             usePopup: true,
-            nonce: await sha256Hex(rawNonce),
           });
-          const result = await AppleID.auth.signIn();
+          const response = await AppleID.auth.signIn();
           await finishOauth('/api/auth/apple', {
-            idToken: result?.authorization?.id_token,
-            rawNonce,
+            id_token: response.authorization?.id_token,
+            code: response.authorization?.code,
+            user: response.user,
             role: 'client',
           });
         } catch (err) {
@@ -286,13 +272,7 @@
       };
     }
 
-    fetch('/api/me', { credentials: 'same-origin', cache: 'no-store' })
-      .then((r) => r.json())
-      .then((d) => { if (d.loggedIn) redirectByRole(d.user.role); })
-      .catch(() => {});
-
-    window.addEventListener('load', initOauth);
-    setTimeout(initOauth, 800);
+    setupOauth();
   </script>
 </body>
 </html>

@@ -387,6 +387,13 @@ function csvRowToLocation(row, defaultCategory) {
   const title = row.title || row.name || row.назва;
   if (!title || !Number.isFinite(lat) || !Number.isFinite(lng)) return null;
 
+  const hours =
+    row.working_hours ||
+    row.workinghours ||
+    row.hours ||
+    row.графік ||
+    row.график ||
+    '09:00 - 18:00';
   const cat = row.cat || row.category || defaultCategory || 'beauty';
   return {
     id: makeLocationId(`csv:${title}:${lat}:${lng}`),
@@ -399,10 +406,10 @@ function csvRowToLocation(row, defaultCategory) {
     rating: Number(row.rating) || 0,
     reviewsCount: Number(row.reviewscount || row.reviews_count) || 0,
     openStatus: 'open',
-    workingHours: row.workinghours || row.hours || '09:00 - 18:00',
+    workingHours: hours,
     phone: normalizePhone(row.phone || row.телефон || ''),
     address: row.address || row.адреса || '',
-    schedule: { 'Пн-Пт': row.workinghours || '09:00 - 18:00' },
+    schedule: { Графік: hours },
     subcats: row.subcats ? String(row.subcats).split('|').filter(Boolean) : [],
     prices: {},
     reviews: [],
@@ -411,6 +418,75 @@ function csvRowToLocation(row, defaultCategory) {
       importedAt: new Date().toISOString(),
     },
   };
+}
+
+function normalizeImportRow(row) {
+  const out = {};
+  Object.entries(row || {}).forEach(([key, value]) => {
+    const k = String(key || '')
+      .trim()
+      .toLowerCase()
+      .replace(/\s+/g, '_')
+      .replace(/[^\wа-яіїєґ]+/gi, '_');
+    out[k] = typeof value === 'string' ? value.trim() : value;
+  });
+  // Common aliases
+  if (out.maps_url || out.google_maps_url || out.url || out.link || out.посилання) {
+    out.maps_url = out.maps_url || out.google_maps_url || out.url || out.link || out.посилання;
+  }
+  if (out.working_hours || out.workinghours || out.hours || out.графік || out.график) {
+    out.working_hours =
+      out.working_hours || out.workinghours || out.hours || out.графік || out.график;
+  }
+  return out;
+}
+
+async function importExcelRowsToLocations(rows, { defaultCategory, providerId } = {}) {
+  const locations = [];
+  const errors = [];
+  for (let i = 0; i < (rows || []).length; i++) {
+    const row = normalizeImportRow(rows[i]);
+    try {
+      let loc = null;
+      const mapsUrl = String(row.maps_url || '').trim();
+      if (mapsUrl) {
+        const { place } = await importPlaceFromGoogleMapsUrl({ url: mapsUrl });
+        loc = googlePlaceToLocation(place, {
+          providerId: providerId || null,
+          cat: row.cat || row.category || defaultCategory || 'home',
+        });
+        if (row.title) loc.title = String(row.title).trim();
+        if (row.address) loc.address = String(row.address).trim();
+        if (row.phone) loc.phone = normalizePhone(row.phone);
+        if (row.working_hours) {
+          loc.workingHours = String(row.working_hours).trim();
+          loc.schedule = { Графік: loc.workingHours };
+        }
+        loc.importSource = 'excel_maps_url';
+        loc.importMeta = {
+          ...(loc.importMeta || {}),
+          source: 'excel_maps_url',
+          mapsUrl,
+          row: i + 1,
+        };
+      } else {
+        loc = csvRowToLocation(row, defaultCategory);
+        if (loc) {
+          loc.providerId = providerId || null;
+          loc.importSource = 'excel';
+        }
+      }
+      if (!loc) {
+        errors.push({ row: i + 1, error: 'Немає назви/координат або Google Maps посилання' });
+        continue;
+      }
+      if (row.status === 'closed' || row.openstatus === 'closed') loc.openStatus = 'closed';
+      locations.push(loc);
+    } catch (err) {
+      errors.push({ row: i + 1, error: err.message || 'Помилка рядка' });
+    }
+  }
+  return { locations, errors };
 }
 
 function loadLocationsFromFile(filePath, defaultCategory) {
@@ -901,9 +977,11 @@ async function importPlaceFromGoogleMapsUrl({ url, apiKey }) {
 
 /** Official Mapfix spreadsheet columns (CSV / Excel). */
 const PROVIDER_IMPORT_COLUMNS = [
+  'maps_url',
   'title',
   'address',
   'phone',
+  'working_hours',
   'lat',
   'lng',
   'cat',
@@ -912,8 +990,9 @@ const PROVIDER_IMPORT_COLUMNS = [
 ];
 
 const PROVIDER_IMPORT_TEMPLATE_CSV =
-  'title,address,phone,lat,lng,cat,text,status\n' +
-  'Оренда квартири,"вул. Прикладна 1, Коцюбинське",+380991112233,50.4905,30.3345,rental,Опис точки,open\n';
+  'maps_url,title,address,phone,working_hours,lat,lng,cat,text,status\n' +
+  'https://maps.app.goo.gl/example,,,,"",,,,rental,,\n' +
+  ',"Оренда квартири","вул. Прикладна 1, Коцюбинське",+380991112233,"09:00 - 18:00",50.4905,30.3345,rental,Опис точки,open\n';
 
 module.exports = {
   CITY_PRESETS,
@@ -926,6 +1005,7 @@ module.exports = {
   googlePlaceToLocation,
   resolveGoogleMapsUrl,
   importPlaceFromGoogleMapsUrl,
+  importExcelRowsToLocations,
   loadLocationsFromFile,
   mergeLocations,
   parseCsv,

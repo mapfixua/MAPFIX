@@ -51,6 +51,7 @@ const {
   fetchGooglePlaceDetails,
   googlePlaceToLocation,
   importPlaceFromGoogleMapsUrl,
+  importExcelRowsToLocations,
   mergeLocations,
   CITY_PRESETS,
   CATEGORY_OSM_FILTERS,
@@ -539,6 +540,8 @@ function defaultLocation(providerId, body) {
     address: body.address?.trim() || '',
     schedule: body.schedule || { 'Пн-Пт': '09:00 - 18:00' },
     subcats: Array.isArray(body.subcats) ? body.subcats : [],
+    customSubcats:
+      body.customSubcats && typeof body.customSubcats === 'object' ? body.customSubcats : {},
     prices: typeof body.prices === 'object' && body.prices ? body.prices : {},
     reviews: [],
     views: 0,
@@ -2219,6 +2222,12 @@ app.put('/api/provider/locations/:id', requireAuth, requireProviderOrAdmin, asyn
     if (req.body.lat !== undefined) loc.lat = Number(req.body.lat);
     if (req.body.lng !== undefined) loc.lng = Number(req.body.lng);
     if (Array.isArray(req.body.subcats)) loc.subcats = req.body.subcats;
+    if (req.body.customSubcats && typeof req.body.customSubcats === 'object') {
+      loc.customSubcats = req.body.customSubcats;
+    }
+    if (req.body.prices && typeof req.body.prices === 'object') {
+      loc.prices = { ...(loc.prices || {}), ...req.body.prices };
+    }
     if (req.body.schedule) loc.schedule = req.body.schedule;
 
     await persistLocationsPatch(data, [loc]);
@@ -2520,7 +2529,7 @@ app.post('/api/provider/import/place', requireAuth, requireProvider, async (req,
   }
 });
 
-app.post('/api/provider/import/excel', requireAuth, requireProvider, async (req, res) => {
+async function handleExcelImport(req, res, { asSystem = false } = {}) {
   try {
     const user = getSessionUser(req);
     const defaultCat = String(req.body.defaultCat || '').trim() || 'home';
@@ -2531,37 +2540,39 @@ app.post('/api/provider/import/excel', requireAuth, requireProvider, async (req,
     if (!rows || !rows.length) {
       return res.status(400).json({
         error:
-          'Немає рядків. Завантажте CSV/Excel у форматі: title,address,phone,lat,lng,cat,text,status',
+          'Немає рядків. Колонки: maps_url АБО title,address,phone,working_hours,lat,lng,cat',
       });
     }
 
-    const incoming = rows
-      .map((row) => {
-        const loc = csvRowToLocation(row, defaultCat);
-        if (!loc) return null;
-        if (row.status === 'closed' || row.openStatus === 'closed') loc.openStatus = 'closed';
-        loc.providerId = user.id;
-        loc.importSource = 'excel';
-        return loc;
-      })
-      .filter(Boolean);
+    const providerId = asSystem ? null : user.id;
+    const { locations: incoming, errors } = await importExcelRowsToLocations(rows, {
+      defaultCategory: defaultCat,
+      providerId,
+    });
 
     if (!incoming.length) {
       return res.status(400).json({
-        error:
-          'Жодного валідного рядка. Потрібні title, lat, lng (і бажано address, phone, cat)',
+        error: 'Жодного валідного рядка',
+        errors,
       });
     }
 
     const data = await readData();
-    const merged = mergeLocations(data.mockLocations, incoming, { updateExisting: false });
-    const created = merged.locations.filter((l) => merged.added.includes(l.id)).map((l) => ({
-      ...l,
-      providerId: user.id,
-    }));
-    data.mockLocations = merged.locations.map((l) =>
-      merged.added.includes(l.id) ? { ...l, providerId: user.id } : l
-    );
+    const active = activeLocations(data.mockLocations);
+    const trash = trashedLocations(data.mockLocations);
+    const merged = mergeLocations(active, incoming, { updateExisting: false });
+    const created = merged.locations
+      .filter((l) => merged.added.includes(l.id))
+      .map((l) => ({
+        ...l,
+        providerId,
+      }));
+    data.mockLocations = [
+      ...merged.locations.map((l) =>
+        merged.added.includes(l.id) ? { ...l, providerId } : l
+      ),
+      ...trash,
+    ];
     await persistLocationsPatch(data, created);
     res.status(201).json({
       ok: true,
@@ -2569,12 +2580,21 @@ app.post('/api/provider/import/excel', requireAuth, requireProvider, async (req,
       skipped: merged.skipped.length,
       locations: created,
       skippedDetails: merged.skipped,
+      errors,
     });
   } catch (err) {
-    console.error('[POST /api/provider/import/excel]', err);
+    console.error('[POST /api/*/import/excel]', err);
     res.status(500).json({ error: err.message || 'Помилка імпорту Excel' });
   }
-});
+}
+
+app.post('/api/provider/import/excel', requireAuth, requireProviderOrAdmin, (req, res) =>
+  handleExcelImport(req, res, { asSystem: false })
+);
+
+app.post('/api/admin/import/excel', requireAuth, requireAdmin, (req, res) =>
+  handleExcelImport(req, res, { asSystem: true })
+);
 
 app.use(express.static(PUBLIC_DIR, { index: false, fallthrough: true }));
 
