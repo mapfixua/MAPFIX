@@ -798,88 +798,97 @@ async function resolveGoogleMapsUrl(rawUrl) {
   }
 }
 
+function googleMapsUrlFallbackPlace(resolved, warning = '') {
+  if (!resolved.title || !Number.isFinite(resolved.lat) || !Number.isFinite(resolved.lng)) {
+    throw new Error(
+      'Без Google Places API з цього посилання не вдалося отримати назву й координати'
+    );
+  }
+  return {
+    placeId: '',
+    title: resolved.title.replace(/[-+]/g, ' '),
+    address: '',
+    phone: '',
+    lat: resolved.lat,
+    lng: resolved.lng,
+    rating: 0,
+    reviewsCount: 0,
+    workingHours: '',
+    schedule: {},
+    website: '',
+    mapsUrl: resolved.finalUrl,
+    types: [],
+    summary: '',
+    reviews: [],
+    text: 'Імпортовано з посилання Google Maps',
+    dataSource: 'google_maps_url',
+    importWarning: warning,
+  };
+}
+
 async function importPlaceFromGoogleMapsUrl({ url, apiKey }) {
   const key = apiKey || process.env.GOOGLE_PLACES_API_KEY || process.env.GOOGLE_MAPS_API_KEY;
   const resolved = await resolveGoogleMapsUrl(url);
   let place = null;
 
   if (!key) {
-    if (!resolved.title || !Number.isFinite(resolved.lat) || !Number.isFinite(resolved.lng)) {
-      throw new Error(
-        'Без Google Places API з цього посилання не вдалося отримати назву й координати'
-      );
-    }
-    place = {
-      placeId: '',
-      title: resolved.title.replace(/-/g, ' '),
-      address: '',
-      phone: '',
-      lat: resolved.lat,
-      lng: resolved.lng,
-      rating: 0,
-      reviewsCount: 0,
-      workingHours: '',
-      schedule: {},
-      website: '',
-      mapsUrl: resolved.finalUrl,
-      types: [],
-      summary: '',
-      reviews: [],
-      text: 'Імпортовано з посилання Google Maps',
-      dataSource: 'google_maps_url',
-    };
-  } else if (resolved.placeId) {
-    place = await fetchGooglePlaceDetails({ placeId: resolved.placeId, apiKey: key });
+    place = googleMapsUrlFallbackPlace(resolved);
   } else {
-    const query =
-      resolved.query ||
-      resolved.title ||
-      (Number.isFinite(resolved.lat) && Number.isFinite(resolved.lng)
-        ? `${resolved.lat},${resolved.lng}`
-        : '');
-    if (!query) {
-      throw new Error('Не вдалося витягти назву або координати з посилання');
-    }
-
-    const found = await searchGooglePlacesText({
-      query,
-      apiKey: key,
-      lat: resolved.lat,
-      lng: resolved.lng,
-      maxResultCount: 5,
-    });
-    if (!found.length) {
-      throw new Error('Google Places не знайшов заклад за цим посиланням');
-    }
-
-    // Prefer nearest match when coords are known
-    let best = found[0];
-    if (Number.isFinite(resolved.lat) && Number.isFinite(resolved.lng)) {
-      let bestDist = Infinity;
-      for (const item of found) {
-        const d = haversineMeters(
-          { lat: resolved.lat, lng: resolved.lng },
-          { lat: item.lat, lng: item.lng }
-        );
-        if (d < bestDist) {
-          bestDist = d;
-          best = item;
+    try {
+      if (resolved.placeId) {
+        place = await fetchGooglePlaceDetails({ placeId: resolved.placeId, apiKey: key });
+      } else {
+        const query =
+          resolved.query ||
+          resolved.title ||
+          (Number.isFinite(resolved.lat) && Number.isFinite(resolved.lng)
+            ? `${resolved.lat},${resolved.lng}`
+            : '');
+        if (!query) {
+          throw new Error('Не вдалося витягти назву або координати з посилання');
         }
-      }
-    }
 
-    if (best.placeId) {
-      place = await fetchGooglePlaceDetails({ placeId: best.placeId, apiKey: key });
-    } else {
-      place = {
-        ...best,
-        website: '',
-        mapsUrl: resolved.finalUrl,
-        types: [],
-        summary: '',
-        reviews: [],
-        text: 'Імпортовано з Google Maps',
-      };
+        const found = await searchGooglePlacesText({
+          query,
+          apiKey: key,
+          lat: resolved.lat,
+          lng: resolved.lng,
+          maxResultCount: 5,
+        });
+        if (!found.length) {
+          throw new Error('Google Places не знайшов заклад за цим посиланням');
+        }
+
+        let best = found[0];
+        if (Number.isFinite(resolved.lat) && Number.isFinite(resolved.lng)) {
+          let bestDist = Infinity;
+          for (const item of found) {
+            const d = haversineMeters(
+              { lat: resolved.lat, lng: resolved.lng },
+              { lat: item.lat, lng: item.lng }
+            );
+            if (d < bestDist) {
+              bestDist = d;
+              best = item;
+            }
+          }
+        }
+
+        place = best.placeId
+          ? await fetchGooglePlaceDetails({ placeId: best.placeId, apiKey: key })
+          : {
+              ...best,
+              website: '',
+              mapsUrl: resolved.finalUrl,
+              types: [],
+              summary: '',
+              reviews: [],
+              text: 'Імпортовано з Google Maps',
+            };
+      }
+    } catch (err) {
+      console.warn('[google-maps-url] Places API fallback:', err.message);
+      place = googleMapsUrlFallbackPlace(resolved, err.message);
     }
   }
 
