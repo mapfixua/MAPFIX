@@ -559,6 +559,39 @@ async function searchGooglePlacesText({ query, apiKey, lat, lng, maxResultCount 
     .filter(Boolean);
 }
 
+function mapGoogleReviews(reviews) {
+  if (!Array.isArray(reviews)) return [];
+  return reviews
+    .slice(0, 8)
+    .map((rev) => {
+      const rating = Math.max(1, Math.min(5, Number(rev.rating) || 5));
+      const text = String(rev.text?.text || rev.originalText?.text || '').trim();
+      const author = rev.authorAttribution?.displayName || 'Google';
+      const relative = rev.relativePublishTimeDescription || '';
+      return {
+        rating,
+        text: text || 'Відгук з Google Maps',
+        author,
+        date: relative || new Date().toISOString().slice(0, 10),
+        source: 'google_maps',
+      };
+    })
+    .filter((r) => r.text);
+}
+
+function mapGoogleSchedule(weekdayDescriptions) {
+  if (!Array.isArray(weekdayDescriptions)) return {};
+  return weekdayDescriptions.reduce((schedule, rawLine) => {
+    const line = String(rawLine || '').trim();
+    const separator = line.indexOf(':');
+    if (separator <= 0) return schedule;
+    const day = line.slice(0, separator).trim();
+    const hours = line.slice(separator + 1).trim();
+    if (day && hours) schedule[day] = hours;
+    return schedule;
+  }, {});
+}
+
 async function fetchGooglePlaceDetails({ placeId, apiKey }) {
   const key = apiKey || process.env.GOOGLE_PLACES_API_KEY || process.env.GOOGLE_MAPS_API_KEY;
   if (!key) throw new Error('GOOGLE_PLACES_API_KEY is not set');
@@ -566,13 +599,17 @@ async function fetchGooglePlaceDetails({ placeId, apiKey }) {
   if (!id) throw new Error('placeId is required');
   if (id.startsWith('places/')) id = id.slice('places/'.length);
 
-  const res = await fetch(`https://places.googleapis.com/v1/places/${encodeURIComponent(id)}`, {
+  const res = await fetch(
+    `https://places.googleapis.com/v1/places/${encodeURIComponent(id)}?languageCode=uk`,
+    {
     headers: {
       'X-Goog-Api-Key': key,
+      'Accept-Language': 'uk',
       'X-Goog-FieldMask':
-        'id,displayName,formattedAddress,location,nationalPhoneNumber,internationalPhoneNumber,rating,userRatingCount,regularOpeningHours,websiteUri,googleMapsUri',
+        'id,displayName,formattedAddress,location,nationalPhoneNumber,internationalPhoneNumber,rating,userRatingCount,regularOpeningHours,websiteUri,googleMapsUri,types,editorialSummary,reviews',
     },
-  });
+    }
+  );
   const p = await res.json();
   if (!res.ok) {
     throw new Error(p?.error?.message || `Places API HTTP ${res.status}`);
@@ -584,11 +621,15 @@ async function fetchGooglePlaceDetails({ placeId, apiKey }) {
     throw new Error('У місця немає координат');
   }
 
-  const hours =
-    Array.isArray(p.regularOpeningHours?.weekdayDescriptions) &&
-    p.regularOpeningHours.weekdayDescriptions.length
-      ? p.regularOpeningHours.weekdayDescriptions.join('; ')
-      : '09:00 - 18:00';
+  const weekdayDescriptions = Array.isArray(p.regularOpeningHours?.weekdayDescriptions)
+    ? p.regularOpeningHours.weekdayDescriptions
+    : [];
+  const schedule = mapGoogleSchedule(weekdayDescriptions);
+  const hours = weekdayDescriptions.join('; ');
+
+  const summary = p.editorialSummary?.text || '';
+  const types = Array.isArray(p.types) ? p.types : [];
+  const reviews = mapGoogleReviews(p.reviews);
 
   return {
     placeId: p.id || id,
@@ -598,16 +639,30 @@ async function fetchGooglePlaceDetails({ placeId, apiKey }) {
     lat,
     lng,
     rating: Number(p.rating) || 0,
-    reviewsCount: Number(p.userRatingCount) || 0,
+    reviewsCount: Number(p.userRatingCount) || reviews.length || 0,
     workingHours: hours,
+    schedule,
     website: p.websiteUri || '',
     mapsUrl: p.googleMapsUri || '',
-    text: 'Імпортовано з Google Maps',
+    types,
+    summary,
+    reviews,
+    text:
+      summary ||
+      (types.length ? `Тип: ${types.slice(0, 4).join(', ')}` : 'Імпортовано з Google Maps'),
   };
 }
 
-function googlePlaceToLocation(place, { providerId, cat }) {
+function googlePlaceToLocation(place, { providerId, cat, subcategory } = {}) {
   const placeId = place.placeId || place.id;
+  const subs = [];
+  if (subcategory) subs.push(subcategory);
+  else if (Array.isArray(place.subcats)) subs.push(...place.subcats);
+
+  const website = place.website || '';
+  const baseText = place.text || place.summary || 'Імпортовано з Google Maps';
+  const text = website ? `${baseText}\nСайт: ${website}` : baseText;
+
   return {
     id: makeLocationId(`ggl:${placeId || place.title}:${place.lat}:${place.lng}`),
     providerId: providerId || null,
@@ -615,26 +670,224 @@ function googlePlaceToLocation(place, { providerId, cat }) {
     lng: place.lng,
     cat: cat || 'home',
     title: String(place.title || '').trim(),
-    text: place.text || 'Імпортовано з Google Maps',
+    text,
     rating: Number(place.rating) || 0,
-    reviewsCount: Number(place.reviewsCount) || 0,
+    reviewsCount: Number(place.reviewsCount) || (place.reviews || []).length || 0,
     openStatus: 'open',
-    workingHours: place.workingHours || '09:00 - 18:00',
+    workingHours: place.workingHours || '',
     phone: normalizePhone(place.phone || ''),
     address: place.address || '',
-    schedule: { 'Пн-Пт': place.workingHours || '09:00 - 18:00' },
-    subcats: [],
+    website,
+    schedule:
+      place.schedule && typeof place.schedule === 'object'
+        ? place.schedule
+        : place.workingHours
+          ? { 'Графік': place.workingHours }
+          : {},
+    subcats: [...new Set(subs.filter(Boolean))],
     prices: {},
-    reviews: [],
+    reviews: Array.isArray(place.reviews) ? place.reviews : [],
     views: 0,
-    importSource: 'google_maps',
+    importSource: 'google_maps_url',
     importMeta: {
-      source: 'google_maps',
+      source: 'google_maps_url',
       placeId,
-      mapsUrl: place.mapsUrl || '',
+      mapsUrl: place.mapsUrl || place.sourceUrl || '',
+      website,
+      types: place.types || [],
       importedAt: new Date().toISOString(),
     },
   };
+}
+
+function parseGoogleMapsUrlParts(finalUrl) {
+  const url = new URL(finalUrl);
+  const href = url.href;
+  const out = {
+    finalUrl: href,
+    title: '',
+    lat: null,
+    lng: null,
+    query: '',
+    placeId: '',
+  };
+
+  const placeMatch = href.match(/\/maps\/place\/([^/@]+)/i);
+  if (placeMatch) {
+    try {
+      out.title = decodeURIComponent(placeMatch[1].replace(/\+/g, ' ')).trim();
+    } catch (_) {
+      out.title = placeMatch[1].replace(/\+/g, ' ').trim();
+    }
+  }
+
+  const atMatch = href.match(/@(-?\d+\.\d+),(-?\d+\.\d+)/);
+  if (atMatch) {
+    out.lat = Number(atMatch[1]);
+    out.lng = Number(atMatch[2]);
+  }
+
+  const d3 = href.match(/!3d(-?\d+\.\d+)/);
+  const d4 = href.match(/!4d(-?\d+\.\d+)/);
+  if (d3 && d4) {
+    out.lat = Number(d3[1]);
+    out.lng = Number(d4[1]);
+  }
+
+  const q = url.searchParams.get('q') || url.searchParams.get('query') || '';
+  if (q) out.query = q.trim();
+
+  const placeId =
+    url.searchParams.get('place_id') ||
+    url.searchParams.get('query_place_id') ||
+    '';
+  if (placeId) out.placeId = placeId;
+
+  // /g/xxxxxxxx feature ids sometimes appear in the path
+  const gMatch = href.match(/\/g\/([a-zA-Z0-9_]+)/);
+  if (gMatch && !out.placeId) {
+    out.featureId = `g/${gMatch[1]}`;
+  }
+
+  return out;
+}
+
+async function resolveGoogleMapsUrl(rawUrl) {
+  const input = String(rawUrl || '').trim();
+  if (!input) throw new Error('Вставте посилання Google Maps');
+  let start;
+  try {
+    start = new URL(input);
+  } catch (_) {
+    throw new Error('Некоректне посилання. Приклад: https://maps.app.goo.gl/...');
+  }
+
+  const host = start.hostname.replace(/^www\./, '');
+  const allowed =
+    host === 'maps.app.goo.gl' ||
+    host === 'goo.gl' ||
+    host === 'g.page' ||
+    host.endsWith('google.com') ||
+    host.endsWith('google.com.ua');
+  if (!allowed) {
+    throw new Error('Підтримуються лише посилання Google Maps / maps.app.goo.gl');
+  }
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 15000);
+  try {
+    // Follow redirects; some short links need GET
+    const res = await fetch(start.href, {
+      method: 'GET',
+      redirect: 'follow',
+      signal: controller.signal,
+      headers: {
+        'User-Agent': 'MapfixImport/1.0 (https://mapfix-wine.vercel.app)',
+        Accept: 'text/html,application/xhtml+xml',
+      },
+    });
+    const finalUrl = res.url || start.href;
+    return parseGoogleMapsUrlParts(finalUrl);
+  } catch (err) {
+    if (err.name === 'AbortError') {
+      throw new Error('Таймаут при відкритті посилання Google Maps');
+    }
+    throw new Error(err.message || 'Не вдалося відкрити посилання Google Maps');
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function importPlaceFromGoogleMapsUrl({ url, apiKey }) {
+  const key = apiKey || process.env.GOOGLE_PLACES_API_KEY || process.env.GOOGLE_MAPS_API_KEY;
+  const resolved = await resolveGoogleMapsUrl(url);
+  let place = null;
+
+  if (!key) {
+    if (!resolved.title || !Number.isFinite(resolved.lat) || !Number.isFinite(resolved.lng)) {
+      throw new Error(
+        'Без Google Places API з цього посилання не вдалося отримати назву й координати'
+      );
+    }
+    place = {
+      placeId: '',
+      title: resolved.title.replace(/-/g, ' '),
+      address: '',
+      phone: '',
+      lat: resolved.lat,
+      lng: resolved.lng,
+      rating: 0,
+      reviewsCount: 0,
+      workingHours: '',
+      schedule: {},
+      website: '',
+      mapsUrl: resolved.finalUrl,
+      types: [],
+      summary: '',
+      reviews: [],
+      text: 'Імпортовано з посилання Google Maps',
+      dataSource: 'google_maps_url',
+    };
+  } else if (resolved.placeId) {
+    place = await fetchGooglePlaceDetails({ placeId: resolved.placeId, apiKey: key });
+  } else {
+    const query =
+      resolved.query ||
+      resolved.title ||
+      (Number.isFinite(resolved.lat) && Number.isFinite(resolved.lng)
+        ? `${resolved.lat},${resolved.lng}`
+        : '');
+    if (!query) {
+      throw new Error('Не вдалося витягти назву або координати з посилання');
+    }
+
+    const found = await searchGooglePlacesText({
+      query,
+      apiKey: key,
+      lat: resolved.lat,
+      lng: resolved.lng,
+      maxResultCount: 5,
+    });
+    if (!found.length) {
+      throw new Error('Google Places не знайшов заклад за цим посиланням');
+    }
+
+    // Prefer nearest match when coords are known
+    let best = found[0];
+    if (Number.isFinite(resolved.lat) && Number.isFinite(resolved.lng)) {
+      let bestDist = Infinity;
+      for (const item of found) {
+        const d = haversineMeters(
+          { lat: resolved.lat, lng: resolved.lng },
+          { lat: item.lat, lng: item.lng }
+        );
+        if (d < bestDist) {
+          bestDist = d;
+          best = item;
+        }
+      }
+    }
+
+    if (best.placeId) {
+      place = await fetchGooglePlaceDetails({ placeId: best.placeId, apiKey: key });
+    } else {
+      place = {
+        ...best,
+        website: '',
+        mapsUrl: resolved.finalUrl,
+        types: [],
+        summary: '',
+        reviews: [],
+        text: 'Імпортовано з Google Maps',
+      };
+    }
+  }
+
+  place.sourceUrl = url;
+  place.mapsUrl = place.mapsUrl || resolved.finalUrl;
+  place.resolvedTitle = resolved.title;
+  place.dataSource = place.dataSource || 'google_places_api';
+  return { place, resolved };
 }
 
 /** Official Mapfix spreadsheet columns (CSV / Excel). */
@@ -662,6 +915,8 @@ module.exports = {
   searchGooglePlacesText,
   fetchGooglePlaceDetails,
   googlePlaceToLocation,
+  resolveGoogleMapsUrl,
+  importPlaceFromGoogleMapsUrl,
   loadLocationsFromFile,
   mergeLocations,
   parseCsv,

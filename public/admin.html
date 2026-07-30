@@ -509,6 +509,26 @@
               </div>
               <div id="importReviewList" style="max-height:420px;overflow:auto;display:flex;flex-direction:column;gap:8px"></div>
             </div>
+
+            <hr style="margin:24px 0;border:none;border-top:1px solid #e5e7eb">
+
+            <h2>Імпорт за посиланням Google Maps</h2>
+            <p class="field-hint" style="margin-bottom:14px">
+              Вставте коротке посилання на кшталт
+              <code>https://maps.app.goo.gl/...</code>.
+              AI запропонує категорію Mapfix. Без API система безкоштовно імпортує назву й координати;
+              з Google Places API також підтягне телефон, адресу, рейтинг, відгуки, сайт і графік роботи.
+            </p>
+            <div class="field-block">
+              <label>Посилання Google Maps</label>
+              <input type="url" id="gmapsUrlInput" placeholder="https://maps.app.goo.gl/w2u4qULdS7k5kCiS8">
+            </div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">
+              <button type="button" id="gmapsPreviewBtn" class="btn-secondary" style="width:auto">Розпізнати місце</button>
+              <button type="button" id="gmapsImportBtn" style="width:auto" disabled>Додати на карту</button>
+            </div>
+            <div id="gmapsResult" class="msg" style="display:none;margin-top:14px"></div>
+            <div id="gmapsPreviewBox" class="hidden" style="margin-top:14px;border:1px solid #e5e7eb;border-radius:12px;padding:14px;background:#fafafa"></div>
           </div>
 
           <div id="adminPaneCatalog" class="admin-pane card">
@@ -1218,6 +1238,120 @@
         resultEl.textContent = err.message;
       }
     });
+
+    let gmapsPreviewData = null;
+
+    function renderGmapsPreview(data) {
+      gmapsPreviewData = data;
+      const box = document.getElementById('gmapsPreviewBox');
+      const importBtn = document.getElementById('gmapsImportBtn');
+      if (!box) return;
+      if (!data?.place) {
+        box.classList.add('hidden');
+        if (importBtn) importBtn.disabled = true;
+        return;
+      }
+      const p = data.place;
+      const options = (data.catalogOptions || [])
+        .map(
+          (c) =>
+            `<option value="${esc(c.key)}" ${c.key === data.category ? 'selected' : ''}>${esc(c.name || c.key)}</option>`
+        )
+        .join('');
+      const subOptions =
+        '<option value="">— без підкатегорії —</option>' +
+        ((data.catalogOptions || []).find((c) => c.key === data.category)?.subcats || [])
+          .map(
+            (s) =>
+              `<option value="${esc(s.key)}" ${s.key === data.subcategory ? 'selected' : ''}>${esc(s.name || s.key)}</option>`
+          )
+          .join('');
+      const reviewsPreview = (p.reviews || [])
+        .slice(0, 3)
+        .map((r) => `★${r.rating} ${esc((r.text || '').slice(0, 80))}`)
+        .join('<br>');
+      const schedulePreview = Object.entries(p.schedule || {})
+        .map(([day, hours]) => `${esc(day)}: ${esc(hours)}`)
+        .join('<br>');
+      box.classList.remove('hidden');
+      box.innerHTML = `
+        <h3 style="margin:0 0 10px;font-size:1rem">${esc(p.title || 'Місце')}</h3>
+        <div class="list-item-meta" style="margin-bottom:8px">
+          ${esc(p.address || '—')}<br>
+          ${p.phone ? esc(p.phone) + '<br>' : ''}
+          ★ ${Number(p.rating || 0).toFixed(1)} (${p.reviewsCount || 0} відгуків)
+          ${p.website ? '<br><a href="' + esc(p.website) + '" target="_blank" rel="noopener">Сайт</a>' : ''}
+          <br>Координати: ${Number(p.lat).toFixed(5)}, ${Number(p.lng).toFixed(5)}
+        </div>
+        ${schedulePreview ? `<div class="list-item-meta" style="margin-bottom:8px"><b>Графік роботи:</b><br>${schedulePreview}</div>` : ''}
+        <div class="field-block">
+          <label>Категорія (AI: ${esc(data.categoryName || data.category || '—')}${data.ai?.source ? ', ' + esc(data.ai.source) : ''})</label>
+          <select id="gmapsCatSelect">${options}</select>
+        </div>
+        <div class="field-block">
+          <label>Підкатегорія</label>
+          <select id="gmapsSubSelect">${subOptions}</select>
+        </div>
+        ${reviewsPreview ? `<div class="list-item-meta" style="margin-top:8px"><b>Відгуки:</b><br>${reviewsPreview}</div>` : ''}
+        ${data.isPartial ? '<p class="field-hint" style="color:#b45309;margin-top:8px">Без API доступні лише базові дані: назва та координати.</p>' : ''}
+        <p class="field-hint" style="margin-top:8px">${data.willSkip ? 'Увага: схожа точка вже може бути на карті.' : 'Готово до додавання на карту.'}</p>
+      `;
+      if (importBtn) importBtn.disabled = false;
+
+      const catSel = document.getElementById('gmapsCatSelect');
+      const subSel = document.getElementById('gmapsSubSelect');
+      catSel.onchange = () => {
+        const cat = (data.catalogOptions || []).find((c) => c.key === catSel.value);
+        subSel.innerHTML =
+          '<option value="">— без підкатегорії —</option>' +
+          (cat?.subcats || [])
+            .map((s) => `<option value="${esc(s.key)}">${esc(s.name || s.key)}</option>`)
+            .join('');
+      };
+    }
+
+    async function runGmapsImport(dryRun) {
+      const resultEl = document.getElementById('gmapsResult');
+      const url = document.getElementById('gmapsUrlInput')?.value.trim();
+      resultEl.style.display = 'block';
+      resultEl.className = 'msg';
+      if (!url) {
+        resultEl.className = 'msg err';
+        resultEl.textContent = 'Вставте посилання Google Maps';
+        return;
+      }
+      resultEl.textContent = dryRun ? 'Розпізнаємо місце…' : 'Додаємо на карту…';
+      try {
+        const body = { url, dryRun: Boolean(dryRun) };
+        if (!dryRun) {
+          body.category = document.getElementById('gmapsCatSelect')?.value || gmapsPreviewData?.category;
+          body.subcategory = document.getElementById('gmapsSubSelect')?.value || '';
+        }
+        const data = await apiFetch('/api/admin/import-google-maps-url', {
+          method: 'POST',
+          body: JSON.stringify(body),
+        });
+        if (dryRun) {
+          renderGmapsPreview(data);
+          resultEl.className = 'msg ok';
+          resultEl.textContent = `Знайдено: ${data.place?.title || 'місце'}. AI категорія: ${data.categoryName || data.category}`;
+        } else {
+          resultEl.className = 'msg ok';
+          resultEl.textContent = `Додано на карту: ${data.location?.title || data.place?.title}`;
+          document.getElementById('gmapsPreviewBox')?.classList.add('hidden');
+          document.getElementById('gmapsImportBtn').disabled = true;
+          gmapsPreviewData = null;
+          notifyMapDataChanged();
+          await initAdmin();
+        }
+      } catch (err) {
+        resultEl.className = 'msg err';
+        resultEl.textContent = err.message;
+      }
+    }
+
+    document.getElementById('gmapsPreviewBtn')?.addEventListener('click', () => runGmapsImport(true));
+    document.getElementById('gmapsImportBtn')?.addEventListener('click', () => runGmapsImport(false));
 
     function fillBulkTrashFilters(catalog) {
       const catSel = document.getElementById('bulkTrashCat');

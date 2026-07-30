@@ -460,6 +460,30 @@
         }
         .user-menu-item:hover { background: var(--bg); }
         .user-menu-item.danger { color: var(--danger); }
+        .import-modal {
+            position: fixed; inset: 0; z-index: 3000; padding: 18px;
+            background: rgba(15, 23, 42, 0.55); display: flex; align-items: center; justify-content: center;
+        }
+        .import-modal-card {
+            width: min(560px, 100%); max-height: calc(100vh - 36px); overflow: auto;
+            background: #fff; border-radius: 22px; padding: 22px; box-shadow: 0 24px 70px rgba(0,0,0,.24);
+        }
+        .import-modal-head { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+        .import-modal-head h2 { margin: 0; font-size: 20px; }
+        .import-modal-close { border: 0; background: var(--bg); border-radius: 50%; width: 36px; height: 36px; cursor: pointer; }
+        .import-modal label { display: block; margin: 14px 0 6px; font-size: 13px; font-weight: 700; }
+        .import-modal input, .import-modal select {
+            box-sizing: border-box; width: 100%; border: 1px solid var(--border); border-radius: 12px;
+            padding: 11px 12px; background: #fff; font: inherit;
+        }
+        .import-modal-actions { display: flex; gap: 8px; margin-top: 14px; flex-wrap: wrap; }
+        .import-modal-actions button { border: 0; border-radius: 12px; padding: 11px 16px; font: inherit; font-weight: 800; cursor: pointer; }
+        .import-modal-primary { background: var(--primary); color: var(--ink); }
+        .import-modal-secondary { background: var(--bg); color: var(--dark); }
+        .import-preview { margin-top: 14px; padding: 14px; border-radius: 14px; background: var(--bg); font-size: 13px; line-height: 1.5; }
+        .import-message { margin-top: 12px; font-size: 13px; font-weight: 700; }
+        .import-message.error { color: var(--danger); }
+        .import-message.success { color: var(--success); }
 
         #geo-btn {
             position: absolute; bottom: 14px; right: 14px; z-index: 10;
@@ -789,6 +813,23 @@
     </div>
     </div>
 
+    <div id="googleImportModal" class="import-modal hidden" role="dialog" aria-modal="true" aria-labelledby="googleImportTitle">
+        <div class="import-modal-card">
+            <div class="import-modal-head">
+                <h2 id="googleImportTitle">Додати місце з Google Maps</h2>
+                <button type="button" class="import-modal-close" id="googleImportClose" aria-label="Закрити">×</button>
+            </div>
+            <p style="font-size:13px;color:var(--muted);margin:8px 0 0">Вставте посилання — AI підбере категорію. З Google Places API також імпортуються телефон, адреса, сайт, рейтинг, відгуки та графік.</p>
+            <label for="googleImportUrl">Посилання Google Maps</label>
+            <input type="url" id="googleImportUrl" placeholder="https://maps.app.goo.gl/..." autocomplete="url">
+            <div class="import-modal-actions">
+                <button type="button" class="import-modal-secondary" id="googleImportPreviewBtn">Розпізнати</button>
+            </div>
+            <div id="googleImportPreview" class="import-preview hidden"></div>
+            <div id="googleImportMessage" class="import-message" aria-live="polite"></div>
+        </div>
+    </div>
+
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script src="/mapfix-sync.js"></script>
 
@@ -803,6 +844,7 @@
             const data = await res.json();
             window.masterCatalog = data.masterCatalog || {};
             window.mockLocations = data.mockLocations || [];
+            window.providerProfiles = data.providerProfiles || {};
             window.catalogClicks = data.catalogClicks || {};
         }
 
@@ -828,7 +870,8 @@
                 sortType: 'distance',
                 formRatingScore: 5,
                 currentUser: null,
-                favoriteIds: new Set()
+                favoriteIds: new Set(),
+                locationSearchQuery: ''
             };
             
             let userMarkerInstance = null;
@@ -877,6 +920,119 @@
 
             const userMenu = document.getElementById('userMenu');
             const profileBtn = document.getElementById('profileBtn');
+            const googleImportModal = document.getElementById('googleImportModal');
+            const googleImportPreview = document.getElementById('googleImportPreview');
+            const googleImportMessage = document.getElementById('googleImportMessage');
+            let googleImportData = null;
+
+            function escapeHtml(value) {
+                return String(value ?? '').replace(/[&<>"']/g, (char) => ({
+                    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+                }[char]));
+            }
+
+            function openGoogleImport() {
+                closeUserMenu();
+                googleImportModal.classList.remove('hidden');
+                googleImportMessage.textContent = '';
+                document.getElementById('googleImportUrl').focus();
+            }
+
+            function closeGoogleImport() {
+                googleImportModal.classList.add('hidden');
+            }
+
+            function renderGoogleImportPreview(data) {
+                googleImportData = data;
+                const place = data.place || {};
+                const categories = (data.catalogOptions || []).map((category) =>
+                    `<option value="${escapeHtml(category.key)}" ${category.key === data.category ? 'selected' : ''}>${escapeHtml(category.name || category.key)}</option>`
+                ).join('');
+                const selectedCategory = (data.catalogOptions || []).find((category) => category.key === data.category);
+                const subcategories = '<option value="">— без підкатегорії —</option>' +
+                    (selectedCategory?.subcats || []).map((subcategory) =>
+                        `<option value="${escapeHtml(subcategory.key)}" ${subcategory.key === data.subcategory ? 'selected' : ''}>${escapeHtml(subcategory.name || subcategory.key)}</option>`
+                    ).join('');
+                const schedule = Object.entries(place.schedule || {})
+                    .map(([day, hours]) => `${escapeHtml(day)}: ${escapeHtml(hours)}`)
+                    .join('<br>');
+                const partialNotice = data.isPartial
+                    ? '<p style="color:#b45309;margin:8px 0 0">Без API імпортовано базові дані: назву та координати. Інші поля можна додати пізніше.</p>'
+                    : '';
+
+                googleImportPreview.classList.remove('hidden');
+                googleImportPreview.innerHTML = `
+                    <strong style="font-size:15px">${escapeHtml(place.title || 'Місце')}</strong><br>
+                    ${place.address ? `${escapeHtml(place.address)}<br>` : ''}
+                    ${place.phone ? `${escapeHtml(place.phone)}<br>` : ''}
+                    Координати: ${Number(place.lat).toFixed(5)}, ${Number(place.lng).toFixed(5)}
+                    ${place.rating ? `<br>★ ${Number(place.rating).toFixed(1)} (${Number(place.reviewsCount) || 0} відгуків)` : ''}
+                    ${schedule ? `<p><strong>Графік роботи</strong><br>${schedule}</p>` : ''}
+                    ${partialNotice}
+                    <label for="googleImportCategory">Категорія</label>
+                    <select id="googleImportCategory">${categories}</select>
+                    <label for="googleImportSubcategory">Підкатегорія</label>
+                    <select id="googleImportSubcategory">${subcategories}</select>
+                    <div class="import-modal-actions">
+                        <button type="button" class="import-modal-primary" id="googleImportSaveBtn">Додати на карту</button>
+                    </div>`;
+
+                const categorySelect = document.getElementById('googleImportCategory');
+                const subcategorySelect = document.getElementById('googleImportSubcategory');
+                categorySelect.onchange = () => {
+                    const category = (data.catalogOptions || []).find((item) => item.key === categorySelect.value);
+                    subcategorySelect.innerHTML = '<option value="">— без підкатегорії —</option>' +
+                        (category?.subcats || []).map((subcategory) =>
+                            `<option value="${escapeHtml(subcategory.key)}">${escapeHtml(subcategory.name || subcategory.key)}</option>`
+                        ).join('');
+                };
+                document.getElementById('googleImportSaveBtn').onclick = () => runGoogleImport(false);
+            }
+
+            async function runGoogleImport(dryRun) {
+                const url = document.getElementById('googleImportUrl').value.trim();
+                if (!url) {
+                    googleImportMessage.className = 'import-message error';
+                    googleImportMessage.textContent = 'Вставте посилання Google Maps';
+                    return;
+                }
+                googleImportMessage.className = 'import-message';
+                googleImportMessage.textContent = dryRun ? 'Розпізнаємо місце…' : 'Додаємо на карту…';
+                const body = { url, dryRun };
+                if (!dryRun) {
+                    body.category = document.getElementById('googleImportCategory')?.value || googleImportData?.category;
+                    body.subcategory = document.getElementById('googleImportSubcategory')?.value || '';
+                }
+                try {
+                    const response = await fetch('/api/import-google-maps-url', {
+                        method: 'POST',
+                        credentials: 'same-origin',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(body)
+                    });
+                    const data = await response.json().catch(() => ({}));
+                    if (!response.ok) throw new Error(data.error || 'Не вдалося імпортувати місце');
+                    if (dryRun) {
+                        renderGoogleImportPreview(data);
+                        googleImportMessage.className = 'import-message success';
+                        googleImportMessage.textContent = `Знайдено. AI категорія: ${data.categoryName || data.category}`;
+                    } else {
+                        googleImportMessage.className = 'import-message success';
+                        googleImportMessage.textContent = 'Місце додано на карту';
+                        await refreshMapData();
+                        setTimeout(closeGoogleImport, 900);
+                    }
+                } catch (error) {
+                    googleImportMessage.className = 'import-message error';
+                    googleImportMessage.textContent = error.message;
+                }
+            }
+
+            document.getElementById('googleImportPreviewBtn').onclick = () => runGoogleImport(true);
+            document.getElementById('googleImportClose').onclick = closeGoogleImport;
+            googleImportModal.addEventListener('click', (event) => {
+                if (event.target === googleImportModal) closeGoogleImport();
+            });
 
             function closeUserMenu() {
                 userMenu.classList.remove('show');
@@ -921,8 +1077,10 @@
                         <strong>${u.login}</strong>
                     </div>
                     <a class="user-menu-item" href="${cabinetHref}">${cabinetLabel}</a>
+                    <button type="button" class="user-menu-item" id="importGoogleMenuBtn">Додати з Google Maps</button>
                     <button type="button" class="user-menu-item danger" id="logoutMenuBtn">Вийти</button>`;
 
+                document.getElementById('importGoogleMenuBtn').onclick = openGoogleImport;
                 document.getElementById('logoutMenuBtn').onclick = async () => {
                     await fetch('/api/logout', { method: 'POST' }).catch(() => {});
                     State.currentUser = null;
@@ -947,22 +1105,12 @@
             document.getElementById('addBusinessBtn').addEventListener('click', () => {
                 const u = State.currentUser;
                 if (!u) {
-                    if (confirm('Щоб додати бізнес на карту, потрібен акаунт провайдера.\n\nПерейти до реєстрації?')) {
-                        window.location.href = '/register.html';
+                    if (confirm('Щоб додати місце на карту, потрібно увійти.\n\nПерейти до входу?')) {
+                        window.location.href = '/login.html';
                     }
                     return;
                 }
-                if (u.role === 'client') {
-                    alert('Додавати бізнес можуть лише провайдери.\n\nЗареєструйте окремий акаунт з роллю «Провайдер» або увійдіть як існуючий бізнес.');
-                    return;
-                }
-                if (u.role === 'admin') {
-                    window.location.href = '/admin?newLocation=1';
-                    return;
-                }
-                if (u.role === 'provider') {
-                    window.location.href = '/admin?newLocation=1';
-                }
+                openGoogleImport();
             });
 
             const urlLoc = new URLSearchParams(window.location.search).get('loc');
@@ -1180,6 +1328,17 @@
                 sidebarContent.style.display = 'none';
                 sortPanelWrap.style.display = 'none';
 
+                if (State.locationSearchQuery) {
+                    expandBottomSheet();
+                    navBackBtn.style.display = 'flex';
+                    navTitle.textContent = `Результати: ${State.locationSearchQuery}`;
+                    catalogNav.style.display = 'none';
+                    sidebarContent.style.display = 'flex';
+                    renderLocationSearchResults();
+                    syncMapMarkers();
+                    return;
+                }
+
                 if (State.service) {
                     expandBottomSheet();
                     navBackBtn.style.display = 'flex';
@@ -1268,7 +1427,10 @@
             }
 
             function handleNavBack() {
-                if (State.service) {
+                if (State.locationSearchQuery) {
+                    State.locationSearchQuery = '';
+                    searchInput.value = '';
+                } else if (State.service) {
                     State.service = null;
                 } else if (State.subcategory) {
                     State.subcategory = null;
@@ -1554,6 +1716,76 @@
                 });
             }
 
+            function normalizeLocationSearch(value) {
+                return String(value || '')
+                    .toLocaleLowerCase('uk-UA')
+                    .replace(/[’'`]/g, '')
+                    .replace(/\s+/g, ' ')
+                    .trim();
+            }
+
+            function getProviderName(loc) {
+                return loc.providerId
+                    ? window.providerProfiles?.[loc.providerId]?.companyName || ''
+                    : '';
+            }
+
+            function locationMatchesSearch(loc, query = State.locationSearchQuery) {
+                const words = normalizeLocationSearch(query).split(' ').filter(Boolean);
+                if (!words.length) return false;
+                const searchable = normalizeLocationSearch([
+                    loc.title,
+                    loc.address,
+                    getProviderName(loc)
+                ].filter(Boolean).join(' '));
+                return words.every((word) => searchable.includes(word));
+            }
+
+            function getLocationSearchResults(query = State.locationSearchQuery) {
+                return window.mockLocations.filter((loc) =>
+                    locationMatchesSearch(loc, query) &&
+                    (!State.onlyOpen || loc.openStatus === 'open')
+                );
+            }
+
+            function renderLocationSearchResults() {
+                sidebarContent.innerHTML = '';
+                const results = getLocationSearchResults();
+                if (!results.length) {
+                    sidebarContent.innerHTML = '<div style="color:#64748b;font-size:12px;text-align:center;padding:20px">Салонів, майстрів або адрес не знайдено.</div>';
+                    return;
+                }
+
+                results.forEach((loc) => {
+                    loc.currentDistance = calculateDistance(
+                        State.userCoords.lat,
+                        State.userCoords.lng,
+                        loc.lat,
+                        loc.lng
+                    );
+                });
+                results.sort((a, b) => a.currentDistance - b.currentDistance);
+
+                results.forEach((loc) => {
+                    const providerName = getProviderName(loc);
+                    const card = document.createElement('div');
+                    card.className = `provider-card ${State.selectedLocation?.id === loc.id ? 'active' : ''}`;
+                    card.innerHTML = `
+                        <div class="provider-top">
+                            <div class="provider-title">${escapeHtml(loc.title)}</div>
+                            <div class="rating-block"><span class="star-icon">★</span><span>${Number(loc.rating || 0).toFixed(1)}</span></div>
+                        </div>
+                        ${providerName ? `<div class="provider-desc">Майстер: ${escapeHtml(providerName)}</div>` : ''}
+                        ${loc.address ? `<div class="provider-desc">📍 ${escapeHtml(loc.address)}</div>` : ''}
+                        <div class="provider-meta">
+                            <span class="status-badge ${loc.openStatus}">${loc.openStatus === 'open' ? 'Відкрито' : 'Зачинено'}</span>
+                            <span class="distance-badge">${loc.currentDistance.toFixed(1)} км</span>
+                        </div>`;
+                    card.onclick = () => openMasterDetail(loc.id);
+                    sidebarContent.appendChild(card);
+                });
+            }
+
             function syncUI() {
                 renderCatalogNav();
             }
@@ -1567,6 +1799,7 @@
                 });
 
                 window.mockLocations.forEach(loc => {
+                    if (State.locationSearchQuery && !locationMatchesSearch(loc)) return;
                     if (State.category && loc.cat !== State.category) return;
                     if (State.subcategory && !loc.subcats.includes(State.subcategory)) return;
                     if (State.service && !locationOffersService(loc, State.service.name)) return;
@@ -1588,12 +1821,13 @@
                     });
                 });
 
-                if (State.service) {
+                if (State.service || State.locationSearchQuery) {
                     const visible = window.mockLocations.filter(
                         (loc) =>
+                            (!State.locationSearchQuery || locationMatchesSearch(loc)) &&
                             (!State.category || loc.cat === State.category) &&
                             (!State.subcategory || loc.subcats.includes(State.subcategory)) &&
-                            locationOffersService(loc, State.service.name) &&
+                            (!State.service || locationOffersService(loc, State.service.name)) &&
                             (!State.onlyOpen || loc.openStatus === 'open')
                     );
                     if (visible.length > 0) {
@@ -1610,6 +1844,7 @@
 
             function handleL1Click(catId) {
                 trackCatalogClick({ type: 'category', categoryKey: catId });
+                State.locationSearchQuery = '';
                 State.category = catId;
                 State.subcategory = null;
                 State.service = null;
@@ -1692,6 +1927,20 @@
             async function runAiSearch(transcript) {
                 setVoiceUI('processing', 'Аналізую запит...');
                 searchInput.value = transcript;
+
+                const directMatches = getLocationSearchResults(transcript);
+                if (directMatches.length) {
+                    State.locationSearchQuery = transcript;
+                    State.category = null;
+                    State.subcategory = null;
+                    State.service = null;
+                    State.selectedLocation = null;
+                    closeMasterDetail();
+                    syncUI();
+                    setVoiceUI('listening', `Знайдено місць: ${directMatches.length}`);
+                    setTimeout(() => setVoiceUI('idle'), 1800);
+                    return;
+                }
 
                 const res = await fetch('/api/search-ai', {
                     method: 'POST',
@@ -1788,6 +2037,12 @@
                 } finally {
                     voiceBusy = false;
                 }
+            });
+
+            searchInput.addEventListener('input', () => {
+                if (searchInput.value.trim() || !State.locationSearchQuery) return;
+                State.locationSearchQuery = '';
+                syncUI();
             });
 
             const sheetHandle = document.getElementById('sheetHandle');

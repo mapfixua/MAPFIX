@@ -237,8 +237,26 @@ async function parseVoiceSearch(text, masterCatalog, options = {}) {
   return { category: null, subcategory: null, service: null, confidence: 0, source: 'none', query: trimmed };
 }
 
+async function suggestCatalogForPlace(place, masterCatalog, options = {}) {
+  const title = String(place?.title || '').trim();
+  const address = String(place?.address || '').trim();
+  const types = Array.isArray(place?.types) ? place.types.join(', ') : '';
+  const summary = String(place?.summary || place?.text || '').trim();
+  const query = [title, types, summary, address].filter(Boolean).join(' — ');
+  const result = await parseVoiceSearch(query, masterCatalog, options);
+  return {
+    category: result.category,
+    subcategory: result.subcategory,
+    service: result.service,
+    confidence: result.confidence,
+    source: result.source,
+    query,
+  };
+}
+
 module.exports = {
   parseVoiceSearch,
+  suggestCatalogForPlace,
   localParseSearch,
   buildSearchIndex,
 };

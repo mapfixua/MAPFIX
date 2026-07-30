@@ -6,7 +6,7 @@ const fs = require('fs');
 const fsPromises = require('fs').promises;
 const crypto = require('crypto');
 const { validateCatalogHierarchy } = require('./catalog-data.js');
-const { parseVoiceSearch } = require('./search-ai.js');
+const { parseVoiceSearch, suggestCatalogForPlace } = require('./search-ai.js');
 const { attachAuth, setAuthCookie, clearAuthCookie } = require('./auth-jwt.js');
 const { resolveProjectRoot, resolvePublicDir } = require('./paths.js');
 const {
@@ -50,6 +50,7 @@ const {
   searchGooglePlacesText,
   fetchGooglePlaceDetails,
   googlePlaceToLocation,
+  importPlaceFromGoogleMapsUrl,
   mergeLocations,
   CITY_PRESETS,
   CATEGORY_OSM_FILTERS,
@@ -1457,6 +1458,131 @@ app.post('/api/admin/import-places', requireAuth, requireAdmin, async (req, res)
     res.status(500).json({ error: err.message || 'Помилка імпорту' });
   }
 });
+
+async function handleGoogleMapsUrlImport(req, res, { adminImport = false } = {}) {
+  try {
+    const user = getSessionUser(req);
+    const url = String(req.body?.url || '').trim();
+    const dryRun = req.body?.dryRun !== false;
+    if (!url) {
+      return res.status(400).json({ error: 'Вставте посилання Google Maps (maps.app.goo.gl / maps.google.com)' });
+    }
+
+    const { place, resolved } = await importPlaceFromGoogleMapsUrl({ url });
+    const data = await readData();
+    const ai = await suggestCatalogForPlace(place, data.masterCatalog, {
+      geminiApiKey: GEMINI_API_KEY || undefined,
+    });
+
+    const category =
+      String(req.body?.category || '').trim() ||
+      ai.category ||
+      'home';
+    const subcategory =
+      String(req.body?.subcategory || '').trim() ||
+      ai.subcategory ||
+      '';
+
+    if (!data.masterCatalog?.[category]) {
+      return res.status(400).json({
+        error: `Категорію «${category}» не знайдено в каталозі. Оберіть вручну.`,
+        place,
+        ai,
+      });
+    }
+
+    const loc = googlePlaceToLocation(place, {
+      providerId: adminImport ? null : user.id,
+      cat: category,
+      subcategory: subcategory || undefined,
+    });
+    loc.importMeta = {
+      ...(loc.importMeta || {}),
+      sourceUrl: url,
+      resolvedUrl: resolved.finalUrl,
+      aiCategory: ai.category,
+      aiSubcategory: ai.subcategory,
+      aiSource: ai.source,
+      importedBy: user.id,
+      dataSource: place.dataSource,
+    };
+
+    const active = activeLocations(data.mockLocations);
+    const trash = trashedLocations(data.mockLocations);
+    const merged = mergeLocations(active, [loc], { updateExisting: false });
+
+    if (!dryRun) {
+      if (!merged.added.length) {
+        return res.status(409).json({
+          error: 'Схожа точка вже є на карті',
+          skipped: merged.skipped,
+          place,
+          ai,
+          location: loc,
+        });
+      }
+      const created = merged.locations.find((l) => l.id === merged.added[0]);
+      data.mockLocations = [...merged.locations, ...trash];
+      await persistLocationsPatch(data, [created]);
+      return res.status(201).json({
+        ok: true,
+        dryRun: false,
+        added: 1,
+        location: created,
+        place,
+        ai,
+        category,
+        subcategory: subcategory || null,
+        categoryName: data.masterCatalog[category]?.name || category,
+        dataSource: place.dataSource,
+        isPartial: place.dataSource !== 'google_places_api',
+        subcategoryName:
+          subcategory && data.masterCatalog[category]?.subcats?.[subcategory]
+            ? data.masterCatalog[category].subcats[subcategory].name
+            : null,
+      });
+    }
+
+    res.json({
+      ok: true,
+      dryRun: true,
+      willAdd: merged.added.length > 0,
+      willSkip: merged.skipped.length > 0,
+      skipped: merged.skipped,
+      place,
+      location: loc,
+      ai,
+      category,
+      subcategory: subcategory || null,
+      categoryName: data.masterCatalog[category]?.name || category,
+      dataSource: place.dataSource,
+      isPartial: place.dataSource !== 'google_places_api',
+      subcategoryName:
+        subcategory && data.masterCatalog[category]?.subcats?.[subcategory]
+          ? data.masterCatalog[category].subcats[subcategory].name
+          : null,
+      catalogOptions: Object.entries(data.masterCatalog || {}).map(([key, cat]) => ({
+        key,
+        name: cat.name,
+        subcats: Object.entries(cat.subcats || {}).map(([sk, sub]) => ({
+          key: sk,
+          name: sub.name,
+        })),
+      })),
+    });
+  } catch (err) {
+    console.error('[POST /api/import-google-maps-url]', err);
+    res.status(400).json({ error: err.message || 'Помилка імпорту з Google Maps' });
+  }
+}
+
+app.post('/api/import-google-maps-url', requireAuth, (req, res) =>
+  handleGoogleMapsUrlImport(req, res)
+);
+
+app.post('/api/admin/import-google-maps-url', requireAuth, requireAdmin, (req, res) =>
+  handleGoogleMapsUrlImport(req, res, { adminImport: true })
+);
 
 app.post('/api/admin/locations/trash', requireAuth, requireAdmin, async (req, res) => {
   try {
