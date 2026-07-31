@@ -254,9 +254,152 @@ async function suggestCatalogForPlace(place, masterCatalog, options = {}) {
   };
 }
 
+/**
+ * Batch-classify places for city import. Returns only matches that fit masterCatalog.
+ * Gemini may set category=null to reject grocery/bank/restaurant/etc.
+ */
+async function classifyPlacesForImport(places, masterCatalog, options = {}) {
+  const list = Array.isArray(places) ? places : [];
+  const out = new Array(list.length).fill(null);
+  const needGemini = [];
+
+  for (let i = 0; i < list.length; i++) {
+    const place = list[i];
+    const query = [place?.title, place?.types?.join?.(', '), place?.summary || place?.text, place?.address]
+      .filter(Boolean)
+      .join(' — ');
+    const local = localParseSearch(query, masterCatalog);
+    if (local.category && local.subcategory && local.confidence >= 6) {
+      out[i] = {
+        category: local.category,
+        subcategory: local.subcategory,
+        service: local.service || null,
+        confidence: local.confidence,
+        source: 'local',
+      };
+    } else {
+      needGemini.push({ i, place, query, local });
+    }
+  }
+
+  const apiKey = options.geminiApiKey;
+  if (apiKey && needGemini.length) {
+    const catalog = compactCatalogForPrompt(masterCatalog);
+    const chunkSize = 12;
+    for (let offset = 0; offset < needGemini.length; offset += chunkSize) {
+      const chunk = needGemini.slice(offset, offset + chunkSize);
+      const lines = chunk
+        .map(
+          (row, idx) =>
+            `${idx}. ${row.place?.title || '—'} | ${row.place?.address || ''} | ${(row.place?.types || []).slice(0, 4).join(', ')}`
+        )
+        .join('\n');
+      const prompt = `Ти класифікатор закладів для українського каталогу послуг Mapfix.
+Каталог (лише ці ключі category/subcategory):
+${JSON.stringify(catalog)}
+
+Заклади:
+${lines}
+
+Поверни ТІЛЬКИ JSON:
+{"matches":[{"i":0,"category":"ключ_або_null","subcategory":"ключ_або_null"}]}
+
+Правила:
+- i — індекс рядка в списку вище (0..${chunk.length - 1})
+- category/subcategory — ТІЛЬКИ ключі з каталогу
+- якщо заклад НЕ надає послуг з каталогу (магазин продуктів, аптека, банк, АЗС без СТО, кафе/ресторан, школа загальна без курсів тощо) — category: null
+- якщо впевнений у категорії, але не в підкатегорії — subcategory: null (такі відсіємо)
+- потрібна і category, і subcategory для прийняття`;
+
+      try {
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), 25000);
+        let data;
+        try {
+          const res = await fetch(
+            `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${encodeURIComponent(apiKey)}`,
+            {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              signal: controller.signal,
+              body: JSON.stringify({
+                contents: [{ parts: [{ text: prompt }] }],
+                generationConfig: {
+                  temperature: 0.1,
+                  maxOutputTokens: 1200,
+                  responseMimeType: 'application/json',
+                },
+              }),
+            }
+          );
+          if (!res.ok) {
+            const errText = await res.text();
+            throw new Error(`Gemini ${res.status}: ${errText.slice(0, 200)}`);
+          }
+          data = await res.json();
+        } finally {
+          clearTimeout(timer);
+        }
+
+        const raw = data?.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || '{}';
+        const parsed = JSON.parse(raw);
+        const matches = Array.isArray(parsed.matches) ? parsed.matches : [];
+        for (const m of matches) {
+          const idxInChunk = Number(m.i);
+          if (!Number.isInteger(idxInChunk) || idxInChunk < 0 || idxInChunk >= chunk.length) continue;
+          const validated = validateResult(
+            { category: m.category, subcategory: m.subcategory, service: null },
+            masterCatalog
+          );
+          const globalIdx = chunk[idxInChunk].i;
+          if (validated.category && validated.subcategory) {
+            out[globalIdx] = {
+              ...validated,
+              confidence: 10,
+              source: 'gemini',
+            };
+          } else {
+            out[globalIdx] = null;
+          }
+        }
+      } catch (err) {
+        console.warn('[search-ai] classifyPlacesForImport chunk:', err.message);
+        // Fallback: accept strong local matches from this chunk
+        for (const row of chunk) {
+          if (out[row.i]) continue;
+          if (row.local?.category && row.local?.subcategory && row.local.confidence >= 4) {
+            out[row.i] = {
+              category: row.local.category,
+              subcategory: row.local.subcategory,
+              service: row.local.service || null,
+              confidence: row.local.confidence,
+              source: 'local_fallback',
+            };
+          }
+        }
+      }
+    }
+  } else {
+    for (const row of needGemini) {
+      if (row.local?.category && row.local?.subcategory && row.local.confidence >= 4) {
+        out[row.i] = {
+          category: row.local.category,
+          subcategory: row.local.subcategory,
+          service: row.local.service || null,
+          confidence: row.local.confidence,
+          source: 'local',
+        };
+      }
+    }
+  }
+
+  return out;
+}
+
 module.exports = {
   parseVoiceSearch,
   suggestCatalogForPlace,
+  classifyPlacesForImport,
   localParseSearch,
   buildSearchIndex,
 };

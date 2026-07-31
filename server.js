@@ -6,7 +6,7 @@ const fs = require('fs');
 const fsPromises = require('fs').promises;
 const crypto = require('crypto');
 const { validateCatalogHierarchy } = require('./catalog-data.js');
-const { parseVoiceSearch, suggestCatalogForPlace } = require('./search-ai.js');
+const { parseVoiceSearch, suggestCatalogForPlace, classifyPlacesForImport } = require('./search-ai.js');
 const { attachAuth, setAuthCookie, clearAuthCookie } = require('./auth-jwt.js');
 const { resolveProjectRoot, resolvePublicDir } = require('./paths.js');
 const {
@@ -59,6 +59,7 @@ const {
   parseCsv,
   csvRowToLocation,
   PROVIDER_IMPORT_TEMPLATE_CSV,
+  buildCityImportCandidates,
 } = require('./places-import.js');
 const {
   fetchLocationsFromSupabase,
@@ -144,10 +145,34 @@ function firstEmoji(text) {
   return m ? m[0] : '📍';
 }
 
+function isValidPrice(price) {
+  // Must contain at least one digit (allows "650", "650 грн", "від 500 грн").
+  return /\d/.test(String(price || '').trim());
+}
+
 function formatPrice(price) {
   const p = String(price).trim();
+  if (!isValidPrice(p)) {
+    throw new Error('INVALID_PRICE');
+  }
   if (/грн/i.test(p)) return p;
   return `${p} грн`;
+}
+
+function normalizePricesMap(prices) {
+  if (!prices || typeof prices !== 'object' || Array.isArray(prices)) return {};
+  const out = {};
+  for (const [rawName, rawPrice] of Object.entries(prices)) {
+    const name = String(rawName || '').trim();
+    const price = String(rawPrice || '').trim();
+    if (!name || !isValidPrice(price)) continue;
+    try {
+      out[name] = formatPrice(price);
+    } catch {
+      /* skip invalid */
+    }
+  }
+  return out;
 }
 
 function catalogWriteError(writeResult) {
@@ -542,7 +567,7 @@ function defaultLocation(providerId, body) {
     subcats: Array.isArray(body.subcats) ? body.subcats : [],
     customSubcats:
       body.customSubcats && typeof body.customSubcats === 'object' ? body.customSubcats : {},
-    prices: typeof body.prices === 'object' && body.prices ? body.prices : {},
+    prices: normalizePricesMap(body.prices),
     reviews: [],
     views: 0,
     photos: normalizePhotos(body.photos),
@@ -1462,6 +1487,127 @@ app.post('/api/admin/import-places', requireAuth, requireAdmin, async (req, res)
   }
 });
 
+/** Admin-only: scan Ukrainian city → filter by Mapfix catalog (Gemini) → preview/confirm. */
+app.post('/api/admin/import-city-gemini', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const cityName = String(req.body?.city || '').trim();
+    const dryRun = req.body?.dryRun !== false;
+    const providedLocations = Array.isArray(req.body?.locations) ? req.body.locations : null;
+    const maxPerQuery = Math.min(15, Math.max(3, Number(req.body?.maxPerQuery) || 8));
+    const maxCandidates = Math.min(120, Math.max(10, Number(req.body?.maxCandidates) || 80));
+
+    if (!cityName && !(providedLocations && providedLocations.length && !dryRun)) {
+      return res.status(400).json({ error: 'Вкажіть українське місто або смт (наприклад Коцюбинське, Київ, Ірпінь)' });
+    }
+
+    const data = await readData();
+    const catalog = data.masterCatalog || {};
+    if (!Object.keys(catalog).length) {
+      return res.status(503).json({ error: 'Каталог Mapfix порожній' });
+    }
+
+    let incoming = [];
+    let scanMeta = null;
+
+    if (providedLocations && providedLocations.length && !dryRun) {
+      incoming = providedLocations
+        .filter((l) => l && l.title && Number.isFinite(Number(l.lat)) && Number.isFinite(Number(l.lng)))
+        .filter((l) => catalog[l.cat]?.subcats && (l.subcats || []).some((s) => catalog[l.cat].subcats[s]))
+        .map((l) => ({
+          ...l,
+          lat: Number(l.lat),
+          lng: Number(l.lng),
+          providerId: null,
+          importSource: l.importSource || 'city_gemini',
+          subcats: Array.isArray(l.subcats) ? l.subcats.filter((s) => catalog[l.cat]?.subcats?.[s]) : [],
+        }))
+        .filter((l) => l.subcats.length > 0);
+    } else {
+      if (!GEMINI_API_KEY && !process.env.GOOGLE_PLACES_API_KEY && !process.env.GOOGLE_MAPS_API_KEY) {
+        // OSM still works with local classifier; warn but continue
+        console.warn('[import-city-gemini] No GEMINI/Places keys — OSM + local catalog match');
+      }
+      scanMeta = await buildCityImportCandidates({
+        cityName,
+        masterCatalog: catalog,
+        classifyPlacesForImport,
+        geminiApiKey: GEMINI_API_KEY || undefined,
+        placesApiKey: process.env.GOOGLE_PLACES_API_KEY || process.env.GOOGLE_MAPS_API_KEY || undefined,
+        maxPerQuery,
+        maxCandidates,
+      });
+      incoming = scanMeta.locations;
+    }
+
+    const active = activeLocations(data.mockLocations);
+    const trash = trashedLocations(data.mockLocations);
+    const merged = mergeLocations(active, incoming);
+
+    if (!dryRun) {
+      if (!incoming.length) {
+        return res.status(400).json({ error: 'Немає точок для імпорту після фільтра каталогу' });
+      }
+      data.mockLocations = [...merged.locations, ...trash];
+      const created = merged.locations.filter((l) => merged.added.includes(l.id));
+      await persistLocationsPatch(data, created.length ? created : incoming);
+    }
+
+    const preview = incoming.map((l) => {
+      const cat = catalog[l.cat];
+      const subKey = (l.subcats || [])[0];
+      return {
+        id: l.id,
+        title: l.title,
+        phone: l.phone || '',
+        address: l.address || '',
+        lat: l.lat,
+        lng: l.lng,
+        rating: l.rating || 0,
+        cat: l.cat,
+        subcats: l.subcats || [],
+        categoryName: cat?.name || l.cat,
+        subcategoryName: subKey && cat?.subcats?.[subKey] ? cat.subcats[subKey].name : subKey || '',
+        text: l.text || '',
+        openStatus: l.openStatus || 'open',
+        importSource: l.importSource || 'city_gemini',
+        willAdd: merged.added.includes(l.id),
+        willSkip: Boolean(merged.skipped.find((s) => s.id === l.id)),
+        // keep full location for confirm write
+        _location: l,
+      };
+    });
+
+    res.json({
+      ok: true,
+      dryRun,
+      city: scanMeta?.city || { name: cityName },
+      source: scanMeta?.source || 'confirm',
+      scanned: scanMeta?.scanned ?? incoming.length,
+      rejected: scanMeta?.rejected ?? 0,
+      matched: scanMeta?.matched ?? incoming.length,
+      queryCount: scanMeta?.queryCount ?? 0,
+      found: incoming.length,
+      added: merged.added.length,
+      skipped: merged.skipped.length,
+      skippedDetails: merged.skipped.slice(0, 50),
+      geminiConfigured: Boolean(GEMINI_API_KEY),
+      placesConfigured: Boolean(process.env.GOOGLE_PLACES_API_KEY || process.env.GOOGLE_MAPS_API_KEY),
+      candidates: preview,
+      catalogOptions: Object.entries(catalog).map(([key, cat]) => ({
+        key,
+        name: cat.name || key,
+        subcats: Object.entries(cat.subcats || {}).map(([sk, sub]) => ({
+          key: sk,
+          name: sub.name || sk,
+        })),
+      })),
+    });
+  } catch (err) {
+    console.error('[POST /api/admin/import-city-gemini]', err);
+    res.status(500).json({ error: err.message || 'Помилка імпорту міста' });
+  }
+});
+
 async function handleGoogleMapsUrlImport(req, res, { adminImport = false } = {}) {
   try {
     const user = getSessionUser(req);
@@ -1797,6 +1943,9 @@ app.post('/api/add-item', requireAuth, requireAdmin, async (req, res) => {
     if (!category || !subcategory || !service || !price) {
       return res.status(400).json({ error: 'Заповніть усі поля форми' });
     }
+    if (!isValidPrice(price)) {
+      return res.status(400).json({ error: 'Ціна має містити число (наприклад 650 або 650 грн)' });
+    }
 
     const data = await readData();
     const catalog = data.masterCatalog;
@@ -1933,6 +2082,9 @@ app.post('/api/admin/catalog/service', requireAuth, requireAdmin, async (req, re
     }
     if (!price) {
       return res.status(400).json({ error: 'Вкажіть орієнтовну ціну' });
+    }
+    if (!isValidPrice(price)) {
+      return res.status(400).json({ error: 'Ціна має містити число (наприклад 650 або 650 грн)' });
     }
 
     const data = await readData();
@@ -2226,7 +2378,7 @@ app.put('/api/provider/locations/:id', requireAuth, requireProviderOrAdmin, asyn
       loc.customSubcats = req.body.customSubcats;
     }
     if (req.body.prices && typeof req.body.prices === 'object') {
-      loc.prices = { ...(loc.prices || {}), ...req.body.prices };
+      loc.prices = { ...(loc.prices || {}), ...normalizePricesMap(req.body.prices) };
     }
     if (req.body.schedule) loc.schedule = req.body.schedule;
 
@@ -2332,6 +2484,9 @@ app.post('/api/provider/locations/:id/prices', requireAuth, requireProviderOrAdm
 
     if (!serviceName || !price) {
       return res.status(400).json({ error: 'Вкажіть назву послуги та ціну' });
+    }
+    if (!isValidPrice(price)) {
+      return res.status(400).json({ error: 'Ціна має містити число (наприклад 650 або 650 грн)' });
     }
 
     const data = await readData();

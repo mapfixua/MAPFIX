@@ -141,6 +141,107 @@ function resolveCity(cityKeyOrName) {
   return CITY_PRESETS.kotsyubynske;
 }
 
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function citySlug(name) {
+  return String(name || '')
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, '-')
+    .replace(/[^a-z0-9а-яіїєґ\-]+/gi, '')
+    .slice(0, 48) || 'city';
+}
+
+/**
+ * Resolve any Ukrainian city/town via Nominatim (or known presets).
+ */
+async function geocodeCityUkraine(cityName) {
+  const raw = String(cityName || '').trim();
+  if (raw.length < 2) throw new Error('Вкажіть місто або смт України');
+
+  const key = raw.toLowerCase().replace(/\s+/g, '');
+  if (CITY_PRESETS[key]) return { ...CITY_PRESETS[key], radiusMeters: 4500, source: 'preset' };
+  if (key.includes('коцюб') || key.includes('kots')) {
+    return { ...CITY_PRESETS.kotsyubynske, radiusMeters: 3500, source: 'preset' };
+  }
+
+  const url =
+    'https://nominatim.openstreetmap.org/search?' +
+    new URLSearchParams({
+      q: `${raw}, Україна`,
+      format: 'json',
+      limit: '1',
+      countrycodes: 'ua',
+      addressdetails: '1',
+    }).toString();
+
+  const res = await fetch(url, {
+    headers: {
+      'User-Agent': 'MapfixCityImport/1.0 (admin import; contact@mapfix.local)',
+      Accept: 'application/json',
+    },
+  });
+  if (!res.ok) throw new Error(`Геокодування міста не вдалося (HTTP ${res.status})`);
+  const json = await res.json();
+  const hit = Array.isArray(json) ? json[0] : null;
+  if (!hit) throw new Error(`Місто «${raw}» не знайдено в Україні. Уточніть назву.`);
+
+  const lat = Number(hit.lat);
+  const lng = Number(hit.lon);
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+    throw new Error('Геокодер повернув некоректні координати');
+  }
+
+  const bb = Array.isArray(hit.boundingbox) ? hit.boundingbox.map(Number) : null;
+  // Nominatim bbox: [south, north, west, east]
+  let bbox;
+  let radiusMeters = 8000;
+  if (bb && bb.length === 4 && bb.every(Number.isFinite)) {
+    const [south, north, west, east] = bb;
+    bbox = [west, south, east, north];
+    const diag = haversineMeters({ lat: south, lng: west }, { lat: north, lng: east });
+    radiusMeters = Math.max(3000, Math.min(22000, Math.round(diag / 2)));
+  } else {
+    const d = 0.04;
+    bbox = [lng - d, lat - d, lng + d, lat + d];
+  }
+
+  const display =
+    hit.namedetails?.name ||
+    hit.display_name?.split(',')[0] ||
+    raw;
+
+  return {
+    id: citySlug(display),
+    name: String(display).trim(),
+    center: { lat, lng },
+    bbox,
+    radiusMeters,
+    source: 'nominatim',
+    displayName: hit.display_name || display,
+  };
+}
+
+function buildCatalogSearchQueries(masterCatalog) {
+  const queries = [];
+  for (const [catKey, cat] of Object.entries(masterCatalog || {})) {
+    for (const [subKey, sub] of Object.entries(cat.subcats || {})) {
+      const tag = Array.isArray(sub.tags) && sub.tags[0] ? sub.tags[0] : '';
+      const label = String(sub.name || subKey)
+        .replace(/[✂️🚗🛠️🐾🏠🎓⚽🔑]/gu, '')
+        .trim();
+      queries.push({
+        catKey,
+        subKey,
+        queryCore: [label, tag].filter(Boolean).join(' '),
+      });
+    }
+  }
+  return queries;
+}
+
 function buildOverpassQuery(city, category) {
   const filters = CATEGORY_OSM_FILTERS[category] || CATEGORY_OSM_FILTERS.beauty;
   const [w, s, e, n] = city.bbox;
@@ -994,10 +1095,168 @@ const PROVIDER_IMPORT_TEMPLATE_CSV =
   'https://maps.app.goo.gl/example,,,,"",,,,rental,,\n' +
   ',"Оренда квартири","вул. Прикладна 1, Коцюбинське",+380991112233,"09:00 - 18:00",50.4905,30.3345,rental,Опис точки,open\n';
 
+/**
+ * Scan a Ukrainian city for places matching Mapfix catalog.
+ * Uses Google Places Text Search per subcategory (preferred) or OSM by category.
+ * Classification/filtering is done by the caller via Gemini (search-ai).
+ */
+async function scanCityPlacesRaw({ cityName, masterCatalog, apiKey, maxPerQuery = 8 }) {
+  const city = await geocodeCityUkraine(cityName);
+  const key = apiKey || process.env.GOOGLE_PLACES_API_KEY || process.env.GOOGLE_MAPS_API_KEY;
+  const byKey = new Map();
+  const queries = buildCatalogSearchQueries(masterCatalog);
+  let source = 'google_places';
+  let queryCount = 0;
+
+  if (key && queries.length) {
+    const limit = Math.min(queries.length, 40);
+    for (let i = 0; i < limit; i++) {
+      const q = queries[i];
+      const textQuery = `${q.queryCore} ${city.name}`;
+      try {
+        const found = await searchGooglePlacesText({
+          query: textQuery,
+          apiKey: key,
+          lat: city.center.lat,
+          lng: city.center.lng,
+          maxResultCount: Math.min(20, Math.max(3, Number(maxPerQuery) || 8)),
+        });
+        queryCount += 1;
+        for (const p of found) {
+          // Prefer places inside city radius
+          const dist = haversineMeters(city.center, { lat: p.lat, lng: p.lng });
+          if (dist > (city.radiusMeters || 12000) * 1.35) continue;
+          const dedupeKey = p.placeId || `${p.title}|${p.lat.toFixed(5)}|${p.lng.toFixed(5)}`;
+          if (byKey.has(dedupeKey)) continue;
+          byKey.set(dedupeKey, {
+            ...p,
+            types: p.types || [],
+            text: 'Знайдено на Google Maps',
+            hintCat: q.catKey,
+            hintSub: q.subKey,
+            searchQuery: textQuery,
+          });
+        }
+      } catch (err) {
+        console.warn('[scanCityPlacesRaw] Places query failed:', textQuery, err.message);
+      }
+      await sleep(120);
+    }
+  } else {
+    source = 'osm';
+    const catKeys = Object.keys(masterCatalog || {}).filter((k) => CATEGORY_OSM_FILTERS[k]);
+    for (const cat of catKeys) {
+      try {
+        const meta = await fetchOsmPlaces({ city, category: cat });
+        queryCount += 1;
+        for (const loc of meta.locations || []) {
+          const dedupeKey = `${loc.title}|${Number(loc.lat).toFixed(5)}|${Number(loc.lng).toFixed(5)}`;
+          if (byKey.has(dedupeKey)) continue;
+          byKey.set(dedupeKey, {
+            placeId: loc.importMeta?.osmId || dedupeKey,
+            title: loc.title,
+            address: loc.address,
+            phone: loc.phone,
+            lat: loc.lat,
+            lng: loc.lng,
+            rating: loc.rating || 0,
+            reviewsCount: loc.reviewsCount || 0,
+            workingHours: loc.workingHours || '',
+            types: [],
+            text: loc.text || 'Знайдено в OpenStreetMap',
+            hintCat: cat,
+            hintSub: (loc.subcats || [])[0] || null,
+          });
+        }
+      } catch (err) {
+        console.warn('[scanCityPlacesRaw] OSM category failed:', cat, err.message);
+      }
+    }
+  }
+
+  return {
+    city,
+    source,
+    queryCount,
+    places: [...byKey.values()],
+  };
+}
+
+async function buildCityImportCandidates({
+  cityName,
+  masterCatalog,
+  classifyPlacesForImport,
+  geminiApiKey,
+  placesApiKey,
+  maxPerQuery = 8,
+  maxCandidates = 80,
+}) {
+  if (typeof classifyPlacesForImport !== 'function') {
+    throw new Error('classifyPlacesForImport is required');
+  }
+
+  const scan = await scanCityPlacesRaw({
+    cityName,
+    masterCatalog,
+    apiKey: placesApiKey,
+    maxPerQuery,
+  });
+
+  const classifications = await classifyPlacesForImport(scan.places, masterCatalog, {
+    geminiApiKey,
+  });
+
+  const locations = [];
+  let rejected = 0;
+  for (let i = 0; i < scan.places.length; i++) {
+    const place = scan.places[i];
+    const match = classifications[i];
+    if (!match?.category || !match?.subcategory) {
+      rejected += 1;
+      continue;
+    }
+    if (!masterCatalog?.[match.category]?.subcats?.[match.subcategory]) {
+      rejected += 1;
+      continue;
+    }
+
+    const loc = googlePlaceToLocation(place, {
+      providerId: null,
+      cat: match.category,
+      subcategory: match.subcategory,
+    });
+    loc.importSource = 'city_gemini';
+    loc.importMeta = {
+      ...(loc.importMeta || {}),
+      source: 'city_gemini',
+      city: scan.city.name,
+      cityId: scan.city.id,
+      dataSource: scan.source,
+      aiSource: match.source,
+      aiConfidence: match.confidence,
+      importedAt: new Date().toISOString(),
+    };
+    loc.text = loc.text || `Імпортовано з ${scan.city.name} (каталог Mapfix)`;
+    locations.push(loc);
+    if (locations.length >= maxCandidates) break;
+  }
+
+  return {
+    city: scan.city,
+    source: scan.source,
+    queryCount: scan.queryCount,
+    scanned: scan.places.length,
+    rejected,
+    matched: locations.length,
+    locations,
+  };
+}
+
 module.exports = {
   CITY_PRESETS,
   CATEGORY_OSM_FILTERS,
   resolveCity,
+  geocodeCityUkraine,
   fetchOsmPlaces,
   fetchGooglePlaces,
   searchGooglePlacesText,
@@ -1011,6 +1270,8 @@ module.exports = {
   parseCsv,
   csvRowToLocation,
   normalizePhone,
+  scanCityPlacesRaw,
+  buildCityImportCandidates,
   PROVIDER_IMPORT_COLUMNS,
   PROVIDER_IMPORT_TEMPLATE_CSV,
 };

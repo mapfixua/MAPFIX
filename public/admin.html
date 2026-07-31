@@ -469,6 +469,50 @@
           </div>
 
           <div id="adminPaneImport" class="admin-pane card">
+            <h2>Імпорт міста (Gemini + каталог Mapfix)</h2>
+            <p class="field-hint" style="margin-bottom:14px">
+              Лише для адміна. Вкажіть будь-яке українське місто/смт (Коцюбинське, Київ, Ірпінь…).
+              Система шукає точки на картах за <b>усіма категоріями й підкатегоріями</b> Mapfix,
+              Gemini пропонує категорію — у списку перевірки ви можете <b>змінити категорію/підкатегорію</b>,
+              потім підтверджуєте імпорт.
+            </p>
+            <div class="field-block">
+              <label>Місто / смт України</label>
+              <input type="text" id="cityGeminiInput" list="cityGeminiSuggestions" placeholder="Наприклад: Коцюбинське" autocomplete="off">
+              <datalist id="cityGeminiSuggestions">
+                <option value="Коцюбинське"></option>
+                <option value="Київ"></option>
+                <option value="Ірпінь"></option>
+                <option value="Буча"></option>
+                <option value="Гостомель"></option>
+                <option value="Вишневе"></option>
+                <option value="Бровари"></option>
+                <option value="Бориспіль"></option>
+                <option value="Львів"></option>
+                <option value="Одеса"></option>
+                <option value="Харків"></option>
+                <option value="Дніпро"></option>
+              </datalist>
+            </div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">
+              <button type="button" id="cityGeminiPreviewBtn" class="btn-secondary" style="width:auto">Аналіз Gemini</button>
+              <button type="button" id="cityGeminiWriteBtn" style="width:auto" disabled>Підтвердити імпорт</button>
+            </div>
+            <div id="cityGeminiResult" class="msg" style="display:none;margin-top:14px"></div>
+            <div id="cityGeminiReviewBox" class="hidden" style="margin-top:16px;border:1px solid #e5e7eb;border-radius:12px;padding:12px;background:#fff">
+              <div style="display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:10px">
+                <h3 style="margin:0;font-size:1rem">Кандидати міста <span id="cityGeminiReviewCount" class="list-item-meta"></span></h3>
+                <div style="display:flex;gap:8px;flex-wrap:wrap">
+                  <button type="button" id="cityGeminiSelectAllBtn" class="btn-secondary" style="width:auto">Обрати всі</button>
+                  <button type="button" id="cityGeminiSelectNoneBtn" class="btn-secondary" style="width:auto">Зняти всі</button>
+                  <button type="button" id="cityGeminiSelectAddableBtn" class="btn-secondary" style="width:auto">Лише нові</button>
+                </div>
+              </div>
+              <div id="cityGeminiReviewList" style="max-height:560px;overflow:auto;display:flex;flex-direction:column;gap:10px"></div>
+            </div>
+
+            <hr style="margin:24px 0;border:none;border-top:1px solid #e5e7eb">
+
             <h2>Імпорт надавачів (Google / OSM)</h2>
             <p class="field-hint" style="margin-bottom:14px">
               1) Заповніть форму → <b>Перевірити перед імпортом</b>. 2) Зніміть галочки з некоректних точок. 3) Імпортуйте лише вибрані.
@@ -881,7 +925,10 @@
       try {
         data = text ? JSON.parse(text) : {};
       } catch (_) {
-        throw new Error(res.ok ? 'Некоректна відповідь сервера' : `Помилка ${res.status}: ${text.slice(0, 120)}`);
+        const hint = text.includes('Cannot POST') || text.includes('Cannot GET')
+          ? text.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 160)
+          : text.slice(0, 120);
+        throw new Error(res.ok ? 'Некоректна відповідь сервера' : `Помилка ${res.status}: ${hint}`);
       }
       if (!res.ok) throw new Error(data.error || `Помилка ${res.status}`);
       return data;
@@ -1158,6 +1205,265 @@
     }
 
     let importCandidates = [];
+    let cityGeminiCandidates = [];
+    let cityGeminiCatalog = {};
+
+    function setCityGeminiCatalog(optionsOrCatalog) {
+      if (Array.isArray(optionsOrCatalog)) {
+        cityGeminiCatalog = {};
+        optionsOrCatalog.forEach((c) => {
+          if (!c?.key) return;
+          cityGeminiCatalog[c.key] = {
+            name: c.name || c.key,
+            subcats: {},
+          };
+          (c.subcats || []).forEach((s) => {
+            if (!s?.key) return;
+            cityGeminiCatalog[c.key].subcats[s.key] = { name: s.name || s.key };
+          });
+        });
+        return;
+      }
+      if (optionsOrCatalog && typeof optionsOrCatalog === 'object') {
+        cityGeminiCatalog = optionsOrCatalog;
+        return;
+      }
+      cityGeminiCatalog = adminCatalog || {};
+    }
+
+    function cityGeminiCatOptions(selectedCat) {
+      const entries = Object.entries(cityGeminiCatalog || {});
+      if (!entries.length) {
+        return '<option value="">— каталог порожній —</option>';
+      }
+      return entries
+        .map(([key, cat]) => {
+          const sel = key === selectedCat ? ' selected' : '';
+          return `<option value="${esc(key)}"${sel}>${esc(cat.name || key)}</option>`;
+        })
+        .join('');
+    }
+
+    function cityGeminiSubOptions(catKey, selectedSub) {
+      const subs = cityGeminiCatalog?.[catKey]?.subcats || {};
+      const entries = Object.entries(subs);
+      if (!entries.length) {
+        return '<option value="">Немає підкатегорій</option>';
+      }
+      return entries
+        .map(([key, sub]) => {
+          const sel = key === selectedSub ? ' selected' : '';
+          return `<option value="${esc(key)}"${sel}>${esc(sub.name || key)}</option>`;
+        })
+        .join('');
+    }
+
+    function syncCityGeminiSubSelect(idx) {
+      const catSel = document.querySelector(`.city-gemini-cat[data-idx="${idx}"]`);
+      const subSel = document.querySelector(`.city-gemini-sub[data-idx="${idx}"]`);
+      if (!catSel || !subSel) return;
+      const catKey = catSel.value;
+      const prevSub = subSel.value;
+      const firstSub = Object.keys(cityGeminiCatalog?.[catKey]?.subcats || {})[0] || '';
+      const keep = cityGeminiCatalog?.[catKey]?.subcats?.[prevSub] ? prevSub : firstSub;
+      subSel.innerHTML = cityGeminiSubOptions(catKey, keep);
+      const item = cityGeminiCandidates[idx];
+      if (item) {
+        item.cat = catKey;
+        item.subcats = keep ? [keep] : [];
+        item.categoryName = cityGeminiCatalog?.[catKey]?.name || catKey;
+        item.subcategoryName = keep && cityGeminiCatalog?.[catKey]?.subcats?.[keep]
+          ? cityGeminiCatalog[catKey].subcats[keep].name
+          : keep;
+        if (item._location) {
+          item._location.cat = catKey;
+          item._location.subcats = keep ? [keep] : [];
+        }
+      }
+    }
+
+    function bindCityGeminiCatalogEditors() {
+      document.querySelectorAll('.city-gemini-cat').forEach((sel) => {
+        sel.onchange = () => syncCityGeminiSubSelect(Number(sel.dataset.idx));
+      });
+      document.querySelectorAll('.city-gemini-sub').forEach((sel) => {
+        sel.onchange = () => {
+          const idx = Number(sel.dataset.idx);
+          const item = cityGeminiCandidates[idx];
+          if (!item) return;
+          const catKey = document.querySelector(`.city-gemini-cat[data-idx="${idx}"]`)?.value || item.cat;
+          const sub = sel.value;
+          item.cat = catKey;
+          item.subcats = sub ? [sub] : [];
+          item.categoryName = cityGeminiCatalog?.[catKey]?.name || catKey;
+          item.subcategoryName = sub && cityGeminiCatalog?.[catKey]?.subcats?.[sub]
+            ? cityGeminiCatalog[catKey].subcats[sub].name
+            : sub;
+          if (item._location) {
+            item._location.cat = catKey;
+            item._location.subcats = sub ? [sub] : [];
+          }
+        };
+      });
+    }
+
+    function renderCityGeminiReview(candidates) {
+      if (!Object.keys(cityGeminiCatalog || {}).length) {
+        setCityGeminiCatalog(adminCatalog);
+      }
+      cityGeminiCandidates = Array.isArray(candidates) ? candidates : [];
+      const box = document.getElementById('cityGeminiReviewBox');
+      const list = document.getElementById('cityGeminiReviewList');
+      const countEl = document.getElementById('cityGeminiReviewCount');
+      const writeBtn = document.getElementById('cityGeminiWriteBtn');
+      if (!box || !list) return;
+      if (!cityGeminiCandidates.length) {
+        box.classList.add('hidden');
+        if (writeBtn) writeBtn.disabled = true;
+        return;
+      }
+      box.classList.remove('hidden');
+      if (countEl) countEl.textContent = `(${cityGeminiCandidates.length})`;
+      const catKeys = Object.keys(cityGeminiCatalog || {});
+      list.innerHTML = cityGeminiCandidates
+        .map((p, idx) => {
+          const skip = p.willSkip ? ' · вже на карті' : '';
+          const checked = p.willAdd !== false && !p.willSkip ? 'checked' : '';
+          const catKey = (p.cat && cityGeminiCatalog[p.cat] ? p.cat : null) || catKeys[0] || '';
+          const subKeys = Object.keys(cityGeminiCatalog?.[catKey]?.subcats || {});
+          const subKey =
+            (p.subcats && p.subcats[0] && cityGeminiCatalog?.[catKey]?.subcats?.[p.subcats[0]]
+              ? p.subcats[0]
+              : null) ||
+            subKeys[0] ||
+            '';
+          return `
+            <div class="list-item" style="display:flex;gap:10px;align-items:flex-start;background:#fff">
+              <input type="checkbox" class="city-gemini-cb" data-idx="${idx}" ${checked} style="width:auto;margin-top:4px;flex-shrink:0">
+              <div style="min-width:0;flex:1">
+                <strong style="font-size:0.98rem">${esc(p.title || '—')}</strong>
+                <div class="list-item-meta">${esc(p.address || 'без адреси')}${p.phone ? ' · ' + esc(p.phone) : ''}${skip}</div>
+                <div class="list-item-meta">${Number(p.lat).toFixed(5)}, ${Number(p.lng).toFixed(5)}</div>
+                <div style="margin-top:10px;padding:10px;border:1px solid #93c5fd;border-radius:10px;background:#eff6ff">
+                  <div style="font-size:0.78rem;font-weight:700;color:#1d4ed8;margin-bottom:8px">Змінити категорію Mapfix</div>
+                  <div class="row2" style="margin:0">
+                    <div class="field-block" style="margin:0">
+                      <label for="cityGeminiCat_${idx}" style="margin-bottom:4px">Категорія</label>
+                      <select id="cityGeminiCat_${idx}" class="city-gemini-cat" data-idx="${idx}" style="margin-bottom:0">${cityGeminiCatOptions(catKey)}</select>
+                    </div>
+                    <div class="field-block" style="margin:0">
+                      <label for="cityGeminiSub_${idx}" style="margin-bottom:4px">Підкатегорія</label>
+                      <select id="cityGeminiSub_${idx}" class="city-gemini-sub" data-idx="${idx}" style="margin-bottom:0">${cityGeminiSubOptions(catKey, subKey)}</select>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>`;
+        })
+        .join('');
+      bindCityGeminiCatalogEditors();
+      if (writeBtn) writeBtn.disabled = false;
+    }
+
+    function getSelectedCityGeminiCandidates() {
+      return [...document.querySelectorAll('.city-gemini-cb:checked')]
+        .map((cb) => {
+          const idx = Number(cb.dataset.idx);
+          const item = cityGeminiCandidates[idx];
+          if (!item) return null;
+          const catSel = document.querySelector(`.city-gemini-cat[data-idx="${idx}"]`);
+          const subSel = document.querySelector(`.city-gemini-sub[data-idx="${idx}"]`);
+          const cat = catSel?.value || item.cat;
+          const sub = subSel?.value || (item.subcats || [])[0] || '';
+          if (!cat || !sub) return null;
+          const loc = { ...(item._location || item) };
+          delete loc._location;
+          loc.cat = cat;
+          loc.subcats = [sub];
+          loc.importSource = loc.importSource || 'city_gemini';
+          return loc;
+        })
+        .filter(Boolean);
+    }
+
+    async function runCityGeminiImport(dryRun) {
+      const resultEl = document.getElementById('cityGeminiResult');
+      const city = String(document.getElementById('cityGeminiInput')?.value || '').trim();
+      resultEl.style.display = 'block';
+      resultEl.className = 'msg';
+      if (dryRun && !city) {
+        resultEl.textContent = 'Вкажіть місто України';
+        return;
+      }
+      resultEl.textContent = dryRun
+        ? 'Gemini аналізує точки міста за каталогом Mapfix… Це може зайняти 1–2 хв.'
+        : 'Імпорт підтверджених точок…';
+      try {
+        if (!Object.keys(adminCatalog || {}).length) {
+          try {
+            const catRes = await apiFetch('/api/data');
+            adminCatalog = catRes.masterCatalog || {};
+          } catch (_) {
+            /* ignore — catalogOptions from import response will fill it */
+          }
+        }
+        const body = { city, dryRun: Boolean(dryRun) };
+        if (!dryRun) {
+          const selected = getSelectedCityGeminiCandidates();
+          if (!selected.length) {
+            throw new Error('Оберіть точки й укажіть категорію та підкатегорію для кожної');
+          }
+          body.locations = selected;
+        }
+        const data = await apiFetch('/api/admin/import-city-gemini', {
+          method: 'POST',
+          body: JSON.stringify(body),
+        });
+        if (dryRun) {
+          setCityGeminiCatalog(
+            Array.isArray(data.catalogOptions) && data.catalogOptions.length
+              ? data.catalogOptions
+              : adminCatalog
+          );
+          renderCityGeminiReview(data.candidates || []);
+          resultEl.className = 'msg ok';
+          resultEl.textContent =
+            `Місто: ${data.city?.name || city}. Переглянуто ${data.scanned || 0}, ` +
+            `підходить під каталог ${data.matched || 0}, відхилено ${data.rejected || 0}. ` +
+            `Джерело карт: ${data.source || '—'}. ` +
+            (data.geminiConfigured ? 'Gemini: так. ' : 'Gemini: немає ключа (локальний фільтр). ') +
+            'У синьому блоці біля кожної точки змініть категорію/підкатегорію за потреби, потім «Підтвердити імпорт».';
+        } else {
+          resultEl.className = 'msg ok';
+          resultEl.textContent = `Імпортовано: додано ${data.added}, пропущено дублікатів ${data.skipped}`;
+          cityGeminiCandidates = [];
+          document.getElementById('cityGeminiReviewBox')?.classList.add('hidden');
+          document.getElementById('cityGeminiWriteBtn').disabled = true;
+        }
+      } catch (err) {
+        resultEl.className = 'msg err';
+        resultEl.textContent = err.message || 'Помилка імпорту міста';
+      }
+    }
+
+    document.getElementById('cityGeminiPreviewBtn')?.addEventListener('click', () => runCityGeminiImport(true));
+    document.getElementById('cityGeminiWriteBtn')?.addEventListener('click', () => runCityGeminiImport(false));
+    document.getElementById('cityGeminiSelectAllBtn')?.addEventListener('click', () => {
+      document.querySelectorAll('.city-gemini-cb').forEach((cb) => {
+        cb.checked = true;
+      });
+    });
+    document.getElementById('cityGeminiSelectNoneBtn')?.addEventListener('click', () => {
+      document.querySelectorAll('.city-gemini-cb').forEach((cb) => {
+        cb.checked = false;
+      });
+    });
+    document.getElementById('cityGeminiSelectAddableBtn')?.addEventListener('click', () => {
+      document.querySelectorAll('.city-gemini-cb').forEach((cb) => {
+        const item = cityGeminiCandidates[Number(cb.dataset.idx)];
+        cb.checked = Boolean(item && item.willAdd !== false && !item.willSkip);
+      });
+    });
 
     function renderImportReview(candidates) {
       importCandidates = Array.isArray(candidates) ? candidates : [];
