@@ -70,6 +70,7 @@ const {
 const {
   fetchCatalogFromSupabase,
   upsertCatalogToSupabase,
+  pruneStaleEmptyCategories,
   mergeCatalog,
 } = require('./catalog-store.js');
 const {
@@ -448,6 +449,8 @@ async function readData() {
     console.warn('[readData] Supabase catalog skip:', err.message);
   }
 
+  pruneStaleEmptyCategories(data.masterCatalog);
+
   try {
     const remoteProfiles = await fetchProviderProfilesMap();
     if (remoteProfiles.ok && remoteProfiles.profiles) {
@@ -465,6 +468,7 @@ async function readData() {
 
 async function writeData(data) {
   const payload = ensureDataShape(data);
+  pruneStaleEmptyCategories(payload.masterCatalog);
   console.log('[writeData]', DATA_FILE, 'locations:', payload.mockLocations?.length ?? 0);
   let localOk = false;
   try {
@@ -2021,6 +2025,30 @@ app.post('/api/admin/catalog/category', requireAuth, requireAdmin, async (req, r
   } catch (err) {
     console.error('[POST /api/admin/catalog/category]', err);
     res.status(500).json({ error: 'Не вдалося створити категорію' });
+  }
+});
+
+app.delete('/api/admin/catalog/category/:categoryKey', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const categoryKey = String(req.params.categoryKey || '').trim();
+    if (!categoryKey) {
+      return res.status(400).json({ error: 'Не вказано ключ категорії' });
+    }
+
+    const data = await readData();
+    const catalog = data.masterCatalog || {};
+    if (!catalog[categoryKey]) {
+      return res.status(404).json({ error: 'Категорію не знайдено' });
+    }
+
+    delete catalog[categoryKey];
+    const writeResult = await writeData(data);
+    const writeErr = catalogWriteError(writeResult);
+    if (writeErr) return res.status(503).json({ error: writeErr });
+    res.json({ ok: true, categoryKey });
+  } catch (err) {
+    console.error('[DELETE /api/admin/catalog/category]', err);
+    res.status(500).json({ error: 'Не вдалося видалити категорію' });
   }
 });
 

@@ -113,9 +113,36 @@ function mergeCatalog(base, overlay) {
   return result;
 }
 
+/**
+ * Drop empty admin stubs that duplicate the seeded medical category
+ * (e.g. typo key «медичі_та_оздоровчі_послуги» with no subcats).
+ */
+function pruneStaleEmptyCategories(catalog) {
+  if (!catalog || typeof catalog !== 'object') return catalog;
+  const medicalSubs = catalog.medical?.subcats;
+  const medicalReady =
+    medicalSubs && typeof medicalSubs === 'object' && Object.keys(medicalSubs).length > 0;
+  if (!medicalReady) return catalog;
+
+  for (const key of Object.keys(catalog)) {
+    if (key === 'medical') continue;
+    const cat = catalog[key];
+    const subs = cat?.subcats && typeof cat.subcats === 'object' ? Object.keys(cat.subcats) : [];
+    if (subs.length > 0) continue;
+    const name = String(cat?.name || '')
+      .toLowerCase()
+      .replace(/[^\p{L}\p{N}]+/gu, '');
+    if (name.includes('медич') && name.includes('оздоров')) {
+      delete catalog[key];
+    }
+  }
+  return catalog;
+}
+
 module.exports = {
   CATALOG_TABLE,
   fetchCatalogFromSupabase,
   upsertCatalogToSupabase,
   mergeCatalog,
+  pruneStaleEmptyCategories,
 };
