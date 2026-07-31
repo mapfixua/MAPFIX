@@ -1186,6 +1186,7 @@
                 education: 'fa-graduation-cap',
                 sport: 'fa-dumbbell',
                 rental: 'fa-key',
+                medical: 'fa-heart-pulse',
             };
 
             function categoryLabel(name) {
@@ -1320,6 +1321,29 @@
                 return loc.prices && Object.prototype.hasOwnProperty.call(loc.prices, serviceName);
             }
 
+            function getLocSubcats(loc) {
+                return Array.isArray(loc?.subcats) ? loc.subcats : [];
+            }
+
+            function locationInSubcategory(loc, categoryKey, subcategoryKey) {
+                if (!categoryKey || !subcategoryKey) return true;
+                if (getLocSubcats(loc).includes(subcategoryKey)) return true;
+                const items =
+                    window.masterCatalog?.[categoryKey]?.subcats?.[subcategoryKey]?.items || [];
+                return items.some((srv) => srv?.name && locationOffersService(loc, srv.name));
+            }
+
+            function locationMatchesMapFilter(loc) {
+                if (State.locationSearchQuery && !locationMatchesSearch(loc)) return false;
+                if (State.category && loc.cat !== State.category) return false;
+                if (State.subcategory && !locationInSubcategory(loc, State.category, State.subcategory)) {
+                    return false;
+                }
+                if (State.service && !locationOffersService(loc, State.service.name)) return false;
+                if (State.onlyOpen && loc.openStatus !== 'open') return false;
+                return true;
+            }
+
             function renderCatalogNav() {
                 renderCategoryStrip();
 
@@ -1408,7 +1432,10 @@
                 } else {
                     items.forEach((srv) => {
                         const providersCount = window.mockLocations.filter(
-                            (loc) => loc.cat === State.category && locationOffersService(loc, srv.name)
+                            (loc) =>
+                                loc.cat === State.category &&
+                                locationInSubcategory(loc, State.category, State.subcategory) &&
+                                locationOffersService(loc, srv.name)
                         ).length;
                         const el = document.createElement('div');
                         el.className = 'nav-item';
@@ -1666,15 +1693,9 @@
                 const contentContainer = sidebarContent;
                 contentContainer.innerHTML = '';
 
-                if (!State.service) return;
+                if (!State.service && !State.subcategory && !State.category) return;
 
-                let filtered = window.mockLocations.filter(loc => {
-                    if (State.category && loc.cat !== State.category) return false;
-                    if (State.subcategory && !loc.subcats.includes(State.subcategory)) return false;
-                    if (!locationOffersService(loc, State.service.name)) return false;
-                    if (State.onlyOpen && loc.openStatus !== 'open') return false;
-                    return true;
-                });
+                let filtered = window.mockLocations.filter((loc) => locationMatchesMapFilter(loc));
 
                 filtered.forEach(loc => { loc.currentDistance = calculateDistance(State.userCoords.lat, State.userCoords.lng, loc.lat, loc.lng); });
 
@@ -1798,12 +1819,10 @@
                     }
                 });
 
+                const visible = [];
                 window.mockLocations.forEach(loc => {
-                    if (State.locationSearchQuery && !locationMatchesSearch(loc)) return;
-                    if (State.category && loc.cat !== State.category) return;
-                    if (State.subcategory && !loc.subcats.includes(State.subcategory)) return;
-                    if (State.service && !locationOffersService(loc, State.service.name)) return;
-                    if (State.onlyOpen && loc.openStatus !== 'open') return;
+                    if (!locationMatchesMapFilter(loc)) return;
+                    if (!Number.isFinite(Number(loc.lat)) || !Number.isFinite(Number(loc.lng))) return;
 
                     let iconHTML = '';
                     if (State.service) {
@@ -1819,21 +1838,17 @@
                         L.DomEvent.stopPropagation(e);
                         openMasterDetail(loc.id);
                     });
+                    visible.push(loc);
                 });
 
-                if (State.service || State.locationSearchQuery) {
-                    const visible = window.mockLocations.filter(
-                        (loc) =>
-                            (!State.locationSearchQuery || locationMatchesSearch(loc)) &&
-                            (!State.category || loc.cat === State.category) &&
-                            (!State.subcategory || loc.subcats.includes(State.subcategory)) &&
-                            (!State.service || locationOffersService(loc, State.service.name)) &&
-                            (!State.onlyOpen || loc.openStatus === 'open')
-                    );
-                    if (visible.length > 0) {
-                        const bounds = L.latLngBounds(visible.map((l) => [l.lat, l.lng]));
-                        map.fitBounds(bounds, { padding: [60, 60], maxZoom: 13 });
-                    }
+                const shouldFit =
+                    State.service ||
+                    State.subcategory ||
+                    State.category ||
+                    State.locationSearchQuery;
+                if (shouldFit && visible.length > 0) {
+                    const bounds = L.latLngBounds(visible.map((l) => [l.lat, l.lng]));
+                    map.fitBounds(bounds, { padding: [60, 60], maxZoom: 13 });
                 }
             }
 
