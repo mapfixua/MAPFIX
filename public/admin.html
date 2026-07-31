@@ -229,6 +229,35 @@
     }
     .kv .k { font-size: 0.72rem; font-weight: 700; color: #6b7280; text-transform: uppercase; letter-spacing: 0.04em; }
     .kv .v { font-size: 0.95rem; font-weight: 700; margin-top: 4px; word-break: break-word; }
+    .kv.kv-edit { grid-column: 1 / -1; }
+    .kv-edit select,
+    .kv-edit input,
+    .loc-detail-form input,
+    .loc-detail-form select,
+    .loc-detail-form textarea {
+      width: 100%;
+      margin-top: 6px;
+      padding: 8px 10px;
+      border: 1px solid #d1d5db;
+      border-radius: 8px;
+      font: inherit;
+      background: #fff;
+    }
+    .loc-detail-subcats {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px 14px;
+      margin-top: 8px;
+    }
+    .loc-detail-subcats label {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 0.88rem;
+      font-weight: 600;
+      color: #111827;
+      cursor: pointer;
+    }
     .detail-section { margin-top: 18px; }
     .detail-section h3 { margin: 0 0 10px; font-size: 0.95rem; }
     .pwd-note {
@@ -954,7 +983,7 @@
     /* ---- Admin shell navigation ---- */
     let adminOverviewCache = null;
 
-    function showAdminPane(name) {
+    function showAdminPane(name, opts = {}) {
       document.querySelectorAll('[data-admin-nav]').forEach((btn) => {
         btn.classList.toggle('active', btn.dataset.adminNav === name);
       });
@@ -964,8 +993,169 @@
       });
       if (name === 'users') showUsersList();
       if (name === 'providers') showProvidersList();
-      if (name === 'locations') showLocationsList();
+      if (name === 'locations' && !opts.keepDetail) showLocationsList();
       if (name === 'trash') renderTrashList();
+    }
+
+    function locDetailCatOptions(selectedCat) {
+      const entries = Object.entries(adminCatalog || catalog || {});
+      if (!entries.length) return '<option value="">— каталог порожній —</option>';
+      return entries
+        .map(([key, cat]) => {
+          const sel = key === selectedCat ? ' selected' : '';
+          return `<option value="${esc(key)}"${sel}>${esc(cat.name || key)}</option>`;
+        })
+        .join('');
+    }
+
+    function locDetailSubcatsHtml(catKey, selectedSubcats) {
+      const selected = new Set(Array.isArray(selectedSubcats) ? selectedSubcats : []);
+      const subs = Object.entries((adminCatalog || catalog || {})[catKey]?.subcats || {});
+      if (!subs.length) {
+        return '<p class="list-item-meta">У цій категорії немає підкатегорій</p>';
+      }
+      return `<div class="loc-detail-subcats">${subs
+        .map(([key, sub]) => {
+          const checked = selected.has(key) ? ' checked' : '';
+          return `<label><input type="checkbox" class="loc-detail-sub-cb" value="${esc(key)}"${checked}> ${esc(sub.name || key)}</label>`;
+        })
+        .join('')}</div>`;
+    }
+
+    async function openLocationDetail(locId) {
+      const detail = document.getElementById('locationsDetailView');
+      const list = document.getElementById('locationsListView');
+      list.classList.add('hidden');
+      detail.classList.remove('hidden');
+      detail.innerHTML = '<p class="list-item-meta">Завантаження…</p>';
+      try {
+        await ensureCatalogLoaded();
+        if (!Object.keys(adminCatalog || {}).length) {
+          adminCatalog = catalog || {};
+        }
+        const l = await apiFetch('/api/admin/locations/' + encodeURIComponent(locId) + '/detail');
+        const prices = Object.entries(l.prices || {});
+        const currentSubs = Array.isArray(l.subcats) ? l.subcats : [];
+        detail.innerHTML = `
+          <button type="button" class="detail-back" id="locationsBackBtn">← До списку</button>
+          <h2 id="locDetailTitleHeading">${esc(l.title)}</h2>
+          <form class="loc-detail-form" id="locDetailForm">
+            <div class="kv-grid">
+              <div class="kv kv-edit">
+                <div class="k">Назва</div>
+                <input id="locDetailTitle" value="${esc(l.title || '')}" required>
+              </div>
+              <div class="kv kv-edit">
+                <div class="k">Категорія</div>
+                <select id="locDetailCat">${locDetailCatOptions(l.cat)}</select>
+              </div>
+              <div class="kv kv-edit">
+                <div class="k">Підкатегорії</div>
+                <div id="locDetailSubsWrap">${locDetailSubcatsHtml(l.cat, currentSubs)}</div>
+              </div>
+              <div class="kv kv-edit">
+                <div class="k">Адреса</div>
+                <input id="locDetailAddress" value="${esc(l.address || '')}">
+              </div>
+              <div class="kv kv-edit">
+                <div class="k">Телефон</div>
+                <input id="locDetailPhone" value="${esc(l.phone || '')}">
+              </div>
+              <div class="kv">
+                <div class="k">Статус</div>
+                <select id="locDetailStatus">
+                  <option value="open"${l.openStatus === 'open' ? ' selected' : ''}>Відкрито</option>
+                  <option value="closed"${l.openStatus === 'closed' ? ' selected' : ''}>Зачинено</option>
+                </select>
+              </div>
+              <div class="kv"><div class="k">Перегляди</div><div class="v">${Number(l.views) || 0}</div></div>
+              <div class="kv"><div class="k">Рейтинг</div><div class="v">★ ${Number(l.rating || 0).toFixed(1)} (${l.reviewsCount || 0})</div></div>
+              <div class="kv"><div class="k">Замовлення</div><div class="v">${l.ordersCount || 0}</div></div>
+              <div class="kv"><div class="k">Провайдер</div><div class="v">${l.provider ? esc(l.provider.companyName + ' (@' + l.provider.login + ')') : 'системна'}</div></div>
+            </div>
+            <div class="inline-actions">
+              <button type="submit" class="btn-primary" style="width:auto" id="locDetailSaveBtn">Зберегти зміни</button>
+              <a class="btn-secondary" style="width:auto;display:inline-flex;align-items:center;text-decoration:none;padding:10px 16px;border-radius:8px;background:#64748b;color:#fff;font-weight:600" href="/?loc=${encodeURIComponent(l.id)}" target="_blank" rel="noopener">Відкрити на карті</a>
+              ${l.provider ? `<button type="button" class="btn-secondary" style="width:auto" id="goProvFromLoc">Картка провайдера</button>` : ''}
+              <button type="button" class="btn-danger" style="width:auto" id="delLocBtn">У кошик</button>
+            </div>
+          </form>
+          <div class="detail-section">
+            <h3>Послуги</h3>
+            ${prices.length
+              ? prices.map(([n, pr]) => `<span class="price-tag">${esc(n)}: ${esc(pr)}</span>`).join('')
+              : '<p class="list-item-meta">Прайсу немає</p>'}
+          </div>`;
+
+        document.getElementById('locationsBackBtn').onclick = () => {
+          const url = new URL(window.location.href);
+          url.searchParams.delete('loc');
+          url.searchParams.delete('pane');
+          window.history.replaceState({}, '', url.pathname + (url.search || ''));
+          showLocationsList();
+        };
+
+        const catSel = document.getElementById('locDetailCat');
+        const subsWrap = document.getElementById('locDetailSubsWrap');
+        catSel.onchange = () => {
+          subsWrap.innerHTML = locDetailSubcatsHtml(catSel.value, []);
+        };
+
+        document.getElementById('locDetailForm').onsubmit = async (e) => {
+          e.preventDefault();
+          const cat = catSel.value;
+          const subcats = [...detail.querySelectorAll('.loc-detail-sub-cb:checked')].map((cb) => cb.value);
+          if (!cat) return showMessage('Оберіть категорію', true);
+          if (!subcats.length) return showMessage('Оберіть хоча б одну підкатегорію', true);
+          const saveBtn = document.getElementById('locDetailSaveBtn');
+          saveBtn.disabled = true;
+          try {
+            await apiFetch('/api/provider/locations/' + encodeURIComponent(l.id), {
+              method: 'PUT',
+              body: JSON.stringify({
+                title: document.getElementById('locDetailTitle').value.trim(),
+                address: document.getElementById('locDetailAddress').value.trim(),
+                phone: document.getElementById('locDetailPhone').value.trim(),
+                openStatus: document.getElementById('locDetailStatus').value,
+                cat,
+                subcats,
+              }),
+            });
+            showMessage('Локацію оновлено');
+            notifyMapDataChanged();
+            const heading = document.getElementById('locDetailTitleHeading');
+            if (heading) heading.textContent = document.getElementById('locDetailTitle').value.trim();
+            await initAdmin();
+            showAdminPane('locations', { keepDetail: true });
+            await openLocationDetail(l.id);
+          } catch (err) {
+            showMessage(err.message, true);
+          } finally {
+            saveBtn.disabled = false;
+          }
+        };
+
+        document.getElementById('delLocBtn').onclick = async () => {
+          if (!confirm('Перемістити цю точку в кошик?')) return;
+          const r = await fetch('/api/admin/locations/' + l.id, { method: 'DELETE' });
+          const j = await r.json();
+          if (!r.ok) return showMessage(j.error, true);
+          showMessage(j.trashed ? 'Точку переміщено в кошик' : 'Точку видалено');
+          notifyMapDataChanged();
+          showLocationsList();
+          initAdmin();
+        };
+        const goProv = document.getElementById('goProvFromLoc');
+        if (goProv && l.provider) {
+          goProv.onclick = () => {
+            showAdminPane('providers');
+            openProviderDetail(l.provider.id);
+          };
+        }
+      } catch (err) {
+        detail.innerHTML = `<button type="button" class="detail-back" id="locationsBackBtn">← Назад</button><p class="list-item-meta">${esc(err.message)}</p>`;
+        document.getElementById('locationsBackBtn').onclick = showLocationsList;
+      }
     }
 
     document.querySelectorAll('[data-admin-nav]').forEach((btn) => {
@@ -1144,63 +1334,6 @@
       } catch (err) {
         detail.innerHTML = `<button type="button" class="detail-back" id="providersBackBtn">← Назад</button><p class="list-item-meta">${esc(err.message)}</p>`;
         document.getElementById('providersBackBtn').onclick = showProvidersList;
-      }
-    }
-
-    async function openLocationDetail(locId) {
-      const detail = document.getElementById('locationsDetailView');
-      const list = document.getElementById('locationsListView');
-      list.classList.add('hidden');
-      detail.classList.remove('hidden');
-      detail.innerHTML = '<p class="list-item-meta">Завантаження…</p>';
-      try {
-        const l = await apiFetch('/api/admin/locations/' + encodeURIComponent(locId) + '/detail');
-        const prices = Object.entries(l.prices || {});
-        detail.innerHTML = `
-          <button type="button" class="detail-back" id="locationsBackBtn">← До списку</button>
-          <h2>${esc(l.title)}</h2>
-          <div class="kv-grid">
-            <div class="kv"><div class="k">Категорія</div><div class="v">${esc(l.catalogCategoryName || l.cat || '—')}</div></div>
-            <div class="kv"><div class="k">Адреса</div><div class="v">${esc(l.address || '—')}</div></div>
-            <div class="kv"><div class="k">Телефон</div><div class="v">${esc(l.phone || '—')}</div></div>
-            <div class="kv"><div class="k">Статус</div><div class="v">${l.openStatus === 'open' ? 'Відкрито' : 'Зачинено'}</div></div>
-            <div class="kv"><div class="k">Перегляди</div><div class="v">${Number(l.views) || 0}</div></div>
-            <div class="kv"><div class="k">Рейтинг</div><div class="v">★ ${Number(l.rating || 0).toFixed(1)} (${l.reviewsCount || 0})</div></div>
-            <div class="kv"><div class="k">Замовлення</div><div class="v">${l.ordersCount || 0}</div></div>
-            <div class="kv"><div class="k">Провайдер</div><div class="v">${l.provider ? esc(l.provider.companyName + ' (@' + l.provider.login + ')') : 'системна'}</div></div>
-          </div>
-          <div class="inline-actions">
-            <a class="btn-secondary" style="width:auto;display:inline-flex;align-items:center;text-decoration:none;padding:10px 16px;border-radius:8px;background:#64748b;color:#fff;font-weight:600" href="/?loc=${encodeURIComponent(l.id)}" target="_blank" rel="noopener">Відкрити на карті</a>
-            ${l.provider ? `<button type="button" class="btn-secondary" style="width:auto" id="goProvFromLoc">Картка провайдера</button>` : ''}
-            <button type="button" class="btn-danger" style="width:auto" id="delLocBtn">У кошик</button>
-          </div>
-          <div class="detail-section">
-            <h3>Послуги</h3>
-            ${prices.length
-              ? prices.map(([n, pr]) => `<span class="price-tag">${esc(n)}: ${esc(pr)}</span>`).join('')
-              : '<p class="list-item-meta">Прайсу немає</p>'}
-          </div>`;
-        document.getElementById('locationsBackBtn').onclick = showLocationsList;
-        document.getElementById('delLocBtn').onclick = async () => {
-          if (!confirm('Перемістити цю точку в кошик?')) return;
-          const r = await fetch('/api/admin/locations/' + l.id, { method: 'DELETE' });
-          const j = await r.json();
-          if (!r.ok) return showMessage(j.error, true);
-          showMessage(j.trashed ? 'Точку переміщено в кошик' : 'Точку видалено');
-          notifyMapDataChanged();
-          showLocationsList();
-          initAdmin();
-        };
-        const goProv = document.getElementById('goProvFromLoc');
-        if (goProv && l.provider) {
-          goProv.onclick = () => {
-            showAdminPane('providers');
-            openProviderDetail(l.provider.id);
-          };
-        }
-      } catch (err) {
-        detail.innerHTML = `<button type="button" class="detail-back" id="locationsBackBtn">← Назад</button><p class="list-item-meta">${esc(err.message)}</p>`;
-        document.getElementById('locationsBackBtn').onclick = showLocationsList;
       }
     }
 
@@ -2186,9 +2319,13 @@
     }
 
     async function ensureCatalogLoaded() {
-      if (catalog && Object.keys(catalog).length > 0) return;
+      if (catalog && Object.keys(catalog).length > 0) {
+        if (!Object.keys(adminCatalog || {}).length) adminCatalog = catalog;
+        return;
+      }
       const data = await apiFetch('/api/data');
       catalog = data.masterCatalog || {};
+      adminCatalog = catalog;
     }
 
     function syncLocSubcatsSelectAll() {
@@ -3164,9 +3301,24 @@
 
         document.getElementById('loadStatus').classList.add('hidden');
 
-        if (me.user.role === 'admin') await initAdmin();
-        else if (me.user.role === 'provider') await initProvider();
-        else {
+        if (me.user.role === 'admin') {
+          await initAdmin();
+          const params = new URLSearchParams(window.location.search);
+          const pane = params.get('pane');
+          const locId = params.get('loc');
+          if (pane) showAdminPane(pane, { keepDetail: Boolean(locId) });
+          if (locId && (pane === 'locations' || !pane)) {
+            showAdminPane('locations', { keepDetail: true });
+            await openLocationDetail(locId);
+          }
+        } else if (me.user.role === 'provider') {
+          await initProvider();
+          const editLoc = new URLSearchParams(window.location.search).get('editLoc');
+          if (editLoc) {
+            showProviderPane('locations');
+            await openLocationEditor(editLoc);
+          }
+        } else {
           showMessage('Немає доступу до цієї панелі', true);
         }
       } catch (err) {

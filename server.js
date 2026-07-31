@@ -1355,6 +1355,10 @@ app.get('/api/admin/locations/:id/detail', requireAuth, requireAdmin, async (req
         : null,
       ordersCount: orders.filter((o) => o.locationId === id).length,
       catalogCategoryName: data.masterCatalog?.[loc.cat]?.name || loc.cat,
+      catalogSubcategoryNames: (Array.isArray(loc.subcats) ? loc.subcats : []).map((subKey) => ({
+        key: subKey,
+        name: data.masterCatalog?.[loc.cat]?.subcats?.[subKey]?.name || subKey,
+      })),
     });
   } catch (err) {
     console.error('[GET /api/admin/locations/:id/detail]', err);
@@ -2387,24 +2391,42 @@ app.put('/api/provider/locations/:id', requireAuth, requireProviderOrAdmin, asyn
       return res.status(403).json({ error: 'Немає доступу до цієї локації' });
     }
 
-    const fields = [
-      'title',
-      'text',
-      'address',
-      'phone',
-      'workingHours',
-      'openStatus',
-      'cat',
-    ];
+    const fields = ['title', 'text', 'address', 'phone', 'workingHours', 'openStatus'];
     fields.forEach((f) => {
       if (req.body[f] !== undefined) loc[f] = req.body[f];
     });
     if (req.body.lat !== undefined) loc.lat = Number(req.body.lat);
     if (req.body.lng !== undefined) loc.lng = Number(req.body.lng);
-    if (Array.isArray(req.body.subcats)) loc.subcats = req.body.subcats;
+
+    if (req.body.cat !== undefined) {
+      const catKey = String(req.body.cat || '').trim();
+      if (!catKey || !data.masterCatalog?.[catKey]) {
+        return res.status(400).json({ error: 'Оберіть дійсну категорію з каталогу' });
+      }
+      loc.cat = catKey;
+    }
+
     if (req.body.customSubcats && typeof req.body.customSubcats === 'object') {
       loc.customSubcats = req.body.customSubcats;
     }
+
+    if (Array.isArray(req.body.subcats)) {
+      const validSubs = data.masterCatalog?.[loc.cat]?.subcats || {};
+      const customKeys = new Set(Object.keys(loc.customSubcats || {}));
+      const next = [
+        ...new Set(
+          req.body.subcats
+            .map(String)
+            .map((s) => s.trim())
+            .filter(Boolean)
+        ),
+      ];
+      loc.subcats = next.filter((s) => validSubs[s] || customKeys.has(s));
+      if (!loc.subcats.length) {
+        return res.status(400).json({ error: 'Оберіть хоча б одну підкатегорію' });
+      }
+    }
+
     if (req.body.prices && typeof req.body.prices === 'object') {
       loc.prices = { ...(loc.prices || {}), ...normalizePricesMap(req.body.prices) };
     }

@@ -1523,6 +1523,7 @@
                         <button type="button" class="action-btn btn-route" onclick="panToMaster(${loc.lat}, ${loc.lng})">🗺️ На карті</button>
                         ${directionsBtn}
                         <button type="button" class="btn-fav-header ${isFav ? 'active' : ''}" onclick="toggleFavorite('${loc.id}')">${isFav ? '★ В обраному' : '☆ В обране'}</button>
+                        ${manageLocationBtnHtml(loc)}
                     </div>
                 `;
 
@@ -1534,6 +1535,31 @@
                 map.panTo([loc.lat, loc.lng]);
                 openPopupForLocation(loc);
             };
+
+            function manageLocationBtnHtml(loc) {
+                const u = State.currentUser;
+                if (!u) return '';
+                if (u.role === 'admin') {
+                    return `<a class="action-btn btn-route" href="/admin?pane=locations&loc=${encodeURIComponent(loc.id)}">⚙️ В адмінці</a>`;
+                }
+                if (u.role === 'provider' && loc.providerId === u.id) {
+                    return `<a class="action-btn btn-route" href="/admin?editLoc=${encodeURIComponent(loc.id)}">✏️ Редагувати</a>`;
+                }
+                return '';
+            }
+
+            function openLocationInCabinet(locId) {
+                const u = State.currentUser;
+                const loc = window.mockLocations.find((l) => l.id === locId);
+                if (!u || !loc) return;
+                if (u.role === 'admin') {
+                    window.location.href = '/admin?pane=locations&loc=' + encodeURIComponent(locId);
+                    return;
+                }
+                if (u.role === 'provider' && loc.providerId === u.id) {
+                    window.location.href = '/admin?editLoc=' + encodeURIComponent(locId);
+                }
+            }
 
             function renderDetailBody(loc) {
                 const bodyBox = document.getElementById('detailBodyContent');
@@ -1855,6 +1881,14 @@
                     loc.markerInstance.on('click', (e) => {
                         L.DomEvent.stopPropagation(e);
                         openMasterDetail(loc.id);
+                    });
+                    loc.markerInstance.on('dblclick', (e) => {
+                        L.DomEvent.stopPropagation(e);
+                        L.DomEvent.preventDefault(e);
+                        const u = State.currentUser;
+                        if (u && (u.role === 'admin' || (u.role === 'provider' && loc.providerId === u.id))) {
+                            openLocationInCabinet(loc.id);
+                        }
                     });
                     visible.push(loc);
                 });
