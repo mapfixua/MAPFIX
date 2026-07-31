@@ -495,7 +495,20 @@
         .user-location-marker { width: 14px; height: 14px; background: var(--primary); border: 3px solid white; border-radius: 50%; box-shadow: 0 0 8px rgba(18,196,181,0.5); }
 
         /* МАРКЕРИ */
-        .mapfix-marker-category { width: 36px; height: 36px; background: white; border: 3px solid var(--primary); border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 16px; box-shadow: 0 4px 10px rgba(0,0,0,0.15); }
+        .mapfix-marker-category {
+            width: 36px;
+            height: 36px;
+            background: white;
+            border: 3px solid var(--primary);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 15px;
+            color: var(--ink);
+            box-shadow: 0 4px 10px rgba(0,0,0,0.15);
+        }
+        .mapfix-marker-category i { line-height: 1; }
         .mapfix-marker-price { background: white; border: 2px solid var(--ink); color: var(--dark); font-weight: 800; font-size: 11px; padding: 4px 8px; border-radius: 999px; box-shadow: 0 4px 10px rgba(0,0,0,0.15); white-space: nowrap; position: relative; }
         .mapfix-marker-price::after { content: ''; position: absolute; bottom: -6px; left: 50%; transform: translateX(-50%); border-width: 6px 6px 0; border-style: solid; border-color: var(--ink) transparent; }
 
@@ -1189,6 +1202,10 @@
                 medical: 'fa-heart-pulse',
             };
 
+            function categoryIconClass(catKey) {
+                return CATEGORY_ICONS[catKey] || 'fa-map-location-dot';
+            }
+
             function categoryLabel(name) {
                 return String(name || '').replace(/^[\p{Extended_Pictographic}\p{Emoji_Presentation}\s]+/u, '').trim() || name;
             }
@@ -1283,7 +1300,7 @@
                     const card = document.createElement('button');
                     card.type = 'button';
                     card.className = 'category-card' + (State.category === catKey ? ' active' : '');
-                    const iconClass = CATEGORY_ICONS[catKey] || 'fa-map-location-dot';
+                    const iconClass = categoryIconClass(catKey);
                     card.innerHTML = `
                         <div class="category-card-icon"><i class="fa-solid ${iconClass}"></i></div>
                         <span class="category-card-label">${categoryLabel(catData.name)}</span>`;
@@ -1828,7 +1845,8 @@
                     if (State.service) {
                         iconHTML = `<div class="mapfix-marker-price">${loc.prices[State.service.name]}</div>`;
                     } else {
-                        iconHTML = `<div class="mapfix-marker-category">${window.masterCatalog[loc.cat]?.icon || '📍'}</div>`;
+                        const iconClass = categoryIconClass(loc.cat);
+                        iconHTML = `<div class="mapfix-marker-category"><i class="fa-solid ${iconClass}"></i></div>`;
                     }
 
                     loc.markerInstance = L.marker([loc.lat, loc.lng], {
