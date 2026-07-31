@@ -39,6 +39,8 @@ const CATEGORY_OSM_FILTERS = {
     'shop=cosmetics',
     'craft=hairdresser',
     'amenity=beauty_salon',
+    'leisure=spa',
+    'shop=massage',
   ],
   auto: [
     'shop=car',
@@ -55,6 +57,10 @@ const CATEGORY_OSM_FILTERS = {
     'craft=electronics_repair',
     'shop=mobile_phone',
     'craft=computer',
+    'shop=laundry',
+    'craft=shoemaker',
+    'craft=tailor',
+    'craft=key_cutter',
   ],
   pets: ['shop=pet', 'amenity=veterinary', 'shop=pet_grooming'],
   home: [
@@ -63,18 +69,24 @@ const CATEGORY_OSM_FILTERS = {
     'craft=plumber',
     'craft=electrician',
     'shop=furniture',
+    'craft=painter',
+    'shop=locksmith',
   ],
   education: [
     'amenity=school',
     'amenity=kindergarten',
     'amenity=college',
     'amenity=language_school',
+    'amenity=driving_school',
+    'amenity=music_school',
   ],
   sport: [
     'leisure=fitness_centre',
     'leisure=sports_centre',
     'leisure=stadium',
     'sport=fitness',
+    'leisure=swimming_pool',
+    'leisure=sports_hall',
   ],
   rental: [
     'shop=rental',
@@ -87,17 +99,31 @@ const CATEGORY_OSM_FILTERS = {
     'tourism=chalet',
     'tourism=guest_house',
   ],
+  medical: [
+    'amenity=doctors',
+    'amenity=clinic',
+    'amenity=hospital',
+    'amenity=dentist',
+    'healthcare=doctor',
+    'healthcare=dentist',
+    'healthcare=physiotherapist',
+    'healthcare=laboratory',
+    'healthcare=psychotherapist',
+    'amenity=pharmacy',
+    'leisure=spa',
+  ],
 };
 
 const CATEGORY_SUBCAT_HINTS = {
-  beauty: ['nails', 'barber', 'hair'],
-  auto: ['tyre', 'wash', 'service'],
-  repair: ['phone', 'pc'],
+  beauty: ['nails', 'barber', 'hair', 'massage', 'cosmetology'],
+  auto: ['tyre', 'wash', 'service', 'auto_repair'],
+  repair: ['phone', 'pc', 'shoes', 'appliances'],
   pets: ['grooming', 'vet'],
-  home: ['plumber', 'electric'],
-  education: ['school'],
-  sport: ['fitness'],
+  home: ['plumber', 'electric', 'cleaning'],
+  education: ['school', 'languages', 'tutoring'],
+  sport: ['fitness', 'swimming', 'martial'],
   rental: ['housing', 'tools', 'vehicles', 'equipment', 'spaces'],
+  medical: ['dentistry', 'therapy', 'diagnostics', 'physiotherapy'],
 };
 
 function makeLocationId(seed) {
@@ -382,14 +408,15 @@ async function fetchGooglePlaces({ city, category, apiKey }) {
   const preset = typeof city === 'string' ? resolveCity(city) : city;
   const cat = category && CATEGORY_OSM_FILTERS[category] ? category : 'beauty';
   const catNames = {
-    beauty: 'салон краси перукарня манікюр',
-    auto: 'СТО шиномонтаж автомийка',
-    repair: 'ремонт телефонів компʼютерів',
-    pets: 'ветклініка грумінг зоомагазин',
-    home: 'сантехнік електрик будівельні послуги',
-    education: 'школа курси репетитор',
-    sport: 'спортзал фітнес',
+    beauty: 'салон краси перукарня манікюр косметологія масаж',
+    auto: 'СТО шиномонтаж автомийка евакуатор',
+    repair: 'ремонт телефонів компʼютерів взуття ательє ключі',
+    pets: 'ветклініка грумінг зооготель дресирування',
+    home: 'сантехнік електрик клінінг кондиціонери',
+    education: 'школа курси репетитор автошкола танці',
+    sport: 'спортзал фітнес басейн єдиноборства',
     rental: 'оренда житла квартира будинок подобово прокат інструментів авто обладнання',
+    medical: 'стоматологія клініка терапевт аналізи фізіотерапія психолог',
   };
 
   const textQuery = `${catNames[cat] || cat} ${preset.name}`;
