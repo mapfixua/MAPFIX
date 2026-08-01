@@ -86,6 +86,21 @@
     .badge { display: inline-block; padding: 2px 8px; border-radius: 6px; font-size: 0.75rem; font-weight: 700; }
     .badge-admin { background: #fef3c7; color: #92400e; }
     .badge-provider { background: #dbeafe; color: #1e40af; }
+    .badge-tg-ok { background: #dcfce7; color: #166534; }
+    .badge-tg-off { background: #fee2e2; color: #991b1b; }
+    .tg-status-box {
+      margin: 0 0 16px;
+      padding: 14px;
+      border-radius: 12px;
+      border: 1px solid #e2e8f0;
+      background: #f8fafc;
+    }
+    .tg-status-box.verified { border-color: #86efac; background: #f0fdf4; }
+    .tg-status-box.unverified { border-color: #fca5a5; background: #fef2f2; }
+    .tg-status-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+    .tg-status-title { font-weight: 700; font-size: 0.95rem; margin: 0 0 4px; }
+    .tg-status-hint { font-size: 0.8rem; color: #64748b; margin: 0; }
+    .list-item-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
     .list-item {
       border: 1px solid #e2e8f0;
       border-radius: 10px;
@@ -703,11 +718,22 @@
         <div class="admin-main">
           <div id="providerPaneProfile" class="admin-pane active card">
             <h2>Профіль компанії</h2>
+            <div id="telegramStatusBox" class="tg-status-box unverified">
+              <div class="tg-status-row">
+                <div>
+                  <p class="tg-status-title">Верифікація через Telegram</p>
+                  <p class="tg-status-hint" id="telegramStatusHint">Завантаження…</p>
+                </div>
+                <span class="badge badge-tg-off" id="telegramStatusBadge">не підключено</span>
+              </div>
+              <a id="telegramLinkBtn" class="btn-secondary" href="/link-telegram.html" style="display:inline-block;width:auto;text-decoration:none;margin-top:12px;padding:10px 14px">Підключити Telegram</a>
+            </div>
             <form id="profileForm">
               <label>Назва компанії</label>
               <input type="text" id="companyName" required>
-              <label>Телефон</label>
-              <input type="text" id="companyPhone">
+              <label>Телефон для входу (код у Telegram)</label>
+              <input type="tel" id="companyPhone" placeholder="+380XXXXXXXXX" autocomplete="tel">
+              <p class="field-hint">Цей номер зберігається в акаунті. Після зміни знову підключіть Telegram, якщо вхід по коду не працює.</p>
               <button type="submit">Зберегти профіль</button>
             </form>
           </div>
@@ -814,7 +840,7 @@
                 <option value="closed">Зачинено</option>
               </select>
               <button type="submit" id="locSaveBtn">Зберегти локацію</button>
-              <button type="button" class="btn-secondary hidden" id="locDeleteBtn" style="margin-top:8px;width:100%">Видалити локацію</button>
+              <button type="button" class="btn-danger hidden" id="locDeleteBtn" style="margin-top:8px;width:100%">Видалити локацію</button>
             </form>
 
             <div id="locPhotosBlock" class="hidden" style="margin-top:16px">
@@ -2492,25 +2518,88 @@
       renderPriceServicesPicker('');
     }
 
+    function catalogCatName(catKey) {
+      return catalog?.[catKey]?.name || catKey || '—';
+    }
+
+    function renderTelegramStatus() {
+      const box = document.getElementById('telegramStatusBox');
+      const badge = document.getElementById('telegramStatusBadge');
+      const hint = document.getElementById('telegramStatusHint');
+      const linkBtn = document.getElementById('telegramLinkBtn');
+      if (!box || !badge || !hint) return;
+      const account = providerData?.account || {};
+      const phone = account.phone || providerData?.profile?.phone || '';
+      const linked = Boolean(account.telegramLinked);
+      box.classList.toggle('verified', linked);
+      box.classList.toggle('unverified', !linked);
+      badge.className = 'badge ' + (linked ? 'badge-tg-ok' : 'badge-tg-off');
+      badge.textContent = linked ? 'підтверджено в Telegram' : 'не підключено';
+      if (linked) {
+        hint.textContent = phone
+          ? `Вхід по коду доступний для ${phone}. Бот надішле код на цей акаунт Telegram.`
+          : 'Telegram підключено. Додайте телефон нижче, щоб отримувати коди входу.';
+        if (linkBtn) linkBtn.textContent = 'Перепідключити Telegram';
+      } else if (phone) {
+        hint.textContent = `Телефон ${phone} збережено, але Telegram ще не підтверджено. Натисніть «Підключити Telegram» і надішліть Start боту.`;
+        if (linkBtn) linkBtn.textContent = 'Підключити Telegram';
+      } else {
+        hint.textContent =
+          'Вкажіть телефон і збережіть профіль, потім підключіть Telegram — так працює вхід по коду.';
+        if (linkBtn) linkBtn.textContent = 'Підключити Telegram';
+      }
+    }
+
     function renderMyLocations() {
       const el = document.getElementById('myLocationsList');
       const locs = providerData?.locations || [];
       el.innerHTML = locs.length
         ? locs
-            .map(
-              (l) => `
+            .map((l) => {
+              const subLabels = (l.subcats || [])
+                .map((s) => catalog?.[l.cat]?.subcats?.[s]?.name || s)
+                .slice(0, 4)
+                .join(', ');
+              const more = (l.subcats || []).length > 4 ? '…' : '';
+              return `
         <div class="list-item">
-          <div class="list-item-title">${esc(l.title)}</div>
-          <div class="list-item-meta">${esc(l.address)} · ${Object.keys(l.prices || {}).length} послуг</div>
-          <button type="button" class="btn-small" style="margin-top:8px" data-edit-loc="${l.id}">Редагувати</button>
-        </div>`
-            )
+          <div class="list-item-head">
+            <div class="list-item-title">${esc(l.title)}</div>
+            <span class="badge badge-provider">${esc(catalogCatName(l.cat))}</span>
+          </div>
+          <div class="list-item-meta">${esc(l.address || '—')}</div>
+          <div class="list-item-meta">${esc(l.phone || 'без телефону')} · ${Object.keys(l.prices || {}).length} послуг${subLabels ? ' · ' + esc(subLabels + more) : ''}</div>
+          <div class="list-item-actions">
+            <button type="button" class="btn-small" data-edit-loc="${l.id}">Змінити</button>
+            <button type="button" class="btn-small btn-danger" data-del-loc="${l.id}">Видалити</button>
+          </div>
+        </div>`;
+            })
             .join('')
-        : '<p class="list-item-meta">У вас ще немає точок на карті. Створіть першу!</p>';
+        : '<p class="list-item-meta">У вас ще немає точок на карті. Створіть першу або імпортуйте.</p>';
 
       el.querySelectorAll('[data-edit-loc]').forEach((btn) => {
         btn.onclick = () => openLocationEditor(btn.dataset.editLoc);
       });
+      el.querySelectorAll('[data-del-loc]').forEach((btn) => {
+        btn.onclick = () => deleteMyLocation(btn.dataset.delLoc);
+      });
+    }
+
+    async function deleteMyLocation(id) {
+      if (!id || !confirm('Видалити цю локацію з карти?')) return;
+      try {
+        await apiFetch(`/api/provider/locations/${id}`, { method: 'DELETE' });
+        document.getElementById('locationEditor')?.classList.add('hidden');
+        await reloadProvider();
+        renderMyLocations();
+        const navCount = document.getElementById('navCountMyLocs');
+        if (navCount) navCount.textContent = String(providerData.locations?.length || 0);
+        notifyMapDataChanged();
+        showMessage('Локацію видалено');
+      } catch (err) {
+        showMessage(err.message, true);
+      }
     }
 
     async function openLocationEditor(locId) {
@@ -2904,7 +2993,9 @@
       document.getElementById('loadStatus')?.classList.add('hidden');
       await reloadProvider();
       document.getElementById('companyName').value = providerData.profile.companyName || '';
-      document.getElementById('companyPhone').value = providerData.profile.phone || '';
+      document.getElementById('companyPhone').value =
+        providerData.account?.phone || providerData.profile.phone || '';
+      renderTelegramStatus();
       fillLocCatSelect('', []);
       fillProviderImportCats();
       renderMyLocations();
@@ -3135,17 +3226,23 @@
 
     document.getElementById('profileForm').onsubmit = async (e) => {
       e.preventDefault();
-      const r = await fetch('/api/provider/profile', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          companyName: document.getElementById('companyName').value.trim(),
-          phone: document.getElementById('companyPhone').value.trim(),
-        }),
-      });
-      const j = await r.json();
-      if (!r.ok) return showMessage(j.error, true);
-      showMessage('Профіль збережено');
+      try {
+        const j = await apiFetch('/api/provider/profile', {
+          method: 'PUT',
+          body: JSON.stringify({
+            companyName: document.getElementById('companyName').value.trim(),
+            phone: document.getElementById('companyPhone').value.trim(),
+          }),
+        });
+        if (j.profile) providerData.profile = j.profile;
+        if (j.account) providerData.account = j.account;
+        document.getElementById('companyPhone').value =
+          j.account?.phone || j.profile?.phone || document.getElementById('companyPhone').value;
+        renderTelegramStatus();
+        showMessage('Профіль збережено');
+      } catch (err) {
+        showMessage(err.message, true);
+      }
     };
 
     document.getElementById('showNewLocBtn').onclick = () => {
@@ -3225,15 +3322,7 @@
 
     document.getElementById('locDeleteBtn').onclick = async () => {
       const id = document.getElementById('editLocId').value;
-      if (!id || !confirm('Видалити цю локацію?')) return;
-      const r = await fetch(`/api/provider/locations/${id}`, { method: 'DELETE' });
-      const j = await r.json();
-      if (!r.ok) return showMessage(j.error, true);
-      document.getElementById('locationEditor').classList.add('hidden');
-      await reloadProvider();
-      renderMyLocations();
-      notifyMapDataChanged();
-      showMessage('Локацію видалено');
+      await deleteMyLocation(id);
     };
 
     document.getElementById('locAddCustomSubcatBtn')?.addEventListener('click', () => {
@@ -3306,10 +3395,12 @@
           const params = new URLSearchParams(window.location.search);
           const pane = params.get('pane');
           const locId = params.get('loc');
-          if (pane) showAdminPane(pane, { keepDetail: Boolean(locId) });
-          if (locId && (pane === 'locations' || !pane)) {
+          // loc= always opens location detail (overrides a conflicting pane=)
+          if (locId) {
             showAdminPane('locations', { keepDetail: true });
             await openLocationDetail(locId);
+          } else if (pane) {
+            showAdminPane(pane);
           }
         } else if (me.user.role === 'provider') {
           await initProvider();

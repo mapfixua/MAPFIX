@@ -278,6 +278,7 @@ async function consumeTelegramLinkToken(token, telegramId) {
 
 module.exports = {
   normalizePhone,
+  updateUserPhone,
   getTelegramIdForPhone,
   findLinkedUserIdByTelegramId,
   createTelegramLinkToken,

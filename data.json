@@ -2407,6 +2407,189 @@
   },
   "mockLocations": [
     {
+      "id": "loc-top-tyres",
+      "providerId": null,
+      "lat": 50.4612,
+      "lng": 30.5164,
+      "cat": "auto",
+      "title": "TopTyres Шиномонтаж на Подолі",
+      "text": "Шиномонтаж, балансування, ремонт проколів",
+      "rating": 4.9,
+      "reviewsCount": 3,
+      "openStatus": "open",
+      "workingHours": "08:00 - 20:00",
+      "phone": "+38 (067) 111-22-33",
+      "address": "м. Київ, вул. Хорива, 25",
+      "schedule": {
+        "Нд": "Вихідний",
+        "Сб": "09:00 - 18:00",
+        "Пн-Пт": "08:00 - 20:00"
+      },
+      "subcats": [
+        "tyres",
+        "maintenance"
+      ],
+      "prices": {
+        "Сезонний комплекс R15": "720 грн",
+        "Сезонний комплекс R16": "820 грн",
+        "Сезонний комплекс R17": "920 грн",
+        "Ремонт проколу колеса": "230 грн",
+        "Заміна мастила у двигуні + фільтр": "400 грн"
+      },
+      "reviews": [
+        {
+          "date": "24.05.2026",
+          "text": "Найкращий шиномонтаж у місті! Балансування за 15 хвилин.",
+          "rating": 5
+        },
+        {
+          "date": "18.05.2026",
+          "text": "Привітний персонал, є кава та зона очікування.",
+          "rating": 5
+        },
+        {
+          "date": "10.05.2026",
+          "text": "Краще записуватись заздалегідь.",
+          "rating": 4
+        }
+      ],
+      "views": 0,
+      "photos": [],
+      "importSource": null,
+      "deletedAt": null,
+      "deletedReason": null
+    },
+    {
+      "id": "loc-imp-7bc2bb20",
+      "providerId": null,
+      "lat": 50.4736417,
+      "lng": 30.3567515,
+      "cat": "auto",
+      "title": "Автомийка",
+      "text": "Знайдено на Google Maps",
+      "rating": 4,
+      "reviewsCount": 363,
+      "openStatus": "open",
+      "workingHours": "",
+      "phone": "",
+      "address": "вул. Олега Мудрака, 34/1, Київ, 02000",
+      "schedule": {},
+      "subcats": [
+        "wash"
+      ],
+      "prices": {},
+      "reviews": [],
+      "views": 0,
+      "photos": [],
+      "importSource": "city_gemini",
+      "deletedAt": null,
+      "deletedReason": null
+    },
+    {
+      "id": "loc-imp-b1de148e",
+      "providerId": null,
+      "lat": 50.4867133,
+      "lng": 30.3407614,
+      "cat": "auto",
+      "title": "СТО \"Телега\"",
+      "text": "Знайдено на Google Maps",
+      "rating": 4.3,
+      "reviewsCount": 80,
+      "openStatus": "open",
+      "workingHours": "",
+      "phone": "+380684058474",
+      "address": "смт, вулиця Залізнична, 7, Коцюбинське, Київська область, 08298",
+      "schedule": {},
+      "subcats": [
+        "auto_repair"
+      ],
+      "prices": {},
+      "reviews": [],
+      "views": 1,
+      "photos": [],
+      "importSource": "city_gemini",
+      "deletedAt": null,
+      "deletedReason": null
+    },
+    {
+      "id": "loc-imp-9e00b2c4",
+      "providerId": null,
+      "lat": 50.4926988,
+      "lng": 30.3410815,
+      "cat": "repair",
+      "title": "МАКСік Сервіс",
+      "text": "Знайдено на Google Maps",
+      "rating": 4.7,
+      "reviewsCount": 41,
+      "openStatus": "open",
+      "workingHours": "",
+      "phone": "+380961127323",
+      "address": "вулиця Пономарьова, 13А, Коцюбинське, Київська область, 08298",
+      "schedule": {},
+      "subcats": [
+        "keys"
+      ],
+      "prices": {},
+      "reviews": [],
+      "views": 0,
+      "photos": [],
+      "importSource": "city_gemini",
+      "deletedAt": null,
+      "deletedReason": null
+    },
+    {
+      "id": "loc-imp-e38dd919",
+      "providerId": null,
+      "lat": 50.4561806,
+      "lng": 30.3452146,
+      "cat": "repair",
+      "title": "Ремонт взуття",
+      "text": "Знайдено на Google Maps",
+      "rating": 4.3,
+      "reviewsCount": 23,
+      "openStatus": "open",
+      "workingHours": "",
+      "phone": "+380633090524",
+      "address": "вулиця Ореста Васкула, Київ, 02000",
+      "schedule": {},
+      "subcats": [
+        "shoes"
+      ],
+      "prices": {},
+      "reviews": [],
+      "views": 0,
+      "photos": [],
+      "importSource": "city_gemini",
+      "deletedAt": null,
+      "deletedReason": null
+    },
+    {
+      "id": "loc-imp-aa3ff76a",
+      "providerId": null,
+      "lat": 50.4721568,
+      "lng": 30.3385672,
+      "cat": "beauty",
+      "title": "Манікюр та Нарощування нігтів Новобіличі — Аліна Nails | Академмістечко",
+      "text": "Знайдено на Google Maps",
+      "rating": 5,
+      "reviewsCount": 2,
+      "openStatus": "open",
+      "workingHours": "",
+      "phone": "+380973894145",
+      "address": "вулиця Підлісна, 1, Київ, 03164",
+      "schedule": {},
+      "subcats": [
+        "nails"
+      ],
+      "prices": {},
+      "reviews": [],
+      "views": 0,
+      "photos": [],
+      "importSource": "city_gemini",
+      "deletedAt": null,
+      "deletedReason": null
+    },
+    {
       "id": "loc-imp-77458bb6",
       "providerId": null,
       "lat": 50.4901077,
@@ -2485,32 +2668,6 @@
       "deletedReason": null
     },
     {
-      "id": "loc-imp-aa3ff76a",
-      "providerId": null,
-      "lat": 50.4721568,
-      "lng": 30.3385672,
-      "cat": "beauty",
-      "title": "Манікюр та Нарощування нігтів Новобіличі — Аліна Nails | Академмістечко",
-      "text": "Знайдено на Google Maps",
-      "rating": 5,
-      "reviewsCount": 2,
-      "openStatus": "open",
-      "workingHours": "",
-      "phone": "+380973894145",
-      "address": "вулиця Підлісна, 1, Київ, 03164",
-      "schedule": {},
-      "subcats": [
-        "nails"
-      ],
-      "prices": {},
-      "reviews": [],
-      "views": 0,
-      "photos": [],
-      "importSource": "city_gemini",
-      "deletedAt": null,
-      "deletedReason": null
-    },
-    {
       "id": "loc-imp-d09e5357",
       "providerId": null,
       "lat": 50.4890337,
@@ -2527,6 +2684,162 @@
       "schedule": {},
       "subcats": [
         "hair"
+      ],
+      "prices": {},
+      "reviews": [],
+      "views": 0,
+      "photos": [],
+      "importSource": "city_gemini",
+      "deletedAt": null,
+      "deletedReason": null
+    },
+    {
+      "id": "loc-imp-96b9505c",
+      "providerId": null,
+      "lat": 50.4545733,
+      "lng": 30.3694003,
+      "cat": "repair",
+      "title": "Майстерня взуття",
+      "text": "Знайдено на Google Maps",
+      "rating": 5,
+      "reviewsCount": 4,
+      "openStatus": "open",
+      "workingHours": "",
+      "phone": "",
+      "address": "вулиця Львівська, 36, Київ, 02000",
+      "schedule": {},
+      "subcats": [
+        "shoes"
+      ],
+      "prices": {},
+      "reviews": [],
+      "views": 0,
+      "photos": [],
+      "importSource": "city_gemini",
+      "deletedAt": null,
+      "deletedReason": null
+    },
+    {
+      "id": "loc-imp-3ef6e39b",
+      "providerId": null,
+      "lat": 50.4720794,
+      "lng": 30.3372695,
+      "cat": "repair",
+      "title": "Майстерня побутових послуг",
+      "text": "Знайдено на Google Maps",
+      "rating": 4.6,
+      "reviewsCount": 24,
+      "openStatus": "open",
+      "workingHours": "",
+      "phone": "+380930643046",
+      "address": "вулиця Підлісна, 1, Київ, 03164",
+      "schedule": {},
+      "subcats": [
+        "shoes"
+      ],
+      "prices": {},
+      "reviews": [],
+      "views": 0,
+      "photos": [],
+      "importSource": "city_gemini",
+      "deletedAt": null,
+      "deletedReason": null
+    },
+    {
+      "id": "loc-imp-5bfb12e3",
+      "providerId": null,
+      "lat": 50.4931723,
+      "lng": 30.362646,
+      "cat": "repair",
+      "title": "Мультисервіс - хімчистка та ремонт одягу, взуття, аксесуарів",
+      "text": "Знайдено на Google Maps",
+      "rating": 3.9,
+      "reviewsCount": 7,
+      "openStatus": "open",
+      "workingHours": "",
+      "phone": "+380504391495",
+      "address": "вулиця Берковецька, 6В, Київ, 04128",
+      "schedule": {},
+      "subcats": [
+        "shoes"
+      ],
+      "prices": {},
+      "reviews": [],
+      "views": 0,
+      "photos": [],
+      "importSource": "city_gemini",
+      "deletedAt": null,
+      "deletedReason": null
+    },
+    {
+      "id": "loc-imp-e7cfc7d7",
+      "providerId": null,
+      "lat": 50.4590957,
+      "lng": 30.3430007,
+      "cat": "repair",
+      "title": "Майстерня - Ремонт взуття у Василя",
+      "text": "Знайдено на Google Maps",
+      "rating": 4.9,
+      "reviewsCount": 58,
+      "openStatus": "open",
+      "workingHours": "",
+      "phone": "+380667261103",
+      "address": "вулиця Чорнобильська, 13в, Київ, 03179",
+      "schedule": {},
+      "subcats": [
+        "shoes"
+      ],
+      "prices": {},
+      "reviews": [],
+      "views": 0,
+      "photos": [],
+      "importSource": "city_gemini",
+      "deletedAt": null,
+      "deletedReason": null
+    },
+    {
+      "id": "loc-imp-aab423f3",
+      "providerId": null,
+      "lat": 50.4739708,
+      "lng": 30.3412343,
+      "cat": "repair",
+      "title": "Майстерня з виготовлення ключів",
+      "text": "Знайдено на Google Maps",
+      "rating": 5,
+      "reviewsCount": 5,
+      "openStatus": "open",
+      "workingHours": "",
+      "phone": "",
+      "address": "вулиця Підлісна, 8а, Київ, 03164",
+      "schedule": {},
+      "subcats": [
+        "keys"
+      ],
+      "prices": {},
+      "reviews": [],
+      "views": 0,
+      "photos": [],
+      "importSource": "city_gemini",
+      "deletedAt": null,
+      "deletedReason": null
+    },
+    {
+      "id": "loc-imp-1d49b983",
+      "providerId": null,
+      "lat": 50.490004,
+      "lng": 30.3355599,
+      "cat": "pets",
+      "title": "Грумінг салон Natali Groom",
+      "text": "Знайдено на Google Maps",
+      "rating": 5,
+      "reviewsCount": 11,
+      "openStatus": "open",
+      "workingHours": "",
+      "phone": "+380954328080",
+      "address": "вулиця Доківська, 10, Коцюбинське, Київська область, 08298",
+      "schedule": {},
+      "subcats": [
+        "grooming"
       ],
       "prices": {},
       "reviews": [],
@@ -2589,6 +2902,99 @@
       "deletedReason": null
     },
     {
+      "id": "loc-imp-5162ddb8",
+      "providerId": null,
+      "lat": 50.4614322,
+      "lng": 30.3570624,
+      "cat": "rental",
+      "title": "Прокат інструментів",
+      "text": "Знайдено на Google Maps",
+      "rating": 4.2,
+      "reviewsCount": 15,
+      "openStatus": "open",
+      "workingHours": "",
+      "phone": "+380932519565",
+      "address": "під'їзд 1, проспект Академіка Палладіна, 22, Київ, 03142",
+      "schedule": {},
+      "subcats": [
+        "tools"
+      ],
+      "prices": {},
+      "reviews": [],
+      "views": 0,
+      "photos": [],
+      "importSource": "city_gemini",
+      "deletedAt": null,
+      "deletedReason": null
+    },
+    {
+      "id": "loc-english-school",
+      "providerId": null,
+      "lat": 50.44,
+      "lng": 30.51,
+      "cat": "education",
+      "title": "SpeakUp English",
+      "text": "Англійська для дорослих та дітей",
+      "rating": 4.7,
+      "reviewsCount": 1,
+      "openStatus": "open",
+      "workingHours": "09:00 - 21:00",
+      "phone": "+38 (073) 111-00-22",
+      "address": "м. Київ, вул. Басейна, 5",
+      "schedule": {
+        "Нд": "Вихідний",
+        "Сб": "10:00 - 16:00",
+        "Пн-Пт": "09:00 - 21:00"
+      },
+      "subcats": [
+        "languages",
+        "kids_clubs"
+      ],
+      "prices": {
+        "Разове розвиваюче заняття": "320 грн",
+        "Розмовне заняття в міні-групі": "270 грн",
+        "Індивідуальний урок з англійської": "480 грн"
+      },
+      "reviews": [
+        {
+          "date": "16.05.2026",
+          "text": "Гарна методика, помітний прогрес за місяць.",
+          "rating": 5
+        }
+      ],
+      "views": 0,
+      "photos": [],
+      "importSource": null,
+      "deletedAt": null,
+      "deletedReason": null
+    },
+    {
+      "id": "loc-imp-08b63b37",
+      "providerId": null,
+      "lat": 50.4907458,
+      "lng": 30.3349179,
+      "cat": "education",
+      "title": "CREATIVE STUDIO",
+      "text": "Знайдено на Google Maps",
+      "rating": 5,
+      "reviewsCount": 3,
+      "openStatus": "open",
+      "workingHours": "",
+      "phone": "+380965311731",
+      "address": "вулиця Доківська, 7а, Коцюбинське, Київська область, 08298",
+      "schedule": {},
+      "subcats": [
+        "creative"
+      ],
+      "prices": {},
+      "reviews": [],
+      "views": 0,
+      "photos": [],
+      "importSource": "city_gemini",
+      "deletedAt": null,
+      "deletedReason": null
+    },
+    {
       "id": "loc-imp-d9b078dc",
       "providerId": null,
       "lat": 50.490004,
@@ -2605,84 +3011,6 @@
       "schedule": {},
       "subcats": [
         "fitness"
-      ],
-      "prices": {},
-      "reviews": [],
-      "views": 0,
-      "photos": [],
-      "importSource": "city_gemini",
-      "deletedAt": null,
-      "deletedReason": null
-    },
-    {
-      "id": "loc-imp-96b9505c",
-      "providerId": null,
-      "lat": 50.4545733,
-      "lng": 30.3694003,
-      "cat": "repair",
-      "title": "Майстерня взуття",
-      "text": "Знайдено на Google Maps",
-      "rating": 5,
-      "reviewsCount": 4,
-      "openStatus": "open",
-      "workingHours": "",
-      "phone": "",
-      "address": "вулиця Львівська, 36, Київ, 02000",
-      "schedule": {},
-      "subcats": [
-        "shoes"
-      ],
-      "prices": {},
-      "reviews": [],
-      "views": 0,
-      "photos": [],
-      "importSource": "city_gemini",
-      "deletedAt": null,
-      "deletedReason": null
-    },
-    {
-      "id": "loc-imp-c6732903",
-      "providerId": null,
-      "lat": 50.4902297,
-      "lng": 30.3356321,
-      "cat": "beauty",
-      "title": "BrowArt",
-      "text": "Знайдено на Google Maps",
-      "rating": 4.9,
-      "reviewsCount": 36,
-      "openStatus": "open",
-      "workingHours": "",
-      "phone": "+380500253270",
-      "address": "«ФОРА», 3 поверх, вулиця Доківська, 14-1, «BrowArt» 3 поверх ТЦ «Атлант», Коцюбинське, Київська область, 08298",
-      "schedule": {},
-      "subcats": [
-        "brows"
-      ],
-      "prices": {},
-      "reviews": [],
-      "views": 0,
-      "photos": [],
-      "importSource": "city_gemini",
-      "deletedAt": null,
-      "deletedReason": null
-    },
-    {
-      "id": "loc-imp-bba6b0af",
-      "providerId": null,
-      "lat": 50.4954665,
-      "lng": 30.3188561,
-      "cat": "auto",
-      "title": "Шиносервіс \"Гуртовня шин\"",
-      "text": "Знайдено на Google Maps",
-      "rating": 4.2,
-      "reviewsCount": 107,
-      "openStatus": "open",
-      "workingHours": "",
-      "phone": "+380986352865",
-      "address": "вулиця Пономарьова, 5/6а, Коцюбинське, Київська область, 08298",
-      "schedule": {},
-      "subcats": [
-        "tyres"
       ],
       "prices": {},
       "reviews": [],
@@ -2797,49 +3125,104 @@
       "deletedReason": null
     },
     {
-      "id": "loc-imp-08b63b37",
+      "id": "loc-auto-diagnostics",
       "providerId": null,
-      "lat": 50.4907458,
-      "lng": 30.3349179,
-      "cat": "education",
-      "title": "CREATIVE STUDIO",
-      "text": "Знайдено на Google Maps",
-      "rating": 5,
-      "reviewsCount": 3,
-      "openStatus": "open",
-      "workingHours": "",
-      "phone": "+380965311731",
-      "address": "вулиця Доківська, 7а, Коцюбинське, Київська область, 08298",
-      "schedule": {},
-      "subcats": [
-        "creative"
-      ],
-      "prices": {},
-      "reviews": [],
-      "views": 0,
-      "photos": [],
-      "importSource": "city_gemini",
-      "deletedAt": null,
-      "deletedReason": null
-    },
-    {
-      "id": "loc-imp-3766a656",
-      "providerId": null,
-      "lat": 50.4955627,
-      "lng": 30.3192335,
+      "lat": 50.455,
+      "lng": 30.495,
       "cat": "auto",
-      "title": "Автомайстерня SHUTTLE",
-      "text": "Знайдено на Google Maps",
-      "rating": 4.9,
-      "reviewsCount": 76,
-      "openStatus": "open",
-      "workingHours": "",
-      "phone": "+380666812310",
-      "address": "вулиця Пономарьова, 6в, Коцюбинське, Київська область, 08298",
-      "schedule": {},
+      "title": "ProService Автоцентр",
+      "text": "ТО, діагностика та ходова частина",
+      "rating": 4.6,
+      "reviewsCount": 1,
+      "openStatus": "closed",
+      "workingHours": "09:00 - 19:00",
+      "phone": "+38 (093) 777-88-99",
+      "address": "м. Київ, вул. Січових Стрільців, 45",
+      "schedule": {
+        "Нд": "Вихідний",
+        "Пн-Сб": "09:00 - 19:00"
+      },
       "subcats": [
+        "maintenance",
         "auto_repair"
       ],
+      "prices": {
+        "Комп'ютерна діагностика": "420 грн",
+        "Діагностика ходової частини": "320 грн",
+        "Регулювання розвалу-сходження": "650 грн",
+        "Заміна гальмівних колодок на одній осі": "520 грн"
+      },
+      "reviews": [
+        {
+          "date": "02.05.2026",
+          "text": "Діагностику зробили швидко, все пояснили.",
+          "rating": 5
+        }
+      ],
+      "views": 1,
+      "photos": [],
+      "importSource": null,
+      "deletedAt": null,
+      "deletedReason": null
+    },
+    {
+      "id": "loc-football-arena",
+      "providerId": null,
+      "lat": 50.395,
+      "lng": 30.355,
+      "cat": "sport",
+      "title": "ArenaSport Кільцева",
+      "text": "Оренда полів, фітнес та дитячі секції",
+      "rating": 4.6,
+      "reviewsCount": 1,
+      "openStatus": "open",
+      "workingHours": "07:00 - 23:00",
+      "phone": "+38 (044) 999-88-77",
+      "address": "Київська обл., с. Петропавлівська Борщагівка, вул. Соборна, 5",
+      "schedule": {
+        "Пн-Нд": "07:00 - 23:00"
+      },
+      "subcats": [
+        "rent",
+        "fitness",
+        "sections"
+      ],
+      "prices": {
+        "Пробне заняття для дитини": "140 грн",
+        "Разове групове тренування": "240 грн",
+        "Оренда футбольного поля 1 год": "1150 грн"
+      },
+      "reviews": [
+        {
+          "date": "14.05.2026",
+          "text": "Гарне поле, зручний розклад бронювання.",
+          "rating": 5
+        }
+      ],
+      "views": 0,
+      "photos": [],
+      "importSource": null,
+      "deletedAt": null,
+      "deletedReason": null
+    },
+    {
+      "id": "loc-imp-c6732903",
+      "providerId": null,
+      "lat": 50.4902297,
+      "lng": 30.3356321,
+      "cat": "beauty",
+      "title": "BrowArt",
+      "text": "Знайдено на Google Maps",
+      "rating": 4.9,
+      "reviewsCount": 36,
+      "openStatus": "open",
+      "workingHours": "",
+      "phone": "+380500253270",
+      "address": "«ФОРА», 3 поверх, вулиця Доківська, 14-1, «BrowArt» 3 поверх ТЦ «Атлант», Коцюбинське, Київська область, 08298",
+      "schedule": {},
+      "subcats": [
+        "brows"
+      ],
       "prices": {},
       "reviews": [],
       "views": 0,
@@ -2849,19 +3232,19 @@
       "deletedReason": null
     },
     {
-      "id": "loc-imp-fcdb9aa5",
+      "id": "loc-imp-bba6b0af",
       "providerId": null,
-      "lat": 50.4718435,
-      "lng": 30.3564751,
+      "lat": 50.4954665,
+      "lng": 30.3188561,
       "cat": "auto",
-      "title": "Шиномотнаж \"БОМБА\" шини нові та БВ, пр. Паладіна 33",
+      "title": "Шиносервіс \"Гуртовня шин\"",
       "text": "Знайдено на Google Maps",
-      "rating": 4.4,
-      "reviewsCount": 128,
+      "rating": 4.2,
+      "reviewsCount": 107,
       "openStatus": "open",
       "workingHours": "",
-      "phone": "+380981210137",
-      "address": "Проспект Паладіна,33 вулиця Промислова, 1, вулиця Колекторна, 17, Київ, 02000",
+      "phone": "+380986352865",
+      "address": "вулиця Пономарьова, 5/6а, Коцюбинське, Київська область, 08298",
       "schedule": {},
       "subcats": [
         "tyres"
@@ -3005,45 +3388,19 @@
       "deletedReason": null
     },
     {
-      "id": "loc-imp-7bc2bb20",
+      "id": "loc-imp-3766a656",
       "providerId": null,
-      "lat": 50.4736417,
-      "lng": 30.3567515,
+      "lat": 50.4955627,
+      "lng": 30.3192335,
       "cat": "auto",
-      "title": "Автомийка",
+      "title": "Автомайстерня SHUTTLE",
       "text": "Знайдено на Google Maps",
-      "rating": 4,
-      "reviewsCount": 363,
+      "rating": 4.9,
+      "reviewsCount": 76,
       "openStatus": "open",
       "workingHours": "",
-      "phone": "",
-      "address": "вул. Олега Мудрака, 34/1, Київ, 02000",
-      "schedule": {},
-      "subcats": [
-        "wash"
-      ],
-      "prices": {},
-      "reviews": [],
-      "views": 0,
-      "photos": [],
-      "importSource": "city_gemini",
-      "deletedAt": null,
-      "deletedReason": null
-    },
-    {
-      "id": "loc-imp-b1de148e",
-      "providerId": null,
-      "lat": 50.4867133,
-      "lng": 30.3407614,
-      "cat": "auto",
-      "title": "СТО \"Телега\"",
-      "text": "Знайдено на Google Maps",
-      "rating": 4.3,
-      "reviewsCount": 80,
-      "openStatus": "open",
-      "workingHours": "",
-      "phone": "+380684058474",
-      "address": "смт, вулиця Залізнична, 7, Коцюбинське, Київська область, 08298",
+      "phone": "+380666812310",
+      "address": "вулиця Пономарьова, 6в, Коцюбинське, Київська область, 08298",
       "schedule": {},
       "subcats": [
         "auto_repair"
@@ -3057,463 +3414,28 @@
       "deletedReason": null
     },
     {
-      "id": "loc-imp-9e00b2c4",
+      "id": "loc-imp-fcdb9aa5",
       "providerId": null,
-      "lat": 50.4926988,
-      "lng": 30.3410815,
-      "cat": "repair",
-      "title": "МАКСік Сервіс",
-      "text": "Знайдено на Google Maps",
-      "rating": 4.7,
-      "reviewsCount": 41,
-      "openStatus": "open",
-      "workingHours": "",
-      "phone": "+380961127323",
-      "address": "вулиця Пономарьова, 13А, Коцюбинське, Київська область, 08298",
-      "schedule": {},
-      "subcats": [
-        "keys"
-      ],
-      "prices": {},
-      "reviews": [],
-      "views": 0,
-      "photos": [],
-      "importSource": "city_gemini",
-      "deletedAt": null,
-      "deletedReason": null
-    },
-    {
-      "id": "loc-imp-3ef6e39b",
-      "providerId": null,
-      "lat": 50.4720794,
-      "lng": 30.3372695,
-      "cat": "repair",
-      "title": "Майстерня побутових послуг",
-      "text": "Знайдено на Google Maps",
-      "rating": 4.6,
-      "reviewsCount": 24,
-      "openStatus": "open",
-      "workingHours": "",
-      "phone": "+380930643046",
-      "address": "вулиця Підлісна, 1, Київ, 03164",
-      "schedule": {},
-      "subcats": [
-        "shoes"
-      ],
-      "prices": {},
-      "reviews": [],
-      "views": 0,
-      "photos": [],
-      "importSource": "city_gemini",
-      "deletedAt": null,
-      "deletedReason": null
-    },
-    {
-      "id": "loc-imp-5bfb12e3",
-      "providerId": null,
-      "lat": 50.4931723,
-      "lng": 30.362646,
-      "cat": "repair",
-      "title": "Мультисервіс - хімчистка та ремонт одягу, взуття, аксесуарів",
-      "text": "Знайдено на Google Maps",
-      "rating": 3.9,
-      "reviewsCount": 7,
-      "openStatus": "open",
-      "workingHours": "",
-      "phone": "+380504391495",
-      "address": "вулиця Берковецька, 6В, Київ, 04128",
-      "schedule": {},
-      "subcats": [
-        "shoes"
-      ],
-      "prices": {},
-      "reviews": [],
-      "views": 0,
-      "photos": [],
-      "importSource": "city_gemini",
-      "deletedAt": null,
-      "deletedReason": null
-    },
-    {
-      "id": "loc-imp-e7cfc7d7",
-      "providerId": null,
-      "lat": 50.4590957,
-      "lng": 30.3430007,
-      "cat": "repair",
-      "title": "Майстерня - Ремонт взуття у Василя",
-      "text": "Знайдено на Google Maps",
-      "rating": 4.9,
-      "reviewsCount": 58,
-      "openStatus": "open",
-      "workingHours": "",
-      "phone": "+380667261103",
-      "address": "вулиця Чорнобильська, 13в, Київ, 03179",
-      "schedule": {},
-      "subcats": [
-        "shoes"
-      ],
-      "prices": {},
-      "reviews": [],
-      "views": 0,
-      "photos": [],
-      "importSource": "city_gemini",
-      "deletedAt": null,
-      "deletedReason": null
-    },
-    {
-      "id": "loc-imp-e38dd919",
-      "providerId": null,
-      "lat": 50.4561806,
-      "lng": 30.3452146,
-      "cat": "repair",
-      "title": "Ремонт взуття",
-      "text": "Знайдено на Google Maps",
-      "rating": 4.3,
-      "reviewsCount": 23,
-      "openStatus": "open",
-      "workingHours": "",
-      "phone": "+380633090524",
-      "address": "вулиця Ореста Васкула, Київ, 02000",
-      "schedule": {},
-      "subcats": [
-        "shoes"
-      ],
-      "prices": {},
-      "reviews": [],
-      "views": 0,
-      "photos": [],
-      "importSource": "city_gemini",
-      "deletedAt": null,
-      "deletedReason": null
-    },
-    {
-      "id": "loc-imp-aab423f3",
-      "providerId": null,
-      "lat": 50.4739708,
-      "lng": 30.3412343,
-      "cat": "repair",
-      "title": "Майстерня з виготовлення ключів",
-      "text": "Знайдено на Google Maps",
-      "rating": 5,
-      "reviewsCount": 5,
-      "openStatus": "open",
-      "workingHours": "",
-      "phone": "",
-      "address": "вулиця Підлісна, 8а, Київ, 03164",
-      "schedule": {},
-      "subcats": [
-        "keys"
-      ],
-      "prices": {},
-      "reviews": [],
-      "views": 0,
-      "photos": [],
-      "importSource": "city_gemini",
-      "deletedAt": null,
-      "deletedReason": null
-    },
-    {
-      "id": "loc-imp-9fe7cad5",
-      "providerId": null,
-      "lat": 50.4964686,
-      "lng": 30.3604719,
-      "cat": "repair",
-      "title": "Виготовлення ключів. Заміна батарейок. \"ТОП Сервіс\"",
-      "text": "Знайдено на Google Maps",
-      "rating": 4.6,
-      "reviewsCount": 14,
-      "openStatus": "open",
-      "workingHours": "",
-      "phone": "+380676585486",
-      "address": "вулиця Берковецька, 6 (Ашан, Київ, 02000",
-      "schedule": {},
-      "subcats": [
-        "keys"
-      ],
-      "prices": {},
-      "reviews": [],
-      "views": 0,
-      "photos": [],
-      "importSource": "city_gemini",
-      "deletedAt": null,
-      "deletedReason": null
-    },
-    {
-      "id": "loc-imp-ef8f75c3",
-      "providerId": null,
-      "lat": 50.4964859,
-      "lng": 30.3604281,
-      "cat": "home",
-      "title": "Містер майстер",
-      "text": "Знайдено на Google Maps",
-      "rating": 2.7,
-      "reviewsCount": 3,
-      "openStatus": "open",
-      "workingHours": "",
-      "phone": "",
-      "address": "ТЦ Ашан Біличі, вулиця Берковецька, 6, Київ, 02000",
-      "schedule": {},
-      "subcats": [
-        "handyman"
-      ],
-      "prices": {},
-      "reviews": [],
-      "views": 0,
-      "photos": [],
-      "importSource": "city_gemini",
-      "deletedAt": null,
-      "deletedReason": null
-    },
-    {
-      "id": "loc-imp-1d49b983",
-      "providerId": null,
-      "lat": 50.490004,
-      "lng": 30.3355599,
-      "cat": "pets",
-      "title": "Грумінг салон Natali Groom",
-      "text": "Знайдено на Google Maps",
-      "rating": 5,
-      "reviewsCount": 11,
-      "openStatus": "open",
-      "workingHours": "",
-      "phone": "+380954328080",
-      "address": "вулиця Доківська, 10, Коцюбинське, Київська область, 08298",
-      "schedule": {},
-      "subcats": [
-        "grooming"
-      ],
-      "prices": {},
-      "reviews": [],
-      "views": 0,
-      "photos": [],
-      "importSource": "city_gemini",
-      "deletedAt": null,
-      "deletedReason": null
-    },
-    {
-      "id": "loc-imp-5162ddb8",
-      "providerId": null,
-      "lat": 50.4614322,
-      "lng": 30.3570624,
-      "cat": "rental",
-      "title": "Прокат інструментів",
-      "text": "Знайдено на Google Maps",
-      "rating": 4.2,
-      "reviewsCount": 15,
-      "openStatus": "open",
-      "workingHours": "",
-      "phone": "+380932519565",
-      "address": "під'їзд 1, проспект Академіка Палладіна, 22, Київ, 03142",
-      "schedule": {},
-      "subcats": [
-        "tools"
-      ],
-      "prices": {},
-      "reviews": [],
-      "views": 0,
-      "photos": [],
-      "importSource": "city_gemini",
-      "deletedAt": null,
-      "deletedReason": null
-    },
-    {
-      "id": "loc-imp-506c935a",
-      "providerId": null,
-      "lat": 50.4852558,
-      "lng": 30.390331,
-      "cat": "rental",
-      "title": "Фотобум | Fotobym",
-      "text": "Знайдено на Google Maps",
-      "rating": 4.9,
-      "reviewsCount": 248,
-      "openStatus": "open",
-      "workingHours": "",
-      "phone": "",
-      "address": "вулиця Мрії, 19, оф 206, Kyiv, 04128",
-      "schedule": {},
-      "subcats": [
-        "photo_video"
-      ],
-      "prices": {},
-      "reviews": [],
-      "views": 0,
-      "photos": [],
-      "importSource": "city_gemini",
-      "deletedAt": null,
-      "deletedReason": null
-    },
-    {
-      "id": "loc-auto-diagnostics",
-      "providerId": null,
-      "lat": 50.455,
-      "lng": 30.495,
+      "lat": 50.4718435,
+      "lng": 30.3564751,
       "cat": "auto",
-      "title": "ProService Автоцентр",
-      "text": "ТО, діагностика та ходова частина",
-      "rating": 4.6,
-      "reviewsCount": 1,
-      "openStatus": "closed",
-      "workingHours": "09:00 - 19:00",
-      "phone": "+38 (093) 777-88-99",
-      "address": "м. Київ, вул. Січових Стрільців, 45",
-      "schedule": {
-        "Нд": "Вихідний",
-        "Пн-Сб": "09:00 - 19:00"
-      },
-      "subcats": [
-        "maintenance",
-        "auto_repair"
-      ],
-      "prices": {
-        "Комп'ютерна діагностика": "420 грн",
-        "Діагностика ходової частини": "320 грн",
-        "Регулювання розвалу-сходження": "650 грн",
-        "Заміна гальмівних колодок на одній осі": "520 грн"
-      },
-      "reviews": [
-        {
-          "date": "02.05.2026",
-          "text": "Діагностику зробили швидко, все пояснили.",
-          "rating": 5
-        }
-      ],
-      "views": 1,
-      "photos": [],
-      "importSource": null,
-      "deletedAt": null,
-      "deletedReason": null
-    },
-    {
-      "id": "loc-top-tyres",
-      "providerId": null,
-      "lat": 50.4612,
-      "lng": 30.5164,
-      "cat": "auto",
-      "title": "TopTyres Шиномонтаж на Подолі",
-      "text": "Шиномонтаж, балансування, ремонт проколів",
-      "rating": 4.9,
-      "reviewsCount": 3,
+      "title": "Шиномотнаж \"БОМБА\" шини нові та БВ, пр. Паладіна 33",
+      "text": "Знайдено на Google Maps",
+      "rating": 4.4,
+      "reviewsCount": 128,
       "openStatus": "open",
-      "workingHours": "08:00 - 20:00",
-      "phone": "+38 (067) 111-22-33",
-      "address": "м. Київ, вул. Хорива, 25",
-      "schedule": {
-        "Нд": "Вихідний",
-        "Сб": "09:00 - 18:00",
-        "Пн-Пт": "08:00 - 20:00"
-      },
+      "workingHours": "",
+      "phone": "+380981210137",
+      "address": "Проспект Паладіна,33 вулиця Промислова, 1, вулиця Колекторна, 17, Київ, 02000",
+      "schedule": {},
       "subcats": [
-        "tyres",
-        "maintenance"
+        "tyres"
       ],
-      "prices": {
-        "Сезонний комплекс R15": "720 грн",
-        "Сезонний комплекс R16": "820 грн",
-        "Сезонний комплекс R17": "920 грн",
-        "Ремонт проколу колеса": "230 грн",
-        "Заміна мастила у двигуні + фільтр": "400 грн"
-      },
-      "reviews": [
-        {
-          "date": "24.05.2026",
-          "text": "Найкращий шиномонтаж у місті! Балансування за 15 хвилин.",
-          "rating": 5
-        },
-        {
-          "date": "18.05.2026",
-          "text": "Привітний персонал, є кава та зона очікування.",
-          "rating": 5
-        },
-        {
-          "date": "10.05.2026",
-          "text": "Краще записуватись заздалегідь.",
-          "rating": 4
-        }
-      ],
+      "prices": {},
+      "reviews": [],
       "views": 0,
       "photos": [],
-      "importSource": null,
-      "deletedAt": null,
-      "deletedReason": null
-    },
-    {
-      "id": "loc-english-school",
-      "providerId": null,
-      "lat": 50.44,
-      "lng": 30.51,
-      "cat": "education",
-      "title": "SpeakUp English",
-      "text": "Англійська для дорослих та дітей",
-      "rating": 4.7,
-      "reviewsCount": 1,
-      "openStatus": "open",
-      "workingHours": "09:00 - 21:00",
-      "phone": "+38 (073) 111-00-22",
-      "address": "м. Київ, вул. Басейна, 5",
-      "schedule": {
-        "Нд": "Вихідний",
-        "Сб": "10:00 - 16:00",
-        "Пн-Пт": "09:00 - 21:00"
-      },
-      "subcats": [
-        "languages",
-        "kids_clubs"
-      ],
-      "prices": {
-        "Разове розвиваюче заняття": "320 грн",
-        "Розмовне заняття в міні-групі": "270 грн",
-        "Індивідуальний урок з англійської": "480 грн"
-      },
-      "reviews": [
-        {
-          "date": "16.05.2026",
-          "text": "Гарна методика, помітний прогрес за місяць.",
-          "rating": 5
-        }
-      ],
-      "views": 0,
-      "photos": [],
-      "importSource": null,
-      "deletedAt": null,
-      "deletedReason": null
-    },
-    {
-      "id": "loc-football-arena",
-      "providerId": null,
-      "lat": 50.395,
-      "lng": 30.355,
-      "cat": "sport",
-      "title": "ArenaSport Кільцева",
-      "text": "Оренда полів, фітнес та дитячі секції",
-      "rating": 4.6,
-      "reviewsCount": 1,
-      "openStatus": "open",
-      "workingHours": "07:00 - 23:00",
-      "phone": "+38 (044) 999-88-77",
-      "address": "Київська обл., с. Петропавлівська Борщагівка, вул. Соборна, 5",
-      "schedule": {
-        "Пн-Нд": "07:00 - 23:00"
-      },
-      "subcats": [
-        "rent",
-        "fitness",
-        "sections"
-      ],
-      "prices": {
-        "Пробне заняття для дитини": "140 грн",
-        "Разове групове тренування": "240 грн",
-        "Оренда футбольного поля 1 год": "1150 грн"
-      },
-      "reviews": [
-        {
-          "date": "14.05.2026",
-          "text": "Гарне поле, зручний розклад бронювання.",
-          "rating": 5
-        }
-      ],
-      "views": 0,
-      "photos": [],
-      "importSource": null,
+      "importSource": "city_gemini",
       "deletedAt": null,
       "deletedReason": null
     },
@@ -3575,6 +3497,84 @@
       "views": 0,
       "photos": [],
       "importSource": null,
+      "deletedAt": null,
+      "deletedReason": null
+    },
+    {
+      "id": "loc-imp-9fe7cad5",
+      "providerId": null,
+      "lat": 50.4964686,
+      "lng": 30.3604719,
+      "cat": "repair",
+      "title": "Виготовлення ключів. Заміна батарейок. \"ТОП Сервіс\"",
+      "text": "Знайдено на Google Maps",
+      "rating": 4.6,
+      "reviewsCount": 14,
+      "openStatus": "open",
+      "workingHours": "",
+      "phone": "+380676585486",
+      "address": "вулиця Берковецька, 6 (Ашан, Київ, 02000",
+      "schedule": {},
+      "subcats": [
+        "keys"
+      ],
+      "prices": {},
+      "reviews": [],
+      "views": 0,
+      "photos": [],
+      "importSource": "city_gemini",
+      "deletedAt": null,
+      "deletedReason": null
+    },
+    {
+      "id": "loc-imp-ef8f75c3",
+      "providerId": null,
+      "lat": 50.4964859,
+      "lng": 30.3604281,
+      "cat": "home",
+      "title": "Містер майстер",
+      "text": "Знайдено на Google Maps",
+      "rating": 2.7,
+      "reviewsCount": 3,
+      "openStatus": "open",
+      "workingHours": "",
+      "phone": "",
+      "address": "ТЦ Ашан Біличі, вулиця Берковецька, 6, Київ, 02000",
+      "schedule": {},
+      "subcats": [
+        "handyman"
+      ],
+      "prices": {},
+      "reviews": [],
+      "views": 0,
+      "photos": [],
+      "importSource": "city_gemini",
+      "deletedAt": null,
+      "deletedReason": null
+    },
+    {
+      "id": "loc-imp-506c935a",
+      "providerId": null,
+      "lat": 50.4852558,
+      "lng": 30.390331,
+      "cat": "rental",
+      "title": "Фотобум | Fotobym",
+      "text": "Знайдено на Google Maps",
+      "rating": 4.9,
+      "reviewsCount": 248,
+      "openStatus": "open",
+      "workingHours": "",
+      "phone": "",
+      "address": "вулиця Мрії, 19, оф 206, Kyiv, 04128",
+      "schedule": {},
+      "subcats": [
+        "photo_video"
+      ],
+      "prices": {},
+      "reviews": [],
+      "views": 0,
+      "photos": [],
+      "importSource": "city_gemini",
       "deletedAt": null,
       "deletedReason": null
     },
@@ -3733,6 +3733,89 @@
       "deletedReason": null
     },
     {
+      "id": "loc-ef41d74e",
+      "providerId": "a0000000-0000-4000-8000-000000000001",
+      "lat": 50.45,
+      "lng": 30.52,
+      "cat": "auto",
+      "title": "Test QA Biz",
+      "text": "",
+      "rating": 0,
+      "reviewsCount": 0,
+      "openStatus": "open",
+      "workingHours": "09:00 - 18:00",
+      "phone": "",
+      "address": "Kyiv Test 1",
+      "schedule": {
+        "Пн-Пт": "09:00 - 18:00"
+      },
+      "subcats": [],
+      "prices": {},
+      "reviews": [],
+      "views": 0,
+      "photos": [],
+      "importSource": null,
+      "deletedAt": null,
+      "deletedReason": null
+    },
+    {
+      "id": "loc-ff637cc8",
+      "providerId": "ce38b4f7-77d7-4a8f-a20a-233c438f3733",
+      "lat": 50.4905976727166,
+      "lng": 30.3418897716981,
+      "cat": "auto",
+      "title": "Шиномонтаж",
+      "text": "Шиномонтаж-Аргон-Автокондиционеры-СТО",
+      "rating": 0,
+      "reviewsCount": 0,
+      "openStatus": "closed",
+      "workingHours": "09:00 - 18:00",
+      "phone": "0934528352",
+      "address": "вулиця Пономарьова, 28б, Коцюбинське, Київська область, 08298",
+      "schedule": {
+        "Пн-Пт": "09:00 - 18:00"
+      },
+      "subcats": [],
+      "prices": {
+        "Сезонний комплекс R13": "650 грн",
+        "Сезонний комплекс R19": "1350 грн"
+      },
+      "reviews": [],
+      "views": 0,
+      "photos": [],
+      "importSource": null,
+      "deletedAt": null,
+      "deletedReason": null
+    },
+    {
+      "id": "loc-56aa97f2",
+      "providerId": "ce38b4f7-77d7-4a8f-a20a-233c438f3733",
+      "lat": 50.4879670442835,
+      "lng": 30.3446511662534,
+      "cat": "beauty",
+      "title": "Манікюр",
+      "text": "Манікюр",
+      "rating": 0,
+      "reviewsCount": 0,
+      "openStatus": "open",
+      "workingHours": "09:00 - 18:00",
+      "phone": "0661486347",
+      "address": "коцюбинське",
+      "schedule": {
+        "Пн-Пт": "09:00 - 18:00"
+      },
+      "subcats": [
+        "nails"
+      ],
+      "prices": {},
+      "reviews": [],
+      "views": 1,
+      "photos": [],
+      "importSource": null,
+      "deletedAt": null,
+      "deletedReason": null
+    },
+    {
       "id": "loc-nail-studio",
       "providerId": null,
       "lat": 50.432,
@@ -3811,89 +3894,6 @@
         }
       ],
       "views": 0,
-      "photos": [],
-      "importSource": null,
-      "deletedAt": null,
-      "deletedReason": null
-    },
-    {
-      "id": "loc-ef41d74e",
-      "providerId": "a0000000-0000-4000-8000-000000000001",
-      "lat": 50.45,
-      "lng": 30.52,
-      "cat": "auto",
-      "title": "Test QA Biz",
-      "text": "",
-      "rating": 0,
-      "reviewsCount": 0,
-      "openStatus": "open",
-      "workingHours": "09:00 - 18:00",
-      "phone": "",
-      "address": "Kyiv Test 1",
-      "schedule": {
-        "Пн-Пт": "09:00 - 18:00"
-      },
-      "subcats": [],
-      "prices": {},
-      "reviews": [],
-      "views": 0,
-      "photos": [],
-      "importSource": null,
-      "deletedAt": null,
-      "deletedReason": null
-    },
-    {
-      "id": "loc-ff637cc8",
-      "providerId": "ce38b4f7-77d7-4a8f-a20a-233c438f3733",
-      "lat": 50.4905976727166,
-      "lng": 30.3418897716981,
-      "cat": "auto",
-      "title": "Шиномонтаж",
-      "text": "Шиномонтаж-Аргон-Автокондиционеры-СТО",
-      "rating": 0,
-      "reviewsCount": 0,
-      "openStatus": "closed",
-      "workingHours": "09:00 - 18:00",
-      "phone": "0934528352",
-      "address": "вулиця Пономарьова, 28б, Коцюбинське, Київська область, 08298",
-      "schedule": {
-        "Пн-Пт": "09:00 - 18:00"
-      },
-      "subcats": [],
-      "prices": {
-        "Сезонний комплекс R13": "650 грн",
-        "Сезонний комплекс R19": "1350 грн"
-      },
-      "reviews": [],
-      "views": 0,
-      "photos": [],
-      "importSource": null,
-      "deletedAt": null,
-      "deletedReason": null
-    },
-    {
-      "id": "loc-56aa97f2",
-      "providerId": "ce38b4f7-77d7-4a8f-a20a-233c438f3733",
-      "lat": 50.4879670442835,
-      "lng": 30.3446511662534,
-      "cat": "beauty",
-      "title": "Манікюр",
-      "text": "Манікюр",
-      "rating": 0,
-      "reviewsCount": 0,
-      "openStatus": "open",
-      "workingHours": "09:00 - 18:00",
-      "phone": "0661486347",
-      "address": "коцюбинське",
-      "schedule": {
-        "Пн-Пт": "09:00 - 18:00"
-      },
-      "subcats": [
-        "nails"
-      ],
-      "prices": {},
-      "reviews": [],
-      "views": 1,
       "photos": [],
       "importSource": null,
       "deletedAt": null,

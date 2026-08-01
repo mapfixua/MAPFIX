@@ -26,6 +26,7 @@ const {
   getTelegramBotLink,
   getTelegramIdForPhone,
   normalizePhone,
+  updateUserPhone,
 } = require('./telegram-auth.js');
 const { createAuthRouter } = require('./routes/auth.js');
 let oauthPublicConfig = () => ({
@@ -552,6 +553,13 @@ function ownsLocation(loc, userId) {
   return loc && loc.providerId === userId;
 }
 
+function formatLocationPhone(raw) {
+  const phoneRaw = String(raw || '').trim();
+  if (!phoneRaw) return '';
+  const normalized = normalizePhone(phoneRaw);
+  return normalized.replace(/\D/g, '').length >= 10 ? normalized : phoneRaw;
+}
+
 function defaultLocation(providerId, body) {
   return {
     id: 'loc-' + crypto.randomUUID().slice(0, 8),
@@ -565,7 +573,7 @@ function defaultLocation(providerId, body) {
     reviewsCount: 0,
     openStatus: body.openStatus === 'closed' ? 'closed' : 'open',
     workingHours: body.workingHours?.trim() || '09:00 - 18:00',
-    phone: body.phone?.trim() || '',
+    phone: formatLocationPhone(body.phone),
     address: body.address?.trim() || '',
     schedule: body.schedule || { 'Пн-Пт': '09:00 - 18:00' },
     subcats: Array.isArray(body.subcats) ? body.subcats : [],
@@ -2158,17 +2166,29 @@ app.get('/api/provider/dashboard', requireAuth, rejectClientFromPanel, requirePr
   try {
     const user = getSessionUser(req);
     const data = await readData();
+    const fullUser = (await readUsers()).find((u) => u.id === user.id) || user;
+    let telegramId = fullUser.telegramId || null;
+    if (fullUser.phone && !telegramId) {
+      telegramId = await getTelegramIdForPhone(fullUser.phone);
+    }
     const profile =
       data.providerProfiles[user.id] ||
       (user.role === 'admin'
         ? { companyName: 'Адміністратор' }
         : { companyName: 'Моя компанія' });
+    const accountPhone = fullUser.phone || profile.phone || '';
+    if (!profile.phone && accountPhone) profile.phone = accountPhone;
     const locations = data.mockLocations.filter((l) => l.providerId === user.id && !isLocationTrashed(l));
 
     res.json({
       profile,
       locations,
       masterCatalog: data.masterCatalog,
+      account: {
+        phone: accountPhone,
+        telegramLinked: Boolean(telegramId),
+        telegramLinkedAt: fullUser.telegramLinkedAt || null,
+      },
     });
   } catch (err) {
     console.error(err);
@@ -2391,10 +2411,13 @@ app.put('/api/provider/locations/:id', requireAuth, requireProviderOrAdmin, asyn
       return res.status(403).json({ error: 'Немає доступу до цієї локації' });
     }
 
-    const fields = ['title', 'text', 'address', 'phone', 'workingHours', 'openStatus'];
+    const fields = ['title', 'text', 'address', 'workingHours', 'openStatus'];
     fields.forEach((f) => {
       if (req.body[f] !== undefined) loc[f] = req.body[f];
     });
+    if (req.body.phone !== undefined) {
+      loc.phone = formatLocationPhone(req.body.phone);
+    }
     if (req.body.lat !== undefined) loc.lat = Number(req.body.lat);
     if (req.body.lng !== undefined) loc.lng = Number(req.body.lng);
 
@@ -2428,7 +2451,8 @@ app.put('/api/provider/locations/:id', requireAuth, requireProviderOrAdmin, asyn
     }
 
     if (req.body.prices && typeof req.body.prices === 'object') {
-      loc.prices = { ...(loc.prices || {}), ...normalizePricesMap(req.body.prices) };
+      // Full editor save replaces the price list (unchecked services are removed).
+      loc.prices = normalizePricesMap(req.body.prices);
     }
     if (req.body.schedule) loc.schedule = req.body.schedule;
 
@@ -2594,7 +2618,31 @@ app.put('/api/provider/profile', requireAuth, requireProvider, async (req, res) 
       req.body.serviceSubcategories === undefined &&
       req.body.customSubcategories === undefined;
     if (req.body.companyName?.trim()) profile.companyName = req.body.companyName.trim();
-    if (req.body.phone !== undefined) profile.phone = req.body.phone.trim();
+    if (req.body.phone !== undefined) {
+      const phoneRaw = String(req.body.phone || '').trim();
+      if (!phoneRaw) {
+        profile.phone = '';
+        const clearErr = await updateUserPhone(user.id, null);
+        if (clearErr && clearErr.code !== '23502') {
+          console.warn('[profile] clear users.phone:', clearErr.message);
+        }
+      } else {
+        const normalizedPhone = normalizePhone(phoneRaw);
+        if (!normalizedPhone || normalizedPhone.replace(/\D/g, '').length < 10) {
+          return res.status(400).json({ error: 'Невірний формат телефону' });
+        }
+        const phoneError = await updateUserPhone(user.id, normalizedPhone);
+        if (phoneError) {
+          if (phoneError.code === '23505') {
+            return res.status(409).json({
+              error: 'Цей телефон уже зайнятий іншим акаунтом',
+            });
+          }
+          return res.status(500).json({ error: 'Не вдалося зберегти телефон' });
+        }
+        profile.phone = normalizedPhone;
+      }
+    }
     if (req.body.serviceSubcategories !== undefined) {
       profile.serviceSubcategories = normalizeServiceSubcategories(
         req.body.serviceSubcategories,
@@ -2647,7 +2695,20 @@ app.put('/api/provider/profile', requireAuth, requireProvider, async (req, res) 
     } catch (e) {
       console.warn('[profile] local skip:', e.message);
     }
-    res.json({ ok: true, profile });
+    const fullUser = (await readUsers()).find((u) => u.id === user.id) || user;
+    let telegramId = fullUser.telegramId || null;
+    if (fullUser.phone && !telegramId) {
+      telegramId = await getTelegramIdForPhone(fullUser.phone);
+    }
+    res.json({
+      ok: true,
+      profile,
+      account: {
+        phone: fullUser.phone || profile.phone || '',
+        telegramLinked: Boolean(telegramId),
+        telegramLinkedAt: fullUser.telegramLinkedAt || null,
+      },
+    });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Помилка оновлення профілю' });
