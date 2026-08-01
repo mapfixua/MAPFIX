@@ -39,7 +39,13 @@ function expandQueryTokens(text) {
   return [...new Set([...base, ...extra.filter(Boolean)])];
 }
 
-const GEMINI_MODELS = ['gemini-2.0-flash', 'gemini-2.0-flash-lite', 'gemini-2.5-flash'];
+// 2.0/2.5 Flash часто недоступні новим ключам (limit:0 / 404). Актуальний Free: 3.5 Flash.
+const GEMINI_MODELS = [
+  'gemini-3.5-flash',
+  'gemini-flash-latest',
+  'gemini-3.5-flash-lite',
+  'gemini-3.1-flash-lite',
+];
 
 function tokenize(text) {
   return normalizeText(text)
@@ -504,7 +510,7 @@ ${lines}
         let data;
         try {
           const res = await fetch(
-            `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${encodeURIComponent(apiKey)}`,
+            `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent?key=${encodeURIComponent(apiKey)}`,
             {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
