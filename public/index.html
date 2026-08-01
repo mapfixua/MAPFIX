@@ -296,11 +296,34 @@
             line-height: 1.35;
         }
         @media (max-width: 768px) {
+            #sidebar-detail-view.mode-preview {
+                cursor: pointer;
+            }
+            #sidebar-detail-view.mode-preview .detail-header {
+                padding: 10px 14px 12px;
+                gap: 8px;
+                overflow-y: auto;
+                flex: 1;
+                min-height: 0;
+            }
+            #sidebar-detail-view.mode-preview .detail-actions-row {
+                gap: 6px;
+            }
+            #sidebar-detail-view.mode-preview .detail-actions-row .action-btn:not(.btn-dive):not(.btn-call) {
+                display: none;
+            }
+            #sidebar-detail-view.mode-preview .btn-fav-header {
+                display: none;
+            }
             #sidebar-detail-view.mode-preview .detail-scroll-body {
                 display: none;
             }
             #sidebar-detail-view.mode-dive .detail-scroll-body {
                 display: flex;
+            }
+            #sidebar-detail-view.mode-dive .detail-header {
+                flex-shrink: 0;
+                overflow: visible;
             }
         }
         .detail-section { background: white; border: 1px solid var(--border); border-radius: 12px; padding: 14px; display: flex; flex-direction: column; gap: 10px; }
@@ -1453,6 +1476,13 @@
                 openMasterDetail(State.selectedLocation.id, { mode: 'dive', forceMode: true });
             };
 
+            const detailViewEl = document.getElementById('sidebar-detail-view');
+            detailViewEl.addEventListener('click', (e) => {
+                if (State.detailMode !== 'preview' || !State.selectedLocation) return;
+                if (e.target.closest('a, button, input, textarea, select, label')) return;
+                diveIntoSelectedDetail();
+            });
+
             function pulseSheetContent() {
                 sidebarListView.classList.remove('sheet-content-enter');
                 void sidebarListView.offsetWidth;
@@ -1715,7 +1745,7 @@
                 syncUI();
             }
 
-            // Прев'ю (1-й клік) → провалювання в деталі (2-й / подвійний клік)
+            // Прев'ю (1-й клік) → провалювання в деталі (2-й тап / «Детальніше»)
             window.openMasterDetail = function(locId, opts = {}) {
                 const loc = window.mockLocations.find(l => l.id === locId);
                 if (!loc) return;
@@ -1729,7 +1759,6 @@
                 if (!opts.forceMode && sameSelected && State.detailMode === 'dive' && opts.fromMarker) {
                     enterDetailDive();
                     map.panTo([loc.lat, loc.lng]);
-                    openPopupForLocation(loc);
                     return;
                 }
 
@@ -1751,26 +1780,26 @@
                 const hasAddress = Boolean(String(loc.address || '').trim());
                 const directionsBtn =
                   hasCoords || hasAddress
-                    ? `<button type="button" class="action-btn btn-directions" onclick="openGoogleMapsDirections('${escapeHtml(loc.id)}')">🧭 Побудувати маршрут</button>`
+                    ? `<button type="button" class="action-btn btn-directions" onclick="event.stopPropagation(); openGoogleMapsDirections('${escapeHtml(loc.id)}')">🧭 Побудувати маршрут</button>`
                     : '';
                 const diveBtn =
                   mode === 'preview'
-                    ? `<button type="button" class="action-btn btn-dive" onclick="diveIntoSelectedDetail()">Детальніше</button>
-                       <p class="detail-preview-hint">Натисніть ще раз на маркер або «Детальніше», щоб відкрити повну картку</p>`
+                    ? `<button type="button" class="action-btn btn-dive" onclick="event.stopPropagation(); diveIntoSelectedDetail()">Детальніше</button>
+                       <p class="detail-preview-hint">Ще раз по маркеру або «Детальніше» — повна картка</p>`
                     : '';
                 const headerBox = document.getElementById('detailHeaderContent');
                 headerBox.innerHTML = `
-                    <button class="back-btn" onclick="closeMasterDetail()">⬅️ Назад до списку</button>
+                    <button class="back-btn" onclick="event.stopPropagation(); closeMasterDetail()">⬅️ Назад до списку</button>
                     <h2 class="detail-main-title">${escapeHtml(loc.title)}</h2>
                     <div class="provider-meta">
                         <span class="status-badge ${loc.openStatus === 'open' ? 'open' : 'closed'}">${loc.openStatus === 'open' ? 'Відкрито' : 'Зачинено'}</span>
                         <span class="rating-block"><span class="star-icon">★</span><b>${Number(loc.rating || 0).toFixed(1)}</b> <span class="reviews-count">(${Number(loc.reviewsCount) || 0})</span></span>
                     </div>
                     <div class="detail-actions-row">
-                        ${loc.phone ? `<a href="tel:${escapeHtml(loc.phone)}" class="action-btn btn-call">📞 Зателефонувати</a>` : ''}
-                        <button type="button" class="action-btn btn-route" onclick="panToMaster(${Number(loc.lat)}, ${Number(loc.lng)})">🗺️ На карті</button>
+                        ${loc.phone ? `<a href="tel:${escapeHtml(loc.phone)}" class="action-btn btn-call" onclick="event.stopPropagation()">📞 Зателефонувати</a>` : ''}
+                        <button type="button" class="action-btn btn-route" onclick="event.stopPropagation(); panToMaster(${Number(loc.lat)}, ${Number(loc.lng)})">🗺️ На карті</button>
                         ${directionsBtn}
-                        <button type="button" class="btn-fav-header ${isFav ? 'active' : ''}" onclick="toggleFavorite('${escapeHtml(loc.id)}')">${isFav ? '★ В обраному' : '☆ В обране'}</button>
+                        <button type="button" class="btn-fav-header ${isFav ? 'active' : ''}" onclick="event.stopPropagation(); toggleFavorite('${escapeHtml(loc.id)}')">${isFav ? '★ В обраному' : '☆ В обране'}</button>
                         ${manageLocationBtnHtml(loc)}
                         ${diveBtn}
                     </div>
@@ -1787,17 +1816,18 @@
                 else expandBottomSheet();
 
                 map.panTo([loc.lat, loc.lng]);
-                openPopupForLocation(loc);
+                // У preview не відкриваємо popup — zoomToShowLayer/кластери зривають 2-й тап на мобілці
+                if (mode === 'dive') openPopupForLocation(loc);
             };
 
             function manageLocationBtnHtml(loc) {
                 const u = State.currentUser;
                 if (!u) return '';
                 if (u.role === 'admin') {
-                    return `<a class="action-btn btn-route" href="/admin?pane=locations&loc=${encodeURIComponent(loc.id)}">⚙️ В адмінці</a>`;
+                    return `<a class="action-btn btn-route" href="/admin?pane=locations&loc=${encodeURIComponent(loc.id)}" onclick="event.stopPropagation()">⚙️ В адмінці</a>`;
                 }
                 if (u.role === 'provider' && loc.providerId === u.id) {
-                    return `<a class="action-btn btn-route" href="/admin?editLoc=${encodeURIComponent(loc.id)}">✏️ Редагувати</a>`;
+                    return `<a class="action-btn btn-route" href="/admin?editLoc=${encodeURIComponent(loc.id)}" onclick="event.stopPropagation()">✏️ Редагувати</a>`;
                 }
                 return '';
             }
@@ -2174,12 +2204,19 @@
                     });
                     loc.markerInstance.on('click', (e) => {
                         L.DomEvent.stopPropagation(e);
+                        // Другий тап по тому ж маркеру в preview → одразу dive
+                        if (
+                            State.selectedLocation?.id === loc.id &&
+                            State.detailMode === 'preview'
+                        ) {
+                            openMasterDetail(loc.id, { mode: 'dive', forceMode: true, fromMarker: true });
+                            return;
+                        }
                         openMasterDetail(loc.id, { fromMarker: true });
                     });
                     loc.markerInstance.on('dblclick', (e) => {
                         L.DomEvent.stopPropagation(e);
                         L.DomEvent.preventDefault(e);
-                        // Повторний / подвійний тап — провалювання в повну картку
                         openMasterDetail(loc.id, { mode: 'dive', forceMode: true, fromMarker: true });
                     });
                     batch.push(loc.markerInstance);
