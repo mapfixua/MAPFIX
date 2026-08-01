@@ -417,19 +417,33 @@
         }
         .brand-chip {
             display: inline-flex; align-items: center; gap: 8px;
-            height: 48px; padding: 0 14px 0 8px;
+            height: auto; min-height: 48px; padding: 6px 14px 6px 8px;
             background: #fff; border-radius: 999px;
             box-shadow: 0 8px 28px rgba(11,13,16,0.1);
             pointer-events: auto; flex-shrink: 0;
             text-decoration: none; color: var(--ink);
+            border: none; cursor: pointer; font-family: inherit;
         }
         .brand-chip-mark {
             width: 32px; height: 32px; border-radius: 50%;
             background: var(--ink); color: #fff;
             display: inline-flex; align-items: center; justify-content: center;
-            font-weight: 800; font-size: 0.9rem;
+            font-weight: 800; font-size: 0.9rem; flex-shrink: 0;
+        }
+        .brand-chip-text {
+            display: flex;
+            flex-direction: column;
+            align-items: flex-start;
+            line-height: 1.1;
+            gap: 1px;
         }
         .brand-chip-name { font-weight: 800; font-size: 0.98rem; letter-spacing: -0.03em; }
+        .brand-chip-home {
+            font-size: 10px;
+            font-weight: 700;
+            color: var(--muted);
+            letter-spacing: 0.01em;
+        }
         .search-container {
             flex-grow: 1; background: white; border-radius: 999px;
             padding: 5px 10px 5px 16px; display: flex; align-items: center;
@@ -774,8 +788,9 @@
                 overflow: hidden;
             }
 
-            .brand-chip-name { display: none; }
-            .brand-chip { padding: 0 8px; width: 48px; justify-content: center; }
+            .brand-chip-name { display: block; font-size: 0.85rem; }
+            .brand-chip-home { display: block; font-size: 9px; }
+            .brand-chip { padding: 5px 10px 5px 6px; width: auto; justify-content: flex-start; }
             .login-btn span { display: none; }
             .login-btn { width: 48px; padding: 0; }
 
@@ -933,10 +948,13 @@
     <div id="map-container">
         <div class="top-header">
             <div class="top-header-row">
-                <a class="brand-chip" href="/" aria-label="Mapfix">
+                <button type="button" class="brand-chip" id="brandHomeBtn" aria-label="Mapfix — на головну" title="На головну">
                     <span class="brand-chip-mark">M</span>
-                    <span class="brand-chip-name">Mapfix</span>
-                </a>
+                    <span class="brand-chip-text">
+                        <span class="brand-chip-name">Mapfix</span>
+                        <span class="brand-chip-home">на головну</span>
+                    </span>
+                </button>
                 <div class="search-container">
                     <i class="fa-solid fa-magnifying-glass" style="color:#9ca3af;font-size:14px" aria-hidden="true"></i>
                     <input type="text" id="searchInput" placeholder="Пошук послуги, майстра або адреси..." autocomplete="off">
@@ -1400,6 +1418,10 @@
                 openGoogleImport();
             });
 
+            document.getElementById('brandHomeBtn')?.addEventListener('click', () => {
+                resetToHome();
+            });
+
             const urlLoc = new URLSearchParams(window.location.search).get('loc');
             if (urlLoc) {
                 setTimeout(() => openMasterDetail(urlLoc, { mode: 'dive', forceMode: true }), 400);
@@ -1665,7 +1687,6 @@
                         <div class="category-card-icon"><i class="fa-solid ${iconClass}"></i></div>
                         <span class="category-card-label">${categoryLabel(catData.name)}</span>`;
                     card.addEventListener('click', () => {
-                        if (State.category === catKey && !State.subcategory && !State.service) return;
                         handleL1Click(catKey);
                     });
                     categoryStrip.appendChild(card);
@@ -2361,14 +2382,43 @@
                 });
             }
 
+            function resetToHome(opts = {}) {
+                const keepSearch = Boolean(opts.keepSearch);
+                const searchField = document.getElementById('searchInput');
+                if (!keepSearch) {
+                    State.locationSearchQuery = '';
+                    if (searchField) searchField.value = '';
+                }
+                State.category = null;
+                State.subcategory = null;
+                State.service = null;
+                State.selectedLocation = null;
+                State.detailMode = null;
+                State.onlyOpen = false;
+                const onlyOpenCheckbox = document.getElementById('onlyOpenCheckbox');
+                if (onlyOpenCheckbox) onlyOpenCheckbox.checked = false;
+                closeMasterDetail();
+                collapseBottomSheet();
+                syncUI();
+            }
+
             function handleL1Click(catId) {
+                // Повторний тап по активній категорії — зняти вибір і показати всі на карті
+                if (State.category === catId) {
+                    resetToHome();
+                    return;
+                }
                 trackCatalogClick({ type: 'category', categoryKey: catId });
                 State.locationSearchQuery = '';
+                const searchField = document.getElementById('searchInput');
+                if (searchField) searchField.value = '';
                 State.category = catId;
                 State.subcategory = null;
                 State.service = null;
                 State.selectedLocation = null;
-                expandBottomSheet();
+                State.detailMode = null;
+                closeMasterDetail();
+                browseBottomSheet();
                 syncUI();
             }
 
