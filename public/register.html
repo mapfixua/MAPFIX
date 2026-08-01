@@ -17,7 +17,7 @@
         <span class="mf-brand-name">Mapfix</span>
       </div>
       <h1 class="mf-title">Реєстрація</h1>
-      <p class="mf-sub">Швидко створіть акаунт. Telegram-код — опційно після привʼязки бота.</p>
+      <p class="mf-sub" id="registerSub">Створіть акаунт логіном і паролем. Google / Apple з’являться після налаштування.</p>
 
       <nav class="mf-seg" aria-label="Вхід або реєстрація">
         <a href="/login.html">Вхід</a>
@@ -168,6 +168,21 @@
       or.classList.toggle('mf-hidden', !show);
       document.getElementById('googleBtn').classList.toggle('mf-hidden', !oauthConfig.googleEnabled);
       document.getElementById('appleBtn').classList.toggle('mf-hidden', !oauthConfig.appleEnabled);
+
+      const sub = document.getElementById('registerSub');
+      if (sub) {
+        if (show) {
+          const parts = [];
+          if (oauthConfig.googleEnabled) parts.push('Google');
+          if (oauthConfig.appleEnabled) parts.push('Apple');
+          sub.textContent =
+            'Створіть акаунт через ' +
+            parts.join(' / ') +
+            ' або логіном і паролем.';
+        } else {
+          sub.textContent = 'Створіть акаунт логіном і паролем.';
+        }
+      }
 
       if (oauthConfig.googleEnabled && window.google?.accounts?.id) {
         google.accounts.id.initialize({

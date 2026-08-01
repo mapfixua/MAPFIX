@@ -19,7 +19,7 @@
       </div>
 
       <h1 class="mf-title">Вхід</h1>
-      <p class="mf-sub">Увійдіть за номером телефону, через Google / Apple або логіном і паролем.</p>
+      <p class="mf-sub" id="loginSub">Увійдіть логіном і паролем. Якщо акаунта ще немає — зареєструйтесь.</p>
 
       <nav class="mf-seg" aria-label="Вхід або реєстрація">
         <a class="active" href="/login.html">Вхід</a>
@@ -32,45 +32,47 @@
       </div>
       <div id="oauthOr" class="mf-or mf-hidden">або</div>
 
-      <div id="telegramBlock">
-        <div id="stepPhone">
-          <label class="mf-label" for="phone">Номер телефону</label>
-          <input id="phone" type="tel" inputmode="tel" autocomplete="tel" placeholder="+380111111111">
-          <p class="mf-hint">Код прийде в Telegram, якщо бот уже підключено до акаунта</p>
-          <button type="button" class="mf-btn mf-btn-primary" id="requestBtn"><span id="requestBtnText">Отримати код</span></button>
-        </div>
-        <div id="stepOtp" class="mf-hidden">
-          <p class="mf-phone-sent">Код надіслано на <strong id="phoneDisplay"></strong></p>
-          <label class="mf-label" for="otpCode">Код з Telegram</label>
-          <input id="otpCode" class="mf-otp-input" type="text" inputmode="numeric" maxlength="6" placeholder="000000">
-          <button type="button" class="mf-btn mf-btn-primary" id="verifyBtn"><span id="verifyBtnText">Підтвердити</span></button>
-          <button type="button" class="mf-btn mf-btn-link" id="changePhoneBtn">Змінити номер</button>
-        </div>
-      </div>
-
-      <hr class="mf-divider">
-
-      <button type="button" class="mf-btn mf-btn-ghost" id="toggleClassicBtn">Вхід логіном і паролем</button>
-
-      <form id="classicForm" class="mf-hidden" style="margin-top:14px">
+      <form id="classicForm">
         <label class="mf-label" for="login">Логін</label>
-        <input id="login" name="login" type="text" autocomplete="username" placeholder="Ваш логін">
+        <input id="login" name="login" type="text" autocomplete="username" placeholder="Ваш логін" required>
+
         <label class="mf-label" for="password">Пароль</label>
         <div class="mf-password">
-          <input id="password" name="password" type="password" autocomplete="current-password" placeholder="Пароль">
+          <input id="password" name="password" type="password" autocomplete="current-password" placeholder="Пароль" required>
           <button type="button" class="mf-toggle-eye" id="passwordToggle"><span class="eye-label">Показати</span></button>
         </div>
-        <button type="submit" class="mf-btn mf-btn-dark" id="classicSubmitBtn">
+
+        <button type="submit" class="mf-btn mf-btn-primary" id="classicSubmitBtn">
           <span id="classicSubmitText">Увійти</span>
         </button>
       </form>
+
+      <div id="telegramBlock" class="mf-hidden">
+        <hr class="mf-divider">
+        <button type="button" class="mf-btn mf-btn-ghost" id="togglePhoneBtn">Вхід через Telegram-код</button>
+
+        <div id="phonePanel" class="mf-hidden" style="margin-top:14px">
+          <div id="stepPhone">
+            <label class="mf-label" for="phone">Номер телефону</label>
+            <input id="phone" type="tel" inputmode="tel" autocomplete="tel" placeholder="+380111111111">
+            <p class="mf-hint">Спочатку <a href="/link-telegram.html">підключіть Telegram-бота</a> до акаунта — інакше код не прийде.</p>
+            <button type="button" class="mf-btn mf-btn-dark" id="requestBtn"><span id="requestBtnText">Отримати код</span></button>
+          </div>
+          <div id="stepOtp" class="mf-hidden">
+            <p class="mf-phone-sent">Код надіслано на <strong id="phoneDisplay"></strong></p>
+            <label class="mf-label" for="otpCode">Код з Telegram</label>
+            <input id="otpCode" class="mf-otp-input" type="text" inputmode="numeric" maxlength="6" placeholder="000000">
+            <button type="button" class="mf-btn mf-btn-dark" id="verifyBtn"><span id="verifyBtnText">Підтвердити</span></button>
+            <button type="button" class="mf-btn mf-btn-link" id="changePhoneBtn">Змінити номер</button>
+          </div>
+        </div>
+      </div>
 
       <div id="message" class="mf-msg" role="alert"></div>
     </div>
 
     <p class="mf-foot">
       Немає акаунта? <a href="/register.html">Зареєструйтесь</a>.
-      Підключити Telegram: <a href="/link-telegram.html">тут</a>.
     </p>
     <p class="mf-links"><a href="/forgot-password.html">Забули пароль?</a></p>
   </div>
@@ -80,7 +82,9 @@
     const message = document.getElementById('message');
     const stepPhone = document.getElementById('stepPhone');
     const stepOtp = document.getElementById('stepOtp');
+    const loginSub = document.getElementById('loginSub');
     let oauthConfig = {};
+    let telegramConfigured = false;
     let savedPhone = '';
 
     function redirectByRole(role) {
@@ -104,8 +108,28 @@
       message.innerHTML = '';
     }
 
-    document.getElementById('toggleClassicBtn').onclick = () => {
-      classicForm.classList.toggle('mf-hidden');
+    function updateSubtitle() {
+      const parts = ['логіном і паролем'];
+      if (oauthConfig.googleEnabled) parts.push('Google');
+      if (oauthConfig.appleEnabled) parts.push('Apple');
+      if (telegramConfigured) parts.push('кодом у Telegram');
+      if (parts.length === 1) {
+        loginSub.textContent = 'Увійдіть логіном і паролем. Якщо акаунта ще немає — зареєструйтесь.';
+        return;
+      }
+      loginSub.textContent = 'Увійдіть ' + parts.join(', ').replace(/, ([^,]+)$/, ' або $1') + '.';
+    }
+
+    document.getElementById('passwordToggle').onclick = () => {
+      const input = document.getElementById('password');
+      const label = document.querySelector('#passwordToggle .eye-label');
+      const show = input.type === 'password';
+      input.type = show ? 'text' : 'password';
+      label.textContent = show ? 'Сховати' : 'Показати';
+    };
+
+    document.getElementById('togglePhoneBtn').onclick = () => {
+      document.getElementById('phonePanel').classList.toggle('mf-hidden');
     };
 
     classicForm.onsubmit = async (e) => {
@@ -125,7 +149,7 @@
           }),
         });
         const data = await res.json();
-        if (!res.ok) throw new Error(data.error || 'Помилка входу');
+        if (!res.ok) throw new Error(data.error || 'Невірний логін або пароль');
         showSuccess('Успішний вхід');
         redirectByRole(data.user?.role);
       } catch (err) {
@@ -135,14 +159,6 @@
         text.textContent = 'Увійти';
       }
     };
-
-    document.getElementById('passwordToggle')?.addEventListener('click', () => {
-      const input = document.getElementById('password');
-      const label = document.querySelector('#passwordToggle .eye-label');
-      const show = input.type === 'password';
-      input.type = show ? 'text' : 'password';
-      if (label) label.textContent = show ? 'Сховати' : 'Показати';
-    });
 
     document.getElementById('requestBtn').onclick = async () => {
       clearMessage();
@@ -159,14 +175,20 @@
           body: JSON.stringify({ phone }),
         });
         const data = await res.json();
-        if (!res.ok) throw new Error(data.error || data.message || 'Не вдалося надіслати код');
+        if (!res.ok) {
+          const hint = data.needsTelegramLink
+            ? ' Спочатку <a href="/link-telegram.html">підключіть Telegram</a>.'
+            : '';
+          throw Object.assign(new Error(data.error || 'Не вдалося надіслати код'), { html: (data.error || '') + hint });
+        }
         savedPhone = data.phone || phone;
         document.getElementById('phoneDisplay').textContent = savedPhone;
         stepPhone.classList.add('mf-hidden');
         stepOtp.classList.remove('mf-hidden');
         showSuccess('Код надіслано в Telegram');
       } catch (err) {
-        showError(err.message);
+        if (err.html) showError('', err.html);
+        else showError(err.message);
       } finally {
         btn.disabled = false;
         text.textContent = 'Отримати код';
@@ -176,11 +198,11 @@
     document.getElementById('verifyBtn').onclick = async () => {
       clearMessage();
       const code = document.getElementById('otpCode').value.trim();
-      if (!code) return showError('Введіть код');
+      if (!code) return showError('Введіть код з Telegram');
       const btn = document.getElementById('verifyBtn');
       const text = document.getElementById('verifyBtnText');
       btn.disabled = true;
-      text.textContent = 'Перевіряємо…';
+      text.textContent = 'Перевірка…';
       try {
         const res = await fetch('/api/auth/otp/verify', {
           method: 'POST',
@@ -218,18 +240,27 @@
       redirectByRole(data.user?.role);
     }
 
-    async function setupOauth() {
+    async function setupAuthOptions() {
       try {
-        const res = await fetch('/api/auth/oauth-config', { cache: 'no-store' });
-        oauthConfig = await res.json();
+        const [oauthRes, tgRes] = await Promise.all([
+          fetch('/api/auth/oauth-config', { cache: 'no-store' }),
+          fetch('/api/telegram/status', { cache: 'no-store' }),
+        ]);
+        oauthConfig = oauthRes.ok ? await oauthRes.json() : {};
+        const tg = tgRes.ok ? await tgRes.json() : {};
+        telegramConfigured = Boolean(tg.configured);
       } catch (_) {
         oauthConfig = {};
+        telegramConfigured = false;
       }
-      const show = oauthConfig.googleEnabled || oauthConfig.appleEnabled;
-      document.getElementById('oauthBlock').classList.toggle('mf-hidden', !show);
-      document.getElementById('oauthOr').classList.toggle('mf-hidden', !show);
+
+      const showOauth = oauthConfig.googleEnabled || oauthConfig.appleEnabled;
+      document.getElementById('oauthBlock').classList.toggle('mf-hidden', !showOauth);
+      document.getElementById('oauthOr').classList.toggle('mf-hidden', !showOauth);
       document.getElementById('googleBtn').classList.toggle('mf-hidden', !oauthConfig.googleEnabled);
       document.getElementById('appleBtn').classList.toggle('mf-hidden', !oauthConfig.appleEnabled);
+      document.getElementById('telegramBlock').classList.toggle('mf-hidden', !telegramConfigured);
+      updateSubtitle();
 
       if (oauthConfig.googleEnabled && window.google?.accounts?.id) {
         google.accounts.id.initialize({
@@ -245,13 +276,13 @@
       }
 
       document.getElementById('googleBtn').onclick = () => {
-        if (!oauthConfig.googleEnabled) return showError('Додайте GOOGLE_CLIENT_ID у Vercel Env');
+        if (!oauthConfig.googleEnabled) return showError('Google вхід ще не налаштовано');
         if (window.google?.accounts?.id) google.accounts.id.prompt();
         else showError('Google SDK ще завантажується, спробуйте знову');
       };
 
       document.getElementById('appleBtn').onclick = async () => {
-        if (!oauthConfig.appleEnabled) return showError('Додайте APPLE_CLIENT_ID у Vercel Env');
+        if (!oauthConfig.appleEnabled) return showError('Apple вхід ще не налаштовано');
         try {
           AppleID.auth.init({
             clientId: oauthConfig.appleClientId,
@@ -272,7 +303,7 @@
       };
     }
 
-    setupOauth();
+    setupAuthOptions();
   </script>
 </body>
 </html>
