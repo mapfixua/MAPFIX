@@ -6,10 +6,14 @@
     <meta http-equiv="Expires" content="0">
     <title>Mapfix — Карта послуг</title>
 
-    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" crossorigin="anonymous" referrerpolicy="no-referrer">
+    <link rel="preconnect" href="https://unpkg.com" crossorigin>
+    <link rel="preconnect" href="https://cdnjs.cloudflare.com" crossorigin>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link rel="preconnect" href="https://tile.openstreetmap.org" crossorigin>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" crossorigin="anonymous" referrerpolicy="no-referrer" media="print" onload="this.media='all'">
+    <noscript><link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" crossorigin="anonymous" referrerpolicy="no-referrer"></noscript>
     <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;600;700;800&display=swap" rel="stylesheet">
     
     <style>
@@ -862,14 +866,7 @@
         }
 
         document.addEventListener("DOMContentLoaded", async () => {
-            try {
-                await loadCatalogData();
-            } catch (err) {
-                console.error(err);
-                alert('Помилка завантаження даних. Перевірте, що сервер запущено.');
-                return;
-            }
-
+            // Paint map tiles immediately — do not block on /api/data (often 0.5–1.5s).
             const map = L.map('map', { zoomControl: false }).setView([50.4501, 30.5234], 11);
             L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
 
@@ -929,7 +926,14 @@
                     }
                 } catch (_) {}
             }
-            await loadSession();
+
+            try {
+                await Promise.all([loadCatalogData(), loadSession()]);
+            } catch (err) {
+                console.error(err);
+                alert('Помилка завантаження даних. Перевірте, що сервер запущено.');
+                return;
+            }
 
             const userMenu = document.getElementById('userMenu');
             const profileBtn = document.getElementById('profileBtn');
