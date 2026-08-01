@@ -493,7 +493,29 @@
             display: flex; align-items: center; justify-content: center; font-size: 18px;
             touch-action: manipulation; color: var(--ink);
         }
-        .user-location-marker { width: 14px; height: 14px; background: var(--primary); border: 3px solid white; border-radius: 50%; box-shadow: 0 0 8px rgba(18,196,181,0.5); }
+        #geo-btn.locating { color: var(--primary); }
+        #geo-btn.locating i { animation: geo-spin 0.9s linear infinite; }
+        #geo-btn.active { color: var(--primary); box-shadow: 0 0 0 3px rgba(18,196,181,0.25), 0 4px 15px rgba(0,0,0,0.15); }
+        @keyframes geo-spin { to { transform: rotate(360deg); } }
+
+        .user-location-marker-wrap {
+            background: transparent !important;
+            border: none !important;
+        }
+        .user-location-marker {
+            width: 18px;
+            height: 18px;
+            background: var(--primary);
+            border: 3px solid #fff;
+            border-radius: 50%;
+            box-shadow: 0 0 0 0 rgba(18, 196, 181, 0.45), 0 2px 8px rgba(0, 0, 0, 0.2);
+            animation: user-loc-pulse 2s ease-out infinite;
+        }
+        @keyframes user-loc-pulse {
+            0% { box-shadow: 0 0 0 0 rgba(18, 196, 181, 0.45), 0 2px 8px rgba(0, 0, 0, 0.2); }
+            70% { box-shadow: 0 0 0 14px rgba(18, 196, 181, 0), 0 2px 8px rgba(0, 0, 0, 0.2); }
+            100% { box-shadow: 0 0 0 0 rgba(18, 196, 181, 0), 0 2px 8px rgba(0, 0, 0, 0.2); }
+        }
 
         /* МАРКЕРИ — компактні, якір по центру точки */
         .mapfix-marker-wrap {
@@ -948,12 +970,16 @@
             });
             map.addLayer(markersLayer);
 
+            const DEFAULT_CENTER = { lat: 50.4501, lng: 30.5234 };
+            const USER_FOCUS_ZOOM = 13;
+
             const State = { 
                 category: null, 
                 subcategory: null, 
                 service: null, 
                 selectedLocation: null, 
-                userCoords: { lat: 50.4501, lng: 30.5234 },
+                userCoords: { ...DEFAULT_CENTER },
+                geoReady: false,
                 onlyOpen: false,
                 sortType: 'distance',
                 formRatingScore: 5,
@@ -963,6 +989,7 @@
             };
             
             let userMarkerInstance = null;
+            const geoBtn = document.getElementById('geo-btn');
 
             function calculateDistance(lat1, lon1, lat2, lon2) {
                 const R = 6371;
@@ -974,10 +1001,77 @@
             }
 
             function drawUserMarker() {
+                if (!State.geoReady) return;
                 if (userMarkerInstance) map.removeLayer(userMarkerInstance);
-                userMarkerInstance = L.marker([State.userCoords.lat, State.userCoords.lng], { icon: L.divIcon({ className: 'user-location-marker', iconSize: [0,0] }) }).addTo(map);
+                userMarkerInstance = L.marker([State.userCoords.lat, State.userCoords.lng], {
+                    icon: L.divIcon({
+                        className: 'user-location-marker-wrap',
+                        html: '<div class="user-location-marker" aria-hidden="true"></div>',
+                        iconSize: [18, 18],
+                        iconAnchor: [9, 9],
+                    }),
+                    zIndexOffset: 1200,
+                    interactive: false,
+                    keyboard: false,
+                }).addTo(map);
             }
-            drawUserMarker();
+
+            function shouldAutoCenterOnUser() {
+                return !State.category && !State.subcategory && !State.service && !State.locationSearchQuery;
+            }
+
+            function setUserLocation(lat, lng, { center = false, zoom = USER_FOCUS_ZOOM } = {}) {
+                State.userCoords = { lat: Number(lat), lng: Number(lng) };
+                State.geoReady = true;
+                if (geoBtn) geoBtn.classList.add('active');
+                drawUserMarker();
+                if (center) {
+                    map.setView([State.userCoords.lat, State.userCoords.lng], zoom, { animate: true });
+                }
+                if (State.service || State.locationSearchQuery) {
+                    try { renderLocationList(); } catch (_) {}
+                }
+            }
+
+            function locateUser({ center = true, fromButton = false } = {}) {
+                if (!navigator.geolocation) {
+                    if (fromButton) alert('Геолокація не підтримується цим браузером');
+                    return;
+                }
+                if (geoBtn) geoBtn.classList.add('locating');
+                navigator.geolocation.getCurrentPosition(
+                    (pos) => {
+                        if (geoBtn) geoBtn.classList.remove('locating');
+                        setUserLocation(pos.coords.latitude, pos.coords.longitude, {
+                            center: fromButton ? true : center && shouldAutoCenterOnUser(),
+                            zoom: USER_FOCUS_ZOOM,
+                        });
+                    },
+                    (err) => {
+                        if (geoBtn) geoBtn.classList.remove('locating');
+                        console.warn('[geo]', err && err.message ? err.message : err);
+                        if (fromButton) {
+                            const denied = err && err.code === 1;
+                            alert(
+                                denied
+                                    ? 'Доступ до геолокації заборонено. Дозвольте його в налаштуваннях браузера.'
+                                    : 'Не вдалося визначити місцезнаходження. Спробуйте ще раз.'
+                            );
+                        }
+                    },
+                    {
+                        enableHighAccuracy: true,
+                        timeout: 12000,
+                        maximumAge: 30000,
+                    }
+                );
+            }
+
+            if (geoBtn) {
+                geoBtn.addEventListener('click', () => locateUser({ center: true, fromButton: true }));
+            }
+            // Show viewer location and center the map on first load
+            locateUser({ center: true });
 
             async function refreshMapData() {
                 await loadCatalogData();
