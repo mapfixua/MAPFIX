@@ -276,6 +276,33 @@
         .btn-directions { background: var(--primary); color: var(--ink); }
 
         .detail-scroll-body { flex-grow: 1; overflow-y: auto; padding: 20px; background: #f8fafc; display: flex; flex-direction: column; gap: 16px; }
+        #sidebar-detail-view.mode-dive .detail-scroll-body {
+            animation: detail-dive-in 0.28s var(--ease-sheet);
+        }
+        @keyframes detail-dive-in {
+            from { opacity: 0; transform: translateY(12px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .btn-dive {
+            background: var(--primary);
+            color: var(--ink);
+            flex: 1 1 100%;
+        }
+        .detail-preview-hint {
+            font-size: 12px;
+            font-weight: 600;
+            color: var(--muted);
+            margin: 0;
+            line-height: 1.35;
+        }
+        @media (max-width: 768px) {
+            #sidebar-detail-view.mode-preview .detail-scroll-body {
+                display: none;
+            }
+            #sidebar-detail-view.mode-dive .detail-scroll-body {
+                display: flex;
+            }
+        }
         .detail-section { background: white; border: 1px solid var(--border); border-radius: 12px; padding: 14px; display: flex; flex-direction: column; gap: 10px; }
         .detail-photos {
             display: grid;
@@ -694,6 +721,10 @@
                 --map-h: 52vh;
                 --sheet-h: 48vh;
             }
+            #app-shell.sheet-dive {
+                --map-h: 26vh;
+                --sheet-h: 74vh;
+            }
 
             #map-container {
                 height: var(--map-h);
@@ -977,7 +1008,8 @@
                 category: null, 
                 subcategory: null, 
                 service: null, 
-                selectedLocation: null, 
+                selectedLocation: null,
+                detailMode: null,
                 userCoords: { ...DEFAULT_CENTER },
                 geoReady: false,
                 onlyOpen: false,
@@ -1297,7 +1329,7 @@
 
             const urlLoc = new URLSearchParams(window.location.search).get('loc');
             if (urlLoc) {
-                setTimeout(() => openMasterDetail(urlLoc), 400);
+                setTimeout(() => openMasterDetail(urlLoc, { mode: 'dive', forceMode: true }), 400);
             }
 
             window.placeOrder = async function(locationId, serviceName) {
@@ -1346,7 +1378,10 @@
                 if (isFav) State.favoriteIds.delete(locationId);
                 else State.favoriteIds.add(locationId);
                 if (State.selectedLocation?.id === locationId) {
-                    openMasterDetail(locationId);
+                    openMasterDetail(locationId, {
+                        mode: State.detailMode || 'dive',
+                        forceMode: true,
+                    });
                 }
             };
 
@@ -1384,14 +1419,39 @@
             }
 
             function expandBottomSheet() {
-                if (isMobileLayout()) appShell.classList.add('sheet-expanded');
+                if (isMobileLayout()) {
+                    appShell.classList.add('sheet-expanded');
+                    appShell.classList.remove('sheet-dive');
+                }
                 setTimeout(() => map.invalidateSize(), 400);
             }
 
             function collapseBottomSheet() {
-                if (isMobileLayout()) appShell.classList.remove('sheet-expanded');
+                if (isMobileLayout()) {
+                    appShell.classList.remove('sheet-expanded', 'sheet-dive');
+                }
                 setTimeout(() => map.invalidateSize(), 400);
             }
+
+            function enterDetailDive() {
+                State.detailMode = 'dive';
+                const detailView = document.getElementById('sidebar-detail-view');
+                detailView.classList.add('show', 'mode-dive');
+                detailView.classList.remove('mode-preview');
+                if (isMobileLayout()) {
+                    appShell.classList.add('sheet-expanded', 'sheet-dive');
+                }
+                setTimeout(() => {
+                    const body = document.getElementById('detailBodyContent');
+                    if (body) body.scrollTo({ top: 0, behavior: 'smooth' });
+                    map.invalidateSize();
+                }, 80);
+            }
+
+            window.diveIntoSelectedDetail = function () {
+                if (!State.selectedLocation) return;
+                openMasterDetail(State.selectedLocation.id, { mode: 'dive', forceMode: true });
+            };
 
             function pulseSheetContent() {
                 sidebarListView.classList.remove('sheet-content-enter');
@@ -1655,10 +1715,23 @@
                 syncUI();
             }
 
-            // ВІДКРИТТЯ ДЕТАЛЬНОЇ КАРТКИ ОБ'ЄКТА
-            window.openMasterDetail = function(locId) {
+            // Прев'ю (1-й клік) → провалювання в деталі (2-й / подвійний клік)
+            window.openMasterDetail = function(locId, opts = {}) {
                 const loc = window.mockLocations.find(l => l.id === locId);
                 if (!loc) return;
+
+                const sameSelected = State.selectedLocation?.id === locId;
+                // Desktop has enough space — open full card immediately
+                let mode = opts.mode || (isMobileLayout() ? 'preview' : 'dive');
+                if (!opts.forceMode && sameSelected && State.detailMode === 'preview') {
+                    mode = 'dive';
+                }
+                if (!opts.forceMode && sameSelected && State.detailMode === 'dive' && opts.fromMarker) {
+                    enterDetailDive();
+                    map.panTo([loc.lat, loc.lng]);
+                    openPopupForLocation(loc);
+                    return;
+                }
 
                 fetch('/api/locations/' + encodeURIComponent(locId) + '/view', {
                     method: 'POST',
@@ -1670,6 +1743,7 @@
                 }).catch(() => {});
                 
                 State.selectedLocation = loc;
+                State.detailMode = mode;
                 State.formRatingScore = 5;
                 
                 const isFav = State.favoriteIds.has(loc.id);
@@ -1677,29 +1751,40 @@
                 const hasAddress = Boolean(String(loc.address || '').trim());
                 const directionsBtn =
                   hasCoords || hasAddress
-                    ? `<button type="button" class="action-btn btn-directions" onclick="openGoogleMapsDirections('${loc.id}')">🧭 Побудувати маршрут</button>`
+                    ? `<button type="button" class="action-btn btn-directions" onclick="openGoogleMapsDirections('${escapeHtml(loc.id)}')">🧭 Побудувати маршрут</button>`
+                    : '';
+                const diveBtn =
+                  mode === 'preview'
+                    ? `<button type="button" class="action-btn btn-dive" onclick="diveIntoSelectedDetail()">Детальніше</button>
+                       <p class="detail-preview-hint">Натисніть ще раз на маркер або «Детальніше», щоб відкрити повну картку</p>`
                     : '';
                 const headerBox = document.getElementById('detailHeaderContent');
                 headerBox.innerHTML = `
                     <button class="back-btn" onclick="closeMasterDetail()">⬅️ Назад до списку</button>
-                    <h2 class="detail-main-title">${loc.title}</h2>
+                    <h2 class="detail-main-title">${escapeHtml(loc.title)}</h2>
                     <div class="provider-meta">
-                        <span class="status-badge ${loc.openStatus}">${loc.openStatus === 'open' ? 'Відкрито' : 'Зачинено'}</span>
-                        <span class="rating-block"><span class="star-icon">★</span><b>${loc.rating.toFixed(1)}</b> <span class="reviews-count">(${loc.reviewsCount})</span></span>
+                        <span class="status-badge ${loc.openStatus === 'open' ? 'open' : 'closed'}">${loc.openStatus === 'open' ? 'Відкрито' : 'Зачинено'}</span>
+                        <span class="rating-block"><span class="star-icon">★</span><b>${Number(loc.rating || 0).toFixed(1)}</b> <span class="reviews-count">(${Number(loc.reviewsCount) || 0})</span></span>
                     </div>
                     <div class="detail-actions-row">
-                        <a href="tel:${loc.phone}" class="action-btn btn-call">📞 Зателефонувати</a>
-                        <button type="button" class="action-btn btn-route" onclick="panToMaster(${loc.lat}, ${loc.lng})">🗺️ На карті</button>
+                        ${loc.phone ? `<a href="tel:${escapeHtml(loc.phone)}" class="action-btn btn-call">📞 Зателефонувати</a>` : ''}
+                        <button type="button" class="action-btn btn-route" onclick="panToMaster(${Number(loc.lat)}, ${Number(loc.lng)})">🗺️ На карті</button>
                         ${directionsBtn}
-                        <button type="button" class="btn-fav-header ${isFav ? 'active' : ''}" onclick="toggleFavorite('${loc.id}')">${isFav ? '★ В обраному' : '☆ В обране'}</button>
+                        <button type="button" class="btn-fav-header ${isFav ? 'active' : ''}" onclick="toggleFavorite('${escapeHtml(loc.id)}')">${isFav ? '★ В обраному' : '☆ В обране'}</button>
                         ${manageLocationBtnHtml(loc)}
+                        ${diveBtn}
                     </div>
                 `;
 
                 renderDetailBody(loc);
 
-                document.getElementById('sidebar-detail-view').classList.add('show');
-                expandBottomSheet();
+                const detailView = document.getElementById('sidebar-detail-view');
+                detailView.classList.add('show');
+                detailView.classList.toggle('mode-preview', mode === 'preview');
+                detailView.classList.toggle('mode-dive', mode === 'dive');
+
+                if (mode === 'dive') enterDetailDive();
+                else expandBottomSheet();
 
                 map.panTo([loc.lat, loc.lng]);
                 openPopupForLocation(loc);
@@ -1734,7 +1819,8 @@
                 const bodyBox = document.getElementById('detailBodyContent');
                 
                 const pricesBox = document.createElement('div');
-                for (const [srvName, srvPrice] of Object.entries(loc.prices)) {
+                const priceEntries = Object.entries(loc.prices || {});
+                for (const [srvName, srvPrice] of priceEntries) {
                     const row = document.createElement('div');
                     row.className = 'detail-price-row';
                     row.innerHTML = `
@@ -1748,23 +1834,32 @@
                     row.querySelector('.btn-order').onclick = () => placeOrder(loc.id, srvName);
                     pricesBox.appendChild(row);
                 }
-                let priceRowsHtml = pricesBox.outerHTML;
+                let priceRowsHtml = priceEntries.length
+                    ? pricesBox.outerHTML
+                    : '<div style="font-size:12px;color:#94a3b8;">Прайс ще не додано</div>';
 
                 let scheduleRowsHtml = '';
                 for (const [days, hours] of Object.entries(loc.schedule || {})) {
-                    scheduleRowsHtml += `<div class="schedule-row"><span>${days}</span><b>${hours}</b></div>`;
+                    scheduleRowsHtml += `<div class="schedule-row"><span>${escapeHtml(days)}</span><b>${escapeHtml(hours)}</b></div>`;
+                }
+                if (!scheduleRowsHtml && loc.workingHours) {
+                    scheduleRowsHtml = `<div class="schedule-row"><span>Графік</span><b>${escapeHtml(loc.workingHours)}</b></div>`;
+                }
+                if (!scheduleRowsHtml) {
+                    scheduleRowsHtml = '<div style="font-size:12px;color:#94a3b8;">Графік не вказано</div>';
                 }
 
                 let reviewsHtml = '';
                 if (loc.reviews && loc.reviews.length > 0) {
                     loc.reviews.forEach(rev => {
+                        const rating = Math.max(0, Math.min(5, Number(rev.rating) || 0));
                         reviewsHtml += `
                             <div class="review-item">
                                 <div class="review-top-line">
-                                    <span class="review-stars">${'★'.repeat(rev.rating)}${'☆'.repeat(5-rev.rating)}</span>
-                                    <span>${rev.date}</span>
+                                    <span class="review-stars">${'★'.repeat(rating)}${'☆'.repeat(5 - rating)}</span>
+                                    <span>${escapeHtml(rev.date || '')}</span>
                                 </div>
-                                <div class="review-text">"${rev.text}"</div>
+                                <div class="review-text">"${escapeHtml(rev.text || '')}"</div>
                             </div>`;
                     });
                 } else {
@@ -1779,22 +1874,38 @@
                         <h4 class="section-title">📷 Фото</h4>
                         <div class="detail-photos">
                             ${photos
-                              .slice(0, 3)
+                              .slice(0, 6)
                               .map(
                                 (p) =>
-                                  `<a href="${p.url}" target="_blank" rel="noopener"><img src="${p.url}" alt=""></a>`
+                                  `<a href="${escapeHtml(p.url)}" target="_blank" rel="noopener"><img src="${escapeHtml(p.url)}" alt=""></a>`
                               )
                               .join('')}
                         </div>
                     </div>`;
                 }
 
+                const aboutText = String(loc.text || '').trim();
+                const aboutHtml = aboutText
+                    ? `<div class="detail-section">
+                        <h4 class="section-title">ℹ️ Про заклад</h4>
+                        <div class="info-item" style="font-weight:500;line-height:1.45">${escapeHtml(aboutText)}</div>
+                       </div>`
+                    : '';
+
+                const providerName = typeof getProviderName === 'function' ? getProviderName(loc) : '';
+                const providerHtml = providerName
+                    ? `<div class="info-item">👤 ${escapeHtml(providerName)}</div>`
+                    : '';
+
                 bodyBox.innerHTML = `
                     ${photosHtml}
+                    ${aboutHtml}
                     <div class="detail-section">
                         <h4 class="section-title">📍 Контакти та Адреса</h4>
-                        <div class="info-item">🏢 ${loc.address}</div>
-                        <div class="info-item">📞 ${loc.phone}</div>
+                        ${providerHtml}
+                        <div class="info-item">🏢 ${escapeHtml(loc.address || 'Адресу не вказано')}</div>
+                        <div class="info-item">📞 ${escapeHtml(loc.phone || 'Телефон не вказано')}</div>
+                        ${Number(loc.views) ? `<div class="info-item">👁 Переглядів: ${Number(loc.views)}</div>` : ''}
                     </div>
                     <div class="detail-section">
                         <h4 class="section-title">🕒 Графік роботи</h4>
@@ -1816,12 +1927,12 @@
                                 <span data-score="5" class="active">★</span>
                             </div>
                             <textarea class="review-textarea" id="reviewTextarea" placeholder="Поділіться враженнями від послуги..."></textarea>
-                            <button class="submit-review-btn" onclick="addNewReviewClick('${loc.id}')">Надіслати відгук</button>
+                            <button class="submit-review-btn" onclick="addNewReviewClick('${escapeHtml(loc.id)}')">Надіслати відгук</button>
                         </div>
                     </div>
 
                     <div class="detail-section">
-                        <h4 class="section-title">⭐ Відгуки користувачів (${loc.reviewsCount})</h4>
+                        <h4 class="section-title">⭐ Відгуки користувачів (${Number(loc.reviewsCount) || 0})</h4>
                         <div style="display:flex; flex-direction:column; gap:10px;">${reviewsHtml}</div>
                     </div>
                 `;
@@ -1861,12 +1972,15 @@
                 loc.reviewsCount = loc.reviews.length;
                 loc.rating = totalScore / loc.reviewsCount;
 
-                openMasterDetail(loc.id);
+                openMasterDetail(loc.id, { mode: 'dive', forceMode: true });
             };
 
             window.closeMasterDetail = function() {
-                document.getElementById('sidebar-detail-view').classList.remove('show');
+                const detailView = document.getElementById('sidebar-detail-view');
+                detailView.classList.remove('show', 'mode-preview', 'mode-dive');
+                appShell.classList.remove('sheet-dive');
                 State.selectedLocation = null;
+                State.detailMode = null;
                 if (State.service) {
                     renderLocationList();
                     syncMapMarkers();
@@ -2060,15 +2174,13 @@
                     });
                     loc.markerInstance.on('click', (e) => {
                         L.DomEvent.stopPropagation(e);
-                        openMasterDetail(loc.id);
+                        openMasterDetail(loc.id, { fromMarker: true });
                     });
                     loc.markerInstance.on('dblclick', (e) => {
                         L.DomEvent.stopPropagation(e);
                         L.DomEvent.preventDefault(e);
-                        const u = State.currentUser;
-                        if (u && (u.role === 'admin' || (u.role === 'provider' && loc.providerId === u.id))) {
-                            openLocationInCabinet(loc.id);
-                        }
+                        // Повторний / подвійний тап — провалювання в повну картку
+                        openMasterDetail(loc.id, { mode: 'dive', forceMode: true, fromMarker: true });
                     });
                     batch.push(loc.markerInstance);
                     visible.push(loc);
