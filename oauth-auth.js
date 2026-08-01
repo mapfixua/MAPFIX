@@ -260,6 +260,42 @@ async function attachOauthIds(userId, { googleId, appleId }) {
   }
 }
 
+async function insertUserWithOauth(user, { googleId, appleId } = {}) {
+  const base = toUserRow(user);
+  const attempts = [];
+  if (googleId || appleId) {
+    attempts.push({
+      ...base,
+      ...(googleId ? { google_id: googleId } : {}),
+      ...(appleId ? { apple_id: appleId } : {}),
+    });
+    attempts.push({
+      ...base,
+      ...(googleId ? { googleId } : {}),
+      ...(appleId ? { appleId } : {}),
+    });
+  }
+  attempts.push(base);
+
+  let lastError = null;
+  for (const row of attempts) {
+    const { error } = await supabaseClient.from(USERS_TABLE).insert(row);
+    if (!error) {
+      const storedOauth = Boolean(row.google_id || row.googleId || row.apple_id || row.appleId);
+      if (!storedOauth && (googleId || appleId)) {
+        console.warn(
+          '[oauth] users table missing google_id/apple_id columns. Run supabase/migrations/009_oauth_ids.sql'
+        );
+      }
+      return { storedOauth };
+    }
+    lastError = error;
+    const msg = String(error.message || '');
+    if (!/schema cache|column|google|apple/i.test(msg)) break;
+  }
+  throw new Error(lastError?.message || 'Не вдалося створити користувача');
+}
+
 async function createOauthUser({
   email,
   name,
@@ -288,19 +324,7 @@ async function createOauthUser({
   if (googleId) user.googleId = googleId;
   if (appleId) user.appleId = appleId;
 
-  const row = toUserRow(user);
-  if (googleId) row.googleId = googleId;
-  if (appleId) row.appleId = appleId;
-
-  const { error } = await supabaseClient.from(USERS_TABLE).insert(row);
-  if (error) {
-    if (/google|apple/i.test(String(error.message || ''))) {
-      const { error: err2 } = await supabaseClient.from(USERS_TABLE).insert(toUserRow(user));
-      if (err2) throw new Error(err2.message);
-    } else {
-      throw new Error(error.message);
-    }
-  }
+  await insertUserWithOauth(user, { googleId, appleId });
 
   return { user, companyName: role === 'provider' ? companyName || name || login : null };
 }

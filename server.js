@@ -884,7 +884,7 @@ async function finishOauthSignIn(res, result) {
     return res.status(status).json({
       ok: false,
       error: result.error,
-      message: messages[result.error] || 'Не вдалося увійти',
+      message: messages[result.error] || 'Не вдалося увійти через Google/Apple',
     });
   }
 

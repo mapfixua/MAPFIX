@@ -62,8 +62,7 @@ function toUserRow(user) {
   };
   if (user.phone) row.phone = user.phone;
   if (user.email) row.email = user.email;
-  if (user.googleId) row.googleId = user.googleId;
-  if (user.appleId) row.appleId = user.appleId;
+  // OAuth columns are added separately — table may not have them yet.
   return row;
 }
 
