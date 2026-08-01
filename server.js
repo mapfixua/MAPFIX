@@ -1131,7 +1131,10 @@ app.post('/api/search-ai', async (req, res) => {
       subcategory: result.subcategory,
       service: result.service,
       source: result.source,
+      confidence: result.confidence,
       query: text,
+      suggestions: Array.isArray(result.suggestions) ? result.suggestions : [],
+      gemini: Boolean(GEMINI_API_KEY),
     });
   } catch (err) {
     console.error('[POST /api/search-ai]', err);

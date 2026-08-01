@@ -246,6 +246,53 @@
             margin: 0;
             line-height: 1.4;
         }
+        .ai-suggestions {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            padding: 10px 12px;
+            background: #f0fdfa;
+            border-bottom: 1px solid #99f6e4;
+        }
+        .ai-suggestions-title {
+            font-size: 11px;
+            font-weight: 800;
+            color: #0f766e;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+        }
+        .ai-suggestion-chip {
+            display: flex;
+            flex-direction: column;
+            align-items: flex-start;
+            gap: 2px;
+            width: 100%;
+            text-align: left;
+            border: 1.5px solid #99f6e4;
+            background: #fff;
+            border-radius: 12px;
+            padding: 10px 12px;
+            cursor: pointer;
+            font-family: inherit;
+            color: var(--ink);
+        }
+        .ai-suggestion-chip:hover { border-color: var(--ink); }
+        .ai-suggestion-chip.active {
+            border-color: var(--ink);
+            box-shadow: 0 0 0 1px var(--ink);
+            background: var(--primary-light);
+        }
+        .ai-suggestion-type {
+            font-size: 10px;
+            font-weight: 800;
+            color: #0f766e;
+            text-transform: uppercase;
+        }
+        .ai-suggestion-label {
+            font-size: 14px;
+            font-weight: 700;
+            line-height: 1.25;
+        }
 
         .provider-card {
             background: white;
@@ -1108,7 +1155,8 @@
                 formRatingScore: 5,
                 currentUser: null,
                 favoriteIds: new Set(),
-                locationSearchQuery: ''
+                locationSearchQuery: '',
+                aiSuggestions: [],
             };
             
             let userMarkerInstance = null;
@@ -1758,6 +1806,7 @@
                     catalogNav.style.display = 'none';
                     sidebarContent.style.display = 'flex';
                     renderLocationSearchResults();
+                    renderAiSuggestionsInto(sidebarContent);
                     syncMapMarkers();
                     return;
                 }
@@ -1773,6 +1822,7 @@
                     sortPanelWrap.style.flexDirection = 'column';
                     sortPanelWrap.style.gap = '10px';
                     renderLocationList();
+                    renderAiSuggestionsInto(sidebarContent);
                     syncMapMarkers();
                     return;
                 }
@@ -1787,6 +1837,7 @@
                             <i class="fa-solid fa-hand-pointer" style="color:var(--primary);margin-right:6px"></i>
                             Проведіть стрічкою категорій і торкніться потрібної іконки
                         </p>`;
+                    renderAiSuggestionsInto(catalogNav);
                     syncMapMarkers();
                     return;
                 }
@@ -1817,6 +1868,7 @@
                             );
                         });
                     }
+                    renderAiSuggestionsInto(catalogNav);
                     pulseSheetContent();
                     syncMapMarkers();
                     return;
@@ -1844,13 +1896,14 @@
                         el.innerHTML = `
                             <div>
                                 <div>${srv.name}</div>
-                                <div class="nav-item-meta">від ${srv.price} · ${providersCount} виконавців</div>
+                                <div class="nav-item-meta">${providersCount} місць · від ${srv.price || '—'}</div>
                             </div>
                             <span class="nav-item-arrow"><i class="fa-solid fa-chevron-right"></i></span>`;
                         el.addEventListener('click', () => handleL3Click(srv));
                         catalogNav.appendChild(el);
                     });
                 }
+                renderAiSuggestionsInto(catalogNav);
                 pulseSheetContent();
                 syncMapMarkers();
             }
@@ -1859,12 +1912,14 @@
                 if (State.locationSearchQuery) {
                     State.locationSearchQuery = '';
                     searchInput.value = '';
+                    State.aiSuggestions = [];
                 } else if (State.service) {
                     State.service = null;
                 } else if (State.subcategory) {
                     State.subcategory = null;
                 } else if (State.category) {
                     State.category = null;
+                    State.aiSuggestions = [];
                     collapseBottomSheet();
                 }
                 closeMasterDetail();
@@ -2394,6 +2449,7 @@
                 State.service = null;
                 State.selectedLocation = null;
                 State.detailMode = null;
+                State.aiSuggestions = [];
                 State.onlyOpen = false;
                 const onlyOpenCheckbox = document.getElementById('onlyOpenCheckbox');
                 if (onlyOpenCheckbox) onlyOpenCheckbox.checked = false;
@@ -2412,6 +2468,7 @@
                 State.locationSearchQuery = '';
                 const searchField = document.getElementById('searchInput');
                 if (searchField) searchField.value = '';
+                State.aiSuggestions = [];
                 State.category = catId;
                 State.subcategory = null;
                 State.service = null;
@@ -2448,25 +2505,67 @@
                 syncUI();
             }
 
-            function applyVoiceSearchFilter(result) {
-                const { category, subcategory, service } = result;
+            function isActiveSuggestion(s) {
+                if (!s?.category || State.category !== s.category) return false;
+                if ((s.subcategory || null) !== (State.subcategory || null)) return false;
+                const srv = State.service?.name || null;
+                return (s.service || null) === srv;
+            }
+
+            function renderAiSuggestionsInto(container) {
+                if (!container || !State.aiSuggestions?.length) return;
+                const wrap = document.createElement('div');
+                wrap.className = 'ai-suggestions';
+                const title = document.createElement('div');
+                title.className = 'ai-suggestions-title';
+                title.textContent = 'Gemini: релевантні варіанти';
+                wrap.appendChild(title);
+
+                State.aiSuggestions.forEach((s) => {
+                    const btn = document.createElement('button');
+                    btn.type = 'button';
+                    btn.className = 'ai-suggestion-chip' + (isActiveSuggestion(s) ? ' active' : '');
+                    const typeLabel =
+                        s.type === 'service' ? 'Послуга' : s.type === 'subcategory' ? 'Підкатегорія' : 'Категорія';
+                    btn.innerHTML = `
+                        <span class="ai-suggestion-type">${typeLabel}</span>
+                        <span class="ai-suggestion-label">${escapeHtml(s.label || s.service || s.subcategory || s.category || '')}</span>`;
+                    btn.addEventListener('click', () => applyCatalogSearchFilter(s, { keepSuggestions: true }));
+                    wrap.appendChild(btn);
+                });
+                container.prepend(wrap);
+            }
+
+            function applyCatalogSearchFilter(result, opts = {}) {
+                const { category, subcategory, service } = result || {};
                 if (!category || !window.masterCatalog[category]) {
                     throw new Error('Категорію не знайдено в каталозі');
                 }
 
-                handleL1Click(category);
+                if (!opts.keepSuggestions) {
+                    // keep existing suggestions unless explicitly replaced by caller
+                }
 
-                if (subcategory && window.masterCatalog[category].subcats?.[subcategory]) {
-                    handleL2Click(subcategory);
+                State.locationSearchQuery = '';
+                State.category = category;
+                State.subcategory = subcategory || null;
+                State.service = null;
+                State.selectedLocation = null;
+                State.detailMode = null;
 
-                    if (service) {
-                        const items = window.masterCatalog[category].subcats[subcategory].items || [];
-                        const srv = items.find((i) => i.name === service);
-                        if (srv) handleL3Click(srv);
-                    }
+                if (service && State.subcategory) {
+                    const items = window.masterCatalog[category]?.subcats?.[State.subcategory]?.items || [];
+                    const srv = items.find((i) => i.name === service);
+                    if (srv) State.service = { name: srv.name, price: srv.price };
                 }
 
                 closeMasterDetail();
+                browseBottomSheet();
+                syncUI();
+            }
+
+            function applyVoiceSearchFilter(result) {
+                applyCatalogSearchFilter(result);
             }
 
             /* ---- Голосовий пошук (Web Speech API + /api/search-ai) ---- */
@@ -2494,22 +2593,8 @@
             }
 
             async function runAiSearch(transcript) {
-                setVoiceUI('processing', 'Аналізую запит...');
+                setVoiceUI('processing', 'Gemini аналізує запит...');
                 searchInput.value = transcript;
-
-                const directMatches = getLocationSearchResults(transcript);
-                if (directMatches.length) {
-                    State.locationSearchQuery = transcript;
-                    State.category = null;
-                    State.subcategory = null;
-                    State.service = null;
-                    State.selectedLocation = null;
-                    closeMasterDetail();
-                    syncUI();
-                    setVoiceUI('listening', `Знайдено місць: ${directMatches.length}`);
-                    setTimeout(() => setVoiceUI('idle'), 1800);
-                    return;
-                }
 
                 const res = await fetch('/api/search-ai', {
                     method: 'POST',
@@ -2521,13 +2606,31 @@
                 const data = await res.json();
                 if (!res.ok) throw new Error(data.error || 'Помилка AI-пошуку');
 
-                applyVoiceSearchFilter(data);
+                State.aiSuggestions = Array.isArray(data.suggestions) ? data.suggestions : [];
 
-                const catName = window.masterCatalog[data.category]?.name || data.category;
-                const subName = data.subcategory
-                    ? window.masterCatalog[data.category]?.subcats?.[data.subcategory]?.name
-                    : '';
-                setVoiceUI('listening', `Знайдено: ${subName || catName}`);
+                if (data.category) {
+                    applyCatalogSearchFilter(data, { keepSuggestions: true });
+                    const top = State.aiSuggestions[0];
+                    const label = top?.label || data.service || data.subcategory || data.category;
+                    const src = data.source === 'gemini' ? 'Gemini' : 'каталог';
+                    setVoiceUI('listening', `${src}: ${label}`);
+                    setTimeout(() => setVoiceUI('idle'), 2200);
+                    return;
+                }
+
+                // Якщо каталог не визначено — показуємо текстові збіги локацій
+                const directMatches = getLocationSearchResults(transcript);
+                State.locationSearchQuery = transcript;
+                State.category = null;
+                State.subcategory = null;
+                State.service = null;
+                State.selectedLocation = null;
+                closeMasterDetail();
+                syncUI();
+                setVoiceUI(
+                    'listening',
+                    directMatches.length ? `Знайдено місць: ${directMatches.length}` : 'Нічого не знайдено'
+                );
                 setTimeout(() => setVoiceUI('idle'), 1800);
             }
 

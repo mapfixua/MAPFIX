@@ -1,7 +1,5 @@
 'use strict';
 
-const LOCAL_CONFIDENCE_THRESHOLD = 4;
-
 function normalizeText(text) {
   return String(text)
     .toLowerCase()
@@ -10,6 +8,38 @@ function normalizeText(text) {
     .replace(/\s+/g, ' ')
     .trim();
 }
+
+/** Розмовні запити → слова, які є в каталозі */
+const QUERY_SYNONYMS = {
+  постригтися: ['стрижка', 'перукар', 'барбер', 'волосся'],
+  постригтись: ['стрижка', 'перукар', 'барбер', 'волосся'],
+  підстригтися: ['стрижка', 'перукар', 'барбер'],
+  підстригтись: ['стрижка', 'перукар', 'барбер'],
+  поголитися: ['борода', 'гоління', 'барбер'],
+  манікюр: ['нігті', 'nails'],
+  педикюр: ['нігті', 'nails'],
+  шиномонтаж: ['шини', 'балансування', 'tyres'],
+  сто: ['ремонт', 'авто', 'auto_repair'],
+  автомийка: ['мийка', 'wash'],
+  масаж: ['масаж', 'spa'],
+  ветеринар: ['вет', 'тварини', 'pets'],
+  ключі: ['ключі', 'замки', 'keys'],
+  ноутбук: ['комп', 'ремонт', 'електронік'],
+};
+
+function expandQueryTokens(text) {
+  const base = tokenize(text);
+  const extra = [];
+  const norm = normalizeText(text);
+  for (const [phrase, words] of Object.entries(QUERY_SYNONYMS)) {
+    if (norm.includes(phrase) || base.includes(phrase)) {
+      extra.push(...words.map(normalizeText));
+    }
+  }
+  return [...new Set([...base, ...extra.filter(Boolean)])];
+}
+
+const GEMINI_MODELS = ['gemini-2.0-flash', 'gemini-2.0-flash-lite', 'gemini-2.5-flash'];
 
 function tokenize(text) {
   return normalizeText(text)
@@ -81,28 +111,71 @@ function scoreEntry(query, queryTokens, entry) {
   return score;
 }
 
-function localParseSearch(text, masterCatalog) {
-  const query = normalizeText(text);
-  if (!query) return { category: null, subcategory: null, service: null, confidence: 0, source: 'local' };
+function suggestionType(entry) {
+  if (entry.service) return 'service';
+  if (entry.subcategory) return 'subcategory';
+  return 'category';
+}
 
-  const queryTokens = tokenize(query);
+function toSuggestion(entry, score, source) {
+  return {
+    type: suggestionType(entry),
+    category: entry.category,
+    subcategory: entry.subcategory || null,
+    service: entry.service || null,
+    score: Number(score) || 0,
+    source: source || 'local',
+  };
+}
+
+function localRankSearch(text, masterCatalog, limit = 8) {
+  const query = normalizeText(text);
+  if (!query) return [];
+
+  const queryTokens = expandQueryTokens(query);
   const index = buildSearchIndex(masterCatalog);
-  let best = { category: null, subcategory: null, service: null, confidence: 0, source: 'local' };
+  const scored = [];
 
   for (const entry of index) {
     const score = scoreEntry(query, queryTokens, entry);
-    if (score > best.confidence) {
-      best = {
-        category: entry.category,
-        subcategory: entry.subcategory,
-        service: entry.service,
-        confidence: score,
-        source: 'local',
-      };
-    }
+    if (score <= 0) continue;
+    scored.push(toSuggestion(entry, score, 'local'));
   }
 
-  return best;
+  scored.sort((a, b) => b.score - a.score || String(a.service || '').localeCompare(String(b.service || ''), 'uk'));
+  return dedupeSuggestions(scored).slice(0, limit);
+}
+
+function localParseSearch(text, masterCatalog) {
+  const ranked = localRankSearch(text, masterCatalog, 1);
+  if (!ranked.length) {
+    return { category: null, subcategory: null, service: null, confidence: 0, source: 'local' };
+  }
+  const best = ranked[0];
+  return {
+    category: best.category,
+    subcategory: best.subcategory,
+    service: best.service,
+    confidence: best.score,
+    source: 'local',
+  };
+}
+
+function suggestionKey(item) {
+  return [item.type, item.category, item.subcategory || '', item.service || ''].join('|');
+}
+
+function dedupeSuggestions(items) {
+  const seen = new Set();
+  const out = [];
+  for (const item of items || []) {
+    if (!item?.category) continue;
+    const key = suggestionKey(item);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(item);
+  }
+  return out;
 }
 
 function compactCatalogForPrompt(masterCatalog) {
@@ -140,101 +213,215 @@ function validateResult(result, masterCatalog) {
   return { category: result.category, subcategory, service };
 }
 
-async function geminiParseSearch(text, masterCatalog, apiKey) {
+function labelForSuggestion(item, masterCatalog) {
+  const cat = masterCatalog?.[item.category];
+  if (!cat) return '';
+  if (item.type === 'category') return categoryLabelPlain(cat.name) || item.category;
+  const sub = item.subcategory ? cat.subcats?.[item.subcategory] : null;
+  if (item.type === 'subcategory') return sub?.name || item.subcategory;
+  return item.service || '';
+}
+
+function categoryLabelPlain(name) {
+  return String(name || '')
+    .replace(/^[\p{Extended_Pictographic}\p{Emoji_Presentation}\s]+/u, '')
+    .trim() || name;
+}
+
+function enrichSuggestions(items, masterCatalog) {
+  return (items || []).map((item) => ({
+    ...item,
+    label: item.label || labelForSuggestion(item, masterCatalog),
+  }));
+}
+
+async function geminiRankSearch(text, masterCatalog, apiKey) {
   const catalog = compactCatalogForPrompt(masterCatalog);
-  const prompt = `Ти парсер голосового пошуку для українського каталогу послуг Mapfix.
-Каталог (ключі category/subcategory — лише з цього JSON):
+  const prompt = `Ти семантичний пошук по каталогу послуг Mapfix (Україна).
+Каталог (ключі category/subcategory і точні назви services — лише з цього JSON):
 ${JSON.stringify(catalog)}
 
 Запит користувача: "${text}"
 
 Поверни ТІЛЬКИ валідний JSON без markdown:
-{"category":"ключ_категорії","subcategory":"ключ_підкатегорії або null","service":"назва послуги або null"}
+{"matches":[{"type":"service|subcategory|category","category":"ключ","subcategory":"ключ_або_null","service":"точна_назва_або_null","score":1-10}]}
 
 Правила:
-- category і subcategory — тільки існуючі ключі з каталогу
-- якщо не впевнений — найближча відповідність за змістом
-- service — точна назва з каталогу або null`;
+- до 8 найбільш релевантних matches, від найкращого до гіршого
+- category/subcategory — ТІЛЬКИ існуючі ключі з каталогу
+- service — ТІЛЬКИ точна назва з services у відповідній підкатегорії, або null
+- type=service лише якщо є і subcategory, і service
+- type=subcategory якщо є subcategory без конкретної послуги
+- type=category якщо підходить лише категорія
+- враховуй синоніми й розмовні формулювання українською (напр. "постригтись" → перукарня/стрижка)
+- якщо нічого не підходить — {"matches":[]}`;
 
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 4000);
+  let lastError = null;
 
-  try {
-    const res = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${encodeURIComponent(apiKey)}`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        signal: controller.signal,
-        body: JSON.stringify({
-          contents: [{ parts: [{ text: prompt }] }],
-          generationConfig: {
-            temperature: 0.1,
-            maxOutputTokens: 120,
-            responseMimeType: 'application/json',
-          },
-        }),
+  for (const model of GEMINI_MODELS) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 7000);
+    try {
+      const res = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(apiKey)}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          signal: controller.signal,
+          body: JSON.stringify({
+            contents: [{ parts: [{ text: prompt }] }],
+            generationConfig: {
+              temperature: 0.15,
+              maxOutputTokens: 700,
+              responseMimeType: 'application/json',
+            },
+          }),
+        }
+      );
+
+      if (!res.ok) {
+        const errText = await res.text();
+        lastError = new Error(`Gemini ${res.status} (${model}): ${errText.slice(0, 200)}`);
+        if (res.status === 429 || res.status === 404) continue;
+        throw lastError;
       }
-    );
 
-    if (!res.ok) {
-      const errText = await res.text();
-      throw new Error(`Gemini ${res.status}: ${errText.slice(0, 200)}`);
+      const data = await res.json();
+      const raw = data?.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || '{}';
+      const parsed = JSON.parse(raw);
+      const matches = Array.isArray(parsed.matches) ? parsed.matches : [];
+      const suggestions = [];
+
+      for (const m of matches) {
+        const validated = validateResult(
+          {
+            category: m.category,
+            subcategory: m.subcategory,
+            service: m.service,
+          },
+          masterCatalog
+        );
+        if (!validated.category) continue;
+
+        let type = String(m.type || '').toLowerCase();
+        if (validated.service && validated.subcategory) type = 'service';
+        else if (validated.subcategory) type = 'subcategory';
+        else type = 'category';
+
+        const item = toSuggestion(
+          {
+            category: validated.category,
+            subcategory: validated.subcategory,
+            service: validated.service,
+          },
+          Number(m.score) || 8,
+          'gemini'
+        );
+        item.type = type;
+        suggestions.push(item);
+      }
+
+      return enrichSuggestions(dedupeSuggestions(suggestions), masterCatalog);
+    } catch (err) {
+      lastError = err;
+      if (err.name === 'AbortError') continue;
+    } finally {
+      clearTimeout(timer);
     }
-
-    const data = await res.json();
-    const raw =
-      data?.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || '{}';
-    const parsed = JSON.parse(raw);
-    const validated = validateResult(parsed, masterCatalog);
-    return { ...validated, confidence: 10, source: 'gemini', query: text };
-  } finally {
-    clearTimeout(timer);
   }
+
+  throw lastError || new Error('Gemini unavailable');
+}
+
+async function geminiParseSearch(text, masterCatalog, apiKey) {
+  const ranked = await geminiRankSearch(text, masterCatalog, apiKey);
+  if (!ranked.length) {
+    return { category: null, subcategory: null, service: null, confidence: 0, source: 'gemini', query: text, suggestions: [] };
+  }
+  const best = ranked[0];
+  return {
+    category: best.category,
+    subcategory: best.subcategory,
+    service: best.service,
+    confidence: best.score || 10,
+    source: 'gemini',
+    query: text,
+    suggestions: ranked,
+  };
 }
 
 async function parseVoiceSearch(text, masterCatalog, options = {}) {
   const trimmed = String(text || '').trim();
   if (!trimmed) {
-    return { category: null, subcategory: null, service: null, confidence: 0, source: 'none', query: '' };
-  }
-
-  const local = localParseSearch(trimmed, masterCatalog);
-  local.query = trimmed;
-
-  if (local.confidence >= LOCAL_CONFIDENCE_THRESHOLD) {
     return {
-      category: local.category,
-      subcategory: local.subcategory,
-      service: local.service,
-      confidence: local.confidence,
-      source: 'local',
-      query: trimmed,
+      category: null,
+      subcategory: null,
+      service: null,
+      confidence: 0,
+      source: 'none',
+      query: '',
+      suggestions: [],
     };
   }
+
+  const localSuggestions = enrichSuggestions(localRankSearch(trimmed, masterCatalog, 8), masterCatalog);
+  const local = localSuggestions[0]
+    ? {
+        category: localSuggestions[0].category,
+        subcategory: localSuggestions[0].subcategory,
+        service: localSuggestions[0].service,
+        confidence: localSuggestions[0].score,
+        source: 'local',
+        query: trimmed,
+        suggestions: localSuggestions,
+      }
+    : {
+        category: null,
+        subcategory: null,
+        service: null,
+        confidence: 0,
+        source: 'local',
+        query: trimmed,
+        suggestions: [],
+      };
 
   const apiKey = options.geminiApiKey;
   if (apiKey) {
     try {
       const gemini = await geminiParseSearch(trimmed, masterCatalog, apiKey);
-      if (gemini.category) return gemini;
+      if (gemini.suggestions?.length) {
+        // Gemini першим, локальні як доповнення
+        const merged = enrichSuggestions(
+          dedupeSuggestions([...(gemini.suggestions || []), ...localSuggestions]),
+          masterCatalog
+        );
+        const best = merged[0];
+        return {
+          category: best.category,
+          subcategory: best.subcategory,
+          service: best.service,
+          confidence: best.score || gemini.confidence || 10,
+          source: 'gemini',
+          query: trimmed,
+          suggestions: merged.slice(0, 8),
+        };
+      }
     } catch (err) {
       console.warn('[search-ai] Gemini fallback:', err.message);
     }
   }
 
-  if (local.category) {
-    return {
-      category: local.category,
-      subcategory: local.subcategory,
-      service: local.service,
-      confidence: local.confidence,
-      source: 'local',
-      query: trimmed,
-    };
-  }
+  if (local.category) return local;
 
-  return { category: null, subcategory: null, service: null, confidence: 0, source: 'none', query: trimmed };
+  return {
+    category: null,
+    subcategory: null,
+    service: null,
+    confidence: 0,
+    source: 'none',
+    query: trimmed,
+    suggestions: [],
+  };
 }
 
 async function suggestCatalogForPlace(place, masterCatalog, options = {}) {
@@ -401,5 +588,6 @@ module.exports = {
   suggestCatalogForPlace,
   classifyPlacesForImport,
   localParseSearch,
+  localRankSearch,
   buildSearchIndex,
 };
