@@ -94,6 +94,7 @@ const {
   uploadLocationPhoto,
   deleteLocationPhotoFile,
 } = require('./location-photos.js');
+const billing = require('./billing.js');
 
 const LOGIN_RE = /^[a-z0-9._-]{3,32}$/;
 
@@ -1558,6 +1559,92 @@ app.patch('/api/admin/reports/:id', requireAuth, requireAdmin, async (req, res) 
   }
 });
 
+app.get('/api/billing/config', (req, res) => {
+  res.json({
+    ok: true,
+    monoJarUrl: billing.MONO_JAR_URL,
+    priceUah: billing.SUBSCRIPTION_PRICE_UAH,
+    trialDays: billing.TRIAL_DAYS,
+    freeMaxPrices: billing.FREE_MAX_PRICES,
+    freeMaxPhotos: billing.FREE_MAX_PHOTOS,
+    paidMaxPhotos: billing.PAID_MAX_PHOTOS,
+  });
+});
+
+app.get('/api/billing/entitlements', requireAuth, async (req, res) => {
+  try {
+    const user = getSessionUser(req);
+    const data = await readData();
+    const profile = data.providerProfiles?.[user.id] || null;
+    const entitlements = await billing.getEntitlementsForUser(user, profile);
+    res.json({ ok: true, entitlements });
+  } catch (err) {
+    console.error('[billing entitlements]', err);
+    res.status(500).json({ error: 'Не вдалося завантажити підписку' });
+  }
+});
+
+app.post('/api/billing/click', requireAuth, async (req, res) => {
+  try {
+    const user = getSessionUser(req);
+    const type = String(req.body?.type || 'donate').toLowerCase();
+    if (type !== 'donate' && type !== 'subscribe') {
+      return res.status(400).json({ error: 'Невірний тип кліку' });
+    }
+    const data = await readData();
+    const profile = data.providerProfiles?.[user.id] || null;
+    const result = await billing.trackClick({
+      user,
+      type,
+      meta: {
+        companyName: profile?.companyName || '',
+        trialStartedAt: profile?.createdAt || null,
+      },
+    });
+    res.json({ ok: true, ...result });
+  } catch (err) {
+    console.error('[billing click]', err);
+    res.status(500).json({ error: err.message || 'Не вдалося зафіксувати клік' });
+  }
+});
+
+app.get('/api/admin/billing', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const data = await readData();
+    const overview = await billing.adminOverview(data.providerProfiles || {});
+    res.json({ ok: true, ...overview });
+  } catch (err) {
+    console.error('[admin billing]', err);
+    res.status(500).json({ error: 'Не вдалося завантажити білінг' });
+  }
+});
+
+app.post('/api/admin/billing/mark-paid', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const admin = getSessionUser(req);
+    const userId = String(req.body?.userId || '').trim();
+    if (!userId) return res.status(400).json({ error: 'Вкажіть userId' });
+    const users = await readUsers();
+    const target = users.find((u) => u.id === userId);
+    const data = await readData();
+    const profile = data.providerProfiles?.[userId] || null;
+    const result = await billing.markPaid({
+      userId,
+      login: target?.login || req.body?.login || '',
+      companyName: profile?.companyName || '',
+      amount: req.body?.amount,
+      months: req.body?.months,
+      note: req.body?.note,
+      trialStartedAt: profile?.createdAt || null,
+      adminLogin: admin.login || '',
+    });
+    res.json({ ok: true, ...result });
+  } catch (err) {
+    console.error('[admin mark-paid]', err);
+    res.status(400).json({ error: err.message || 'Помилка' });
+  }
+});
+
 app.post('/api/admin/import-places', requireAuth, requireAdmin, async (req, res) => {
   try {
     const source = String(req.body?.source || 'osm').toLowerCase();
@@ -2445,6 +2532,11 @@ app.get('/api/provider/dashboard', requireAuth, rejectClientFromPanel, requirePr
     const checklistDone = Object.values(checklist).filter(Boolean).length;
     const checklistTotal = Object.keys(checklist).length;
 
+    const entitlements = await billing.getEntitlementsForUser(user, {
+      ...profile,
+      createdAt: profile.createdAt || null,
+    });
+
     res.json({
       profile,
       locations,
@@ -2466,6 +2558,7 @@ app.get('/api/provider/dashboard', requireAuth, rejectClientFromPanel, requirePr
       },
       checklist,
       checklistProgress: { done: checklistDone, total: checklistTotal },
+      billing: entitlements,
     });
   } catch (err) {
     console.error(err);
@@ -3004,7 +3097,17 @@ app.put('/api/provider/locations/:id', requireAuth, requireProviderOrAdmin, asyn
 
     if (req.body.prices && typeof req.body.prices === 'object') {
       // Full editor save replaces the price list (unchecked services are removed).
-      loc.prices = normalizePricesMap(req.body.prices);
+      const nextPrices = normalizePricesMap(req.body.prices);
+      const profile = data.providerProfiles?.[loc.providerId || user.id] || null;
+      const ent = await billing.getEntitlementsForUser(user, profile);
+      if (ent.maxPrices != null && Object.keys(nextPrices).length > ent.maxPrices) {
+        return res.status(403).json({
+          error: `На безкоштовному тарифі — до ${ent.maxPrices} послуг із ціною. Підписка Pro знімає ліміт.`,
+          code: 'subscription_required',
+          billing: ent,
+        });
+      }
+      loc.prices = nextPrices;
     }
     if (req.body.schedule) loc.schedule = req.body.schedule;
 
@@ -3052,10 +3155,23 @@ app.post('/api/provider/locations/:id/photos', requireAuth, requireProviderOrAdm
       return res.status(403).json({ error: 'Немає доступу до цієї локації' });
     }
 
+    const profile = data.providerProfiles?.[loc.providerId || user.id] || null;
+    const ent = await billing.getEntitlementsForUser(user, profile);
+    const maxPhotos = ent.maxPhotos ?? billing.FREE_MAX_PHOTOS;
+
     loc.photos = normalizePhotos(loc.photos);
-    if (loc.photos.length >= MAX_PHOTOS) {
+    if (maxPhotos <= 0) {
+      return res.status(403).json({
+        error:
+          'Завантаження фото доступне на підписці Mapfix Pro (або в пробному періоді). Оформіть підписку в розділі «Підписка».',
+        code: 'subscription_required',
+        billing: ent,
+      });
+    }
+    if (loc.photos.length >= maxPhotos) {
       return res.status(400).json({
-        error: `Можна завантажити не більше ${MAX_PHOTOS} фото`,
+        error: `Можна завантажити не більше ${maxPhotos} фото`,
+        maxPhotos,
       });
     }
 
@@ -3071,7 +3187,7 @@ app.post('/api/provider/locations/:id/photos', requireAuth, requireProviderOrAdm
     });
     loc.photos.push(photo);
     await persistLocationsPatch(data, [loc]);
-    res.status(201).json({ ok: true, photo, photos: loc.photos, maxPhotos: MAX_PHOTOS });
+    res.status(201).json({ ok: true, photo, photos: loc.photos, maxPhotos });
   } catch (err) {
     console.error('[POST /api/provider/locations/:id/photos]', err);
     res.status(400).json({ error: err.message || 'Помилка завантаження фото' });
@@ -3122,6 +3238,19 @@ app.post('/api/provider/locations/:id/prices', requireAuth, requireProviderOrAdm
     }
 
     if (!loc.prices) loc.prices = {};
+    const isNewService = !Object.prototype.hasOwnProperty.call(loc.prices, serviceName);
+    if (isNewService) {
+      const profile = data.providerProfiles?.[loc.providerId || user.id] || null;
+      const ent = await billing.getEntitlementsForUser(user, profile);
+      const maxPrices = ent.maxPrices;
+      if (maxPrices != null && Object.keys(loc.prices).length >= maxPrices) {
+        return res.status(403).json({
+          error: `На безкоштовному тарифі — до ${maxPrices} послуг із ціною. Підписка Pro знімає ліміт.`,
+          code: 'subscription_required',
+          billing: ent,
+        });
+      }
+    }
     loc.prices[serviceName] = formatPrice(price);
     if (cat) loc.cat = cat;
     if (Array.isArray(subcats) && subcats.length) {

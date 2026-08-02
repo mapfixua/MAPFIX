@@ -413,6 +413,30 @@
       font-weight: 700;
       margin-bottom: 8px;
     }
+    .topbar-actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+    .btn-donate {
+      background: #111827 !important;
+      color: #fff !important;
+    }
+    .btn-pro {
+      background: linear-gradient(135deg, #2563eb, #1d4ed8) !important;
+      color: #fff !important;
+    }
+    .billing-banner {
+      border: 1px solid #bfdbfe;
+      background: #eff6ff;
+      border-radius: 12px;
+      padding: 14px 16px;
+      margin-bottom: 14px;
+    }
+    .billing-banner.pro {
+      border-color: #86efac;
+      background: #f0fdf4;
+    }
+    .billing-banner.free {
+      border-color: #fcd34d;
+      background: #fffbeb;
+    }
   </style>
 </head>
 <body>
@@ -422,7 +446,10 @@
         <h1 id="pageTitle">Панель Mapfix</h1>
         <p class="user-info" id="userInfo"></p>
       </div>
-      <button type="button" class="btn-secondary" id="logoutBtn">Вийти</button>
+      <div class="topbar-actions">
+        <button type="button" class="btn-donate" id="donateProjectBtn" title="Банка Monobank">На розвиток Mapfix</button>
+        <button type="button" class="btn-secondary" id="logoutBtn">Вийти</button>
+      </div>
     </div>
 
     <p id="loadStatus" class="loading">Завантаження…</p>
@@ -438,6 +465,7 @@
           <button type="button" data-admin-nav="users">Користувачі <span class="nav-count" id="navCountUsers">0</span></button>
           <button type="button" data-admin-nav="support">Підтримка <span class="nav-count" id="navCountSupport">0</span></button>
           <button type="button" data-admin-nav="reports">Скарги <span class="nav-count" id="navCountReports">0</span></button>
+          <button type="button" data-admin-nav="billing">Підписки <span class="nav-count" id="navCountBilling">0</span></button>
           <button type="button" data-admin-nav="providers">Провайдери <span class="nav-count" id="navCountProviders">0</span></button>
           <button type="button" data-admin-nav="locations">Локації <span class="nav-count" id="navCountLocations">0</span></button>
           <button type="button" data-admin-nav="trash">Кошик <span class="nav-count" id="navCountTrash">0</span></button>
@@ -473,6 +501,46 @@
             <h2>Скарги на заклади</h2>
             <p class="field-hint">Скарги з карти. Змініть статус після перевірки.</p>
             <div id="adminReportsList"><p class="list-item-meta">Завантаження…</p></div>
+          </div>
+
+          <div id="adminPaneBilling" class="admin-pane card">
+            <h2>Підписки та донати</h2>
+            <p class="field-hint">
+              Оплата йде через банку Monobank. Банка не повідомляє автоматично, хто заплатив —
+              після переказу позначте оплату нижче (логін / userId). Кліки по кнопках збираються одразу.
+            </p>
+            <div class="stat-grid" id="billingStats" style="margin-bottom:16px"></div>
+            <div style="border:1px solid #e5e7eb;border-radius:12px;padding:14px;margin-bottom:16px;background:#fafafa">
+              <h3 style="margin:0 0 10px;font-size:1rem">Позначити оплату Pro</h3>
+              <div class="form-row" style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+                <div class="field-block">
+                  <label>User ID провайдера</label>
+                  <input type="text" id="billingMarkUserId" placeholder="uuid з картки провайдера">
+                </div>
+                <div class="field-block">
+                  <label>Логін (необовʼязково)</label>
+                  <input type="text" id="billingMarkLogin" placeholder="@login">
+                </div>
+                <div class="field-block">
+                  <label>Сума, грн</label>
+                  <input type="number" id="billingMarkAmount" value="99" min="0" step="1">
+                </div>
+                <div class="field-block">
+                  <label>Місяців</label>
+                  <input type="number" id="billingMarkMonths" value="1" min="1" max="24">
+                </div>
+              </div>
+              <div class="field-block">
+                <label>Нотатка</label>
+                <input type="text" id="billingMarkNote" placeholder="напр. банк від 02.08">
+              </div>
+              <button type="button" class="btn-pro" id="billingMarkPaidBtn" style="width:auto">Підтвердити оплату</button>
+              <div id="billingMarkMsg" class="msg" style="display:none;margin-top:8px"></div>
+            </div>
+            <h3 style="font-size:1rem">Підписки</h3>
+            <div id="billingSubsList"><p class="list-item-meta">Завантаження…</p></div>
+            <h3 style="font-size:1rem;margin-top:18px">Кліки (оплата / донат)</h3>
+            <div id="billingEventsList"><p class="list-item-meta">Завантаження…</p></div>
           </div>
 
           <div id="adminPaneProviders" class="admin-pane card">
@@ -731,6 +799,7 @@
           <button type="button" data-provider-nav="claim">Забрати з карти</button>
           <button type="button" data-provider-nav="orders">Замовлення</button>
           <button type="button" data-provider-nav="support">Підтримка</button>
+          <button type="button" data-provider-nav="billing">Підписка</button>
           <button type="button" data-provider-nav="import">Імпорт</button>
         </aside>
 
@@ -783,6 +852,25 @@
             </form>
             <h3 style="margin-top:24px;font-size:1rem">Мої звернення</h3>
             <div id="providerSupportList"><p class="list-item-meta">Порожньо</p></div>
+          </div>
+
+          <div id="providerPaneBilling" class="admin-pane card">
+            <h2>Підписка Mapfix Pro</h2>
+            <div id="providerBillingBanner" class="billing-banner">Завантаження…</div>
+            <p class="field-hint">
+              Перші <strong>3 місяці безкоштовно</strong>. Далі — <strong>99 грн/міс</strong>.
+              Pro: фото локацій, необмежений прайс, пріоритет у видачі.
+              На безкоштовному тарифі після пробного періоду — до 3 послуг із ціною, без фото.
+            </p>
+            <div style="display:flex;flex-wrap:wrap;gap:10px;margin:14px 0">
+              <button type="button" class="btn-pro" id="providerSubscribeBtn" style="width:auto">Оплатити 99 грн / міс</button>
+              <button type="button" class="btn-donate" id="providerDonateBtn" style="width:auto">На розвиток проєкту</button>
+            </div>
+            <p class="field-hint">
+              Після оплати в банці в коментарі вкажіть свій логін Mapfix. Підтвердження зараз ручне в адмінці
+              (банка Monobank не надсилає автоматично, хто саме заплатив).
+            </p>
+            <div id="providerBillingMsg" class="msg" style="display:none"></div>
           </div>
 
           <div id="providerPaneLocations" class="admin-pane card">
@@ -897,7 +985,7 @@
 
             <div id="locPhotosBlock" class="hidden" style="margin-top:16px">
               <h2>Фото точки</h2>
-              <p class="field-hint">До 3 фото, кожне до 5 МБ (JPEG / PNG / WebP). Перед завантаженням стискаємо для якості та розміру.</p>
+              <p class="field-hint" id="locPhotosHint">Фото доступні на Pro / у пробному періоді. Кожне до 5 МБ (JPEG / PNG / WebP).</p>
               <div id="locPhotosList" style="display:flex;flex-wrap:wrap;gap:10px;margin-bottom:10px"></div>
               <label class="btn-secondary" style="display:inline-block;width:auto;cursor:pointer;padding:10px 14px">
                 Додати фото
@@ -1095,6 +1183,33 @@
       location.href = '/login.html';
     };
 
+    async function openMonoJar(type) {
+      try {
+        const res = await fetch('/api/billing/click', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'same-origin',
+          body: JSON.stringify({ type }),
+        });
+        const data = await res.json().catch(() => ({}));
+        const url = data.url || 'https://send.monobank.ua/jar/6KwyVZAiKy';
+        if (data.commentHint) {
+          try {
+            await navigator.clipboard.writeText(data.commentHint);
+          } catch (_) {
+            /* ignore */
+          }
+        }
+        window.open(url, '_blank', 'noopener');
+        return data;
+      } catch (_) {
+        window.open('https://send.monobank.ua/jar/6KwyVZAiKy', '_blank', 'noopener');
+        return null;
+      }
+    }
+
+    document.getElementById('donateProjectBtn')?.addEventListener('click', () => openMonoJar('donate'));
+
     /* ---- Admin shell navigation ---- */
     let adminOverviewCache = null;
 
@@ -1112,7 +1227,125 @@
       if (name === 'trash') renderTrashList();
       if (name === 'support') loadAdminSupportTickets();
       if (name === 'reports') loadAdminReports();
+      if (name === 'billing') loadAdminBilling();
     }
+
+    function formatBillingDate(iso) {
+      if (!iso) return '—';
+      try {
+        return new Date(iso).toLocaleString('uk-UA', {
+          day: '2-digit',
+          month: '2-digit',
+          year: 'numeric',
+          hour: '2-digit',
+          minute: '2-digit',
+        });
+      } catch {
+        return String(iso);
+      }
+    }
+
+    async function loadAdminBilling() {
+      const statsEl = document.getElementById('billingStats');
+      const subsEl = document.getElementById('billingSubsList');
+      const eventsEl = document.getElementById('billingEventsList');
+      if (!statsEl || !subsEl || !eventsEl) return;
+      statsEl.innerHTML = '';
+      subsEl.innerHTML = '<p class="list-item-meta">Завантаження…</p>';
+      eventsEl.innerHTML = '<p class="list-item-meta">Завантаження…</p>';
+      try {
+        const data = await apiFetch('/api/admin/billing');
+        const st = data.stats || {};
+        const countEl = document.getElementById('navCountBilling');
+        if (countEl) countEl.textContent = String(st.subscribeClicks || 0);
+        statsEl.innerHTML = [
+          ['Кліки «Оплатити»', st.subscribeClicks || 0],
+          ['Кліки «Донат»', st.donateClicks || 0],
+          ['Активні Pro', st.activePaid || 0],
+          ['У пробному', st.inTrial || 0],
+          ['Сума підтверджена', (st.revenueUah || 0) + ' грн'],
+        ]
+          .map(
+            ([label, value]) =>
+              `<div class="stat-card"><div class="stat-label">${esc(label)}</div><div class="stat-value">${esc(String(value))}</div></div>`
+          )
+          .join('');
+
+        const subs = data.subscriptions || [];
+        if (!subs.length) {
+          subsEl.innerHTML = '<p class="list-item-meta">Ще немає записів підписок (зʼявляться після кліку «Оплатити» або підтвердження)</p>';
+        } else {
+          subsEl.innerHTML = subs
+            .map((s) => {
+              const ent = s.entitlements || {};
+              const plan = ent.plan || (s.activePaid ? 'pro' : '—');
+              return `<div class="list-item" style="margin-bottom:10px">
+                <div class="list-item-title">@${esc(s.login || '—')} · ${esc(s.companyName || '')} · ${esc(plan)}</div>
+                <div class="list-item-meta">id: ${esc(s.userId)}</div>
+                <div class="list-item-meta">Оплачено до: ${esc(formatBillingDate(s.paidUntil))} · Остання оплата: ${esc(formatBillingDate(s.lastPaidAt))} · ${esc(String(s.lastAmount ?? '—'))} грн</div>
+                <div class="list-item-meta">Пробний з: ${esc(formatBillingDate(ent.trialEndsAt ? s.trialStartedAt : s.trialStartedAt))}</div>
+              </div>`;
+            })
+            .join('');
+        }
+
+        const events = data.events || [];
+        if (!events.length) {
+          eventsEl.innerHTML = '<p class="list-item-meta">Кліків ще немає</p>';
+        } else {
+          eventsEl.innerHTML = events
+            .slice(0, 100)
+            .map((e) => {
+              const label = e.type === 'subscribe' ? 'Оплата Pro' : 'Донат';
+              return `<div class="list-item" style="margin-bottom:8px">
+                <div class="list-item-title">${esc(label)} · @${esc(e.login || 'гість')} (${esc(e.role || '—')})</div>
+                <div class="list-item-meta">${esc(formatBillingDate(e.at))}${e.amountHint ? ' · орієнтир ' + esc(String(e.amountHint)) + ' грн' : ''}</div>
+              </div>`;
+            })
+            .join('');
+        }
+      } catch (err) {
+        subsEl.innerHTML = `<p class="list-item-meta" style="color:#b91c1c">${esc(err.message)}</p>`;
+        eventsEl.innerHTML = '';
+      }
+    }
+
+    document.getElementById('billingMarkPaidBtn')?.addEventListener('click', async () => {
+      const msg = document.getElementById('billingMarkMsg');
+      const userId = document.getElementById('billingMarkUserId')?.value?.trim();
+      if (!userId) {
+        if (msg) {
+          msg.style.display = 'block';
+          msg.className = 'msg err';
+          msg.textContent = 'Вкажіть userId';
+        }
+        return;
+      }
+      try {
+        await apiFetch('/api/admin/billing/mark-paid', {
+          method: 'POST',
+          body: JSON.stringify({
+            userId,
+            login: document.getElementById('billingMarkLogin')?.value?.trim() || '',
+            amount: Number(document.getElementById('billingMarkAmount')?.value) || 99,
+            months: Number(document.getElementById('billingMarkMonths')?.value) || 1,
+            note: document.getElementById('billingMarkNote')?.value?.trim() || '',
+          }),
+        });
+        if (msg) {
+          msg.style.display = 'block';
+          msg.className = 'msg ok';
+          msg.textContent = 'Оплату підтверджено';
+        }
+        loadAdminBilling();
+      } catch (err) {
+        if (msg) {
+          msg.style.display = 'block';
+          msg.className = 'msg err';
+          msg.textContent = err.message || 'Помилка';
+        }
+      }
+    });
 
     async function loadAdminReports() {
       const listEl = document.getElementById('adminReportsList');
@@ -2970,6 +3203,12 @@
     }
 
     const MAX_LOC_PHOTOS = 6;
+
+    function locPhotoLimit() {
+      const max = providerData?.billing?.maxPhotos;
+      if (max == null) return MAX_LOC_PHOTOS;
+      return Number(max);
+    }
     const MAX_LOC_PHOTO_BYTES = 5 * 1024 * 1024;
 
     function showLocPhotosMsg(text, ok) {
@@ -2990,7 +3229,7 @@
         if (input) input.disabled = true;
         return;
       }
-      if (input) input.disabled = photos.length >= MAX_LOC_PHOTOS;
+      if (input) input.disabled = photos.length >= locPhotoLimit() || locPhotoLimit() <= 0;
       if (!photos.length) {
         list.innerHTML = '<p class="list-item-meta">Фото ще немає</p>';
         return;
@@ -3078,8 +3317,12 @@
       const locId = document.getElementById('editLocId').value;
       if (!file || !locId) return;
       const loc = providerData?.locations?.find((l) => l.id === locId);
-      if ((loc?.photos || []).length >= MAX_LOC_PHOTOS) {
-        showLocPhotosMsg('Вже є 3 фото — видаліть одне, щоб додати нове', false);
+      if (locPhotoLimit() <= 0) {
+        showLocPhotosMsg('Фото доступні на підписці Pro. Відкрийте розділ «Підписка».', false);
+        return;
+      }
+      if ((loc?.photos || []).length >= locPhotoLimit()) {
+        showLocPhotosMsg(`Ліміт фото: ${locPhotoLimit()}. Видаліть одне, щоб додати нове`, false);
         return;
       }
       showLocPhotosMsg('Стискаємо та завантажуємо…', true);
@@ -3258,6 +3501,34 @@
       providerData = data;
       catalog = data.masterCatalog || {};
       renderProviderChecklist();
+      renderProviderBilling();
+    }
+
+    function renderProviderBilling() {
+      const banner = document.getElementById('providerBillingBanner');
+      if (!banner) return;
+      const b = providerData?.billing || {};
+      const planLabels = {
+        trial: 'Пробний період (Pro)',
+        pro: 'Mapfix Pro',
+        free: 'Безкоштовний тариф',
+        admin: 'Адмін',
+      };
+      banner.className =
+        'billing-banner ' + (b.paid || b.inTrial ? 'pro' : b.plan === 'free' ? 'free' : '');
+      const endLabel = b.paid
+        ? `Оплачено до ${formatBillingDate(b.paidUntil)}`
+        : b.inTrial
+          ? `Пробний до ${formatBillingDate(b.trialEndsAt)}`
+          : 'Пробний період закінчився';
+      const limits = b.active
+        ? `Фото: до ${b.maxPhotos ?? 6}, прайс без ліміту, пріоритет у видачі.`
+        : `Фото недоступні, прайс — до ${b.maxPrices ?? 3} послуг.`;
+      banner.innerHTML = `<strong>${esc(planLabels[b.plan] || b.plan || '—')}</strong><br>
+        <span class="field-hint" style="margin:0">${esc(endLabel)}${
+          b.daysLeft != null ? ` · залишилось ~${esc(String(b.daysLeft))} дн.` : ''
+        }</span><br>
+        <span class="field-hint" style="margin:0">${esc(limits)}</span>`;
     }
 
     function renderProviderChecklist() {
@@ -3375,6 +3646,19 @@
       const navCount = document.getElementById('navCountMyLocs');
       if (navCount) navCount.textContent = String(providerData.locations?.length || 0);
 
+      document.getElementById('providerSubscribeBtn')?.addEventListener('click', async () => {
+        const msg = document.getElementById('providerBillingMsg');
+        const data = await openMonoJar('subscribe');
+        if (msg) {
+          msg.style.display = 'block';
+          msg.className = 'msg ok';
+          msg.textContent = data?.commentHint
+            ? `Відкрито банку. Коментар скопійовано: ${data.commentHint}`
+            : 'Відкрито банку Monobank';
+        }
+      });
+      document.getElementById('providerDonateBtn')?.addEventListener('click', () => openMonoJar('donate'));
+
       if (new URLSearchParams(window.location.search).get('newLocation') === '1') {
         showProviderPane('locations');
         await openLocationEditor(null);
@@ -3392,6 +3676,7 @@
         claim: 'providerPaneClaim',
         orders: 'providerPaneOrders',
         support: 'providerPaneSupport',
+        billing: 'providerPaneBilling',
         import: 'providerPaneImport',
       };
       Object.values(map).forEach((id) => {
@@ -3403,6 +3688,7 @@
       if (name === 'orders') loadProviderOrders();
       if (name === 'support') loadProviderSupport();
       if (name === 'claim') loadProviderClaim();
+      if (name === 'billing') renderProviderBilling();
     }
 
     async function loadProviderClaim() {
