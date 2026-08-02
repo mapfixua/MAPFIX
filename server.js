@@ -116,6 +116,11 @@ const {
   writeFavorites,
 } = require('./kv-store.js');
 const supportTickets = require('./support-tickets.js');
+const reportsMod = require('./reports.js');
+const {
+  notifyNewOrder,
+  notifyOrderStatus,
+} = require('./notifications.js');
 const supportRateLimit = createRateLimiter({ windowMs: 15 * 60 * 1000, max: 20 });
 
 function resolveJwtSecret() {
@@ -1231,10 +1236,16 @@ app.get('/api/admin/overview', requireAuth, requireAdmin, async (req, res) => {
     }));
 
     let supportOpenCount = 0;
+    let reportsOpenCount = 0;
     try {
       supportOpenCount = await supportTickets.countOpenTickets();
     } catch (err) {
       console.warn('[overview] support count skip:', err.message);
+    }
+    try {
+      reportsOpenCount = await reportsMod.countOpenReports();
+    } catch (err) {
+      console.warn('[overview] reports count skip:', err.message);
     }
 
     res.json({
@@ -1249,6 +1260,7 @@ app.get('/api/admin/overview', requireAuth, requireAdmin, async (req, res) => {
       catalogCategories: Object.keys(data.masterCatalog).length,
       ordersTotal: orders.length,
       supportOpenCount,
+      reportsOpenCount,
       importCities: CITY_PRESETS,
       importCategories: Object.keys(CATEGORY_OSM_FILTERS),
       googlePlacesConfigured: Boolean(
@@ -1420,11 +1432,103 @@ app.post('/api/locations/:id/view', async (req, res) => {
     const loc = data.mockLocations.find((l) => l.id === id);
     if (!loc) return res.status(404).json({ error: 'not_found' });
     loc.views = (Number(loc.views) || 0) + 1;
-    await writeData(data);
+    await persistLocationsPatch(data, [loc]);
     res.json({ ok: true, views: loc.views });
   } catch (err) {
     console.error('[POST /api/locations/:id/view]', err);
     res.status(500).json({ error: 'view_failed' });
+  }
+});
+
+app.post('/api/locations/:id/reviews', requireAuth, requireClient, async (req, res) => {
+  try {
+    const id = String(req.params.id || '').trim();
+    const text = String(req.body?.text || '').trim().slice(0, 1000);
+    const rating = Math.max(1, Math.min(5, Number(req.body?.rating) || 5));
+    if (text.length < 3) {
+      return res.status(400).json({ error: 'Напишіть трохи довший відгук' });
+    }
+    const user = getSessionUser(req);
+    const data = await readData();
+    const loc = findLocation(data, id);
+    if (!loc) return res.status(404).json({ error: 'Локацію не знайдено' });
+
+    const today = new Date();
+    const formattedDate = `${String(today.getDate()).padStart(2, '0')}.${String(today.getMonth() + 1).padStart(2, '0')}.${today.getFullYear()}`;
+    if (!Array.isArray(loc.reviews)) loc.reviews = [];
+    const review = {
+      id: crypto.randomUUID(),
+      text,
+      rating,
+      date: formattedDate,
+      userId: user.id,
+      userLogin: user.login || '',
+      createdAt: today.toISOString(),
+    };
+    loc.reviews.unshift(review);
+    loc.reviews = loc.reviews.slice(0, 40);
+    const total = loc.reviews.reduce((sum, r) => sum + (Number(r.rating) || 0), 0);
+    loc.reviewsCount = loc.reviews.length;
+    loc.rating = Math.round((total / loc.reviewsCount) * 10) / 10;
+    await persistLocationsPatch(data, [loc]);
+    res.status(201).json({
+      ok: true,
+      review,
+      rating: loc.rating,
+      reviewsCount: loc.reviewsCount,
+      reviews: loc.reviews,
+    });
+  } catch (err) {
+    console.error('[reviews]', err);
+    res.status(500).json({ error: 'Не вдалося зберегти відгук' });
+  }
+});
+
+app.post('/api/reports', requireAuth, supportRateLimit, async (req, res) => {
+  try {
+    const user = getSessionUser(req);
+    const locationId = String(req.body?.locationId || '').trim();
+    let locationTitle = '';
+    if (locationId) {
+      const data = await readData();
+      locationTitle = findLocation(data, locationId)?.title || '';
+    }
+    const report = await reportsMod.createReport({
+      user,
+      locationId,
+      locationTitle,
+      reason: req.body?.reason,
+      message: req.body?.message,
+    });
+    res.status(201).json({ ok: true, report });
+  } catch (err) {
+    res.status(400).json({ error: err.message || 'Не вдалося надіслати скаргу' });
+  }
+});
+
+app.get('/api/admin/reports', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const reports = await reportsMod.listReports();
+    res.json({
+      ok: true,
+      reports,
+      openCount: reports.filter((r) => r.status === 'new' || r.status === 'reviewing').length,
+    });
+  } catch (err) {
+    res.status(500).json({ error: 'Не вдалося завантажити скарги' });
+  }
+});
+
+app.patch('/api/admin/reports/:id', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const report = await reportsMod.updateReport(req.params.id, {
+      status: req.body?.status,
+      adminNote: req.body?.adminNote,
+    });
+    res.json({ ok: true, report });
+  } catch (err) {
+    const status = /не знайдено/i.test(err.message || '') ? 404 : 400;
+    res.status(status).json({ error: err.message || 'Помилка' });
   }
 });
 
@@ -2293,6 +2397,27 @@ app.get('/api/provider/dashboard', requireAuth, rejectClientFromPanel, requirePr
     const accountPhone = fullUser.phone || profile.phone || '';
     if (!profile.phone && accountPhone) profile.phone = accountPhone;
     const locations = data.mockLocations.filter((l) => l.providerId === user.id && !isLocationTrashed(l));
+    const orders = await readOrders();
+    const myOrders = orders.filter((o) => o.providerId === user.id);
+    const views = locations.reduce((sum, l) => sum + (Number(l.views) || 0), 0);
+    const reviewsCount = locations.reduce((sum, l) => sum + (Number(l.reviewsCount) || 0), 0);
+    const servicesCount = locations.reduce((sum, l) => sum + Object.keys(l.prices || {}).length, 0);
+    const photosCount = locations.reduce(
+      (sum, l) => sum + (Array.isArray(l.photos) ? l.photos.length : 0),
+      0
+    );
+
+    const checklist = {
+      companyName: Boolean(String(profile.companyName || '').trim() && profile.companyName !== 'Моя компанія'),
+      phone: Boolean(accountPhone),
+      telegram: Boolean(telegramId),
+      hasLocation: locations.length > 0,
+      hasPrices: servicesCount > 0,
+      hasPhotos: photosCount > 0,
+      hasDescription: locations.some((l) => String(l.text || '').trim().length >= 20),
+    };
+    const checklistDone = Object.values(checklist).filter(Boolean).length;
+    const checklistTotal = Object.keys(checklist).length;
 
     res.json({
       profile,
@@ -2302,7 +2427,19 @@ app.get('/api/provider/dashboard', requireAuth, rejectClientFromPanel, requirePr
         phone: accountPhone,
         telegramLinked: Boolean(telegramId),
         telegramLinkedAt: fullUser.telegramLinkedAt || null,
+        verified: Boolean(telegramId && accountPhone),
       },
+      stats: {
+        locationsCount: locations.length,
+        servicesCount,
+        views,
+        reviewsCount,
+        ordersCount: myOrders.length,
+        ordersOpen: myOrders.filter((o) => o.status === 'Очікує' || o.status === 'В роботі').length,
+        photosCount,
+      },
+      checklist,
+      checklistProgress: { done: checklistDone, total: checklistTotal },
     });
   } catch (err) {
     console.error(err);
@@ -2339,10 +2476,20 @@ app.patch('/api/provider/orders/:id', requireAuth, requireProvider, async (req, 
       return res.status(403).json({ error: 'Немає доступу до цього замовлення' });
     }
     order.status = status;
+    if (req.body.providerNote !== undefined) {
+      order.providerNote = String(req.body.providerNote || '').trim().slice(0, 1000);
+    }
     order.updatedAt = new Date().toISOString();
     await writeOrders(orders);
     const [data, users] = await Promise.all([readData(), readUsers()]);
-    res.json({ ok: true, order: enrichOrder(order, data, users) });
+    const enriched = enrichOrder(order, data, users);
+    notifyOrderStatus({
+      clientId: order.clientId,
+      serviceName: order.serviceName,
+      status: order.status,
+      locationTitle: enriched.locationTitle,
+    }).catch(() => {});
+    res.json({ ok: true, order: enriched });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Помилка оновлення статусу' });
@@ -2354,6 +2501,11 @@ app.post('/api/orders', requireAuth, requireClient, async (req, res) => {
     const user = getSessionUser(req);
     const locationId = req.body.locationId?.trim();
     const serviceName = req.body.serviceName?.trim();
+    const preferredAt = String(req.body.preferredAt || '').trim().slice(0, 80);
+    const note = String(req.body.note || req.body.clientNote || '').trim().slice(0, 1000);
+    const contactMode = ['call', 'message', 'any'].includes(req.body.contactMode)
+      ? req.body.contactMode
+      : 'any';
 
     if (!locationId || !serviceName) {
       return res.status(400).json({ error: 'Вкажіть локацію та послугу' });
@@ -2376,6 +2528,9 @@ app.post('/api/orders', requireAuth, requireClient, async (req, res) => {
       serviceId,
       serviceName,
       price,
+      preferredAt: preferredAt || null,
+      note: note || null,
+      contactMode,
       status: 'Очікує',
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
@@ -2386,7 +2541,18 @@ app.post('/api/orders', requireAuth, requireClient, async (req, res) => {
     await writeOrders(orders);
 
     const users = await readUsers();
-    res.status(201).json({ ok: true, order: enrichOrder(order, data, users) });
+    const enriched = enrichOrder(order, data, users);
+    if (order.providerId) {
+      notifyNewOrder({
+        providerId: order.providerId,
+        clientLogin: enriched.clientLogin,
+        locationTitle: enriched.locationTitle,
+        serviceName: order.serviceName,
+        preferredAt: order.preferredAt,
+        note: order.note,
+      }).catch(() => {});
+    }
+    res.status(201).json({ ok: true, order: enriched });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Помилка створення замовлення' });

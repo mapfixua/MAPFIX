@@ -32,7 +32,9 @@
           "app-state-store.js",
           "kv-store.js",
           "rate-limit.js",
-          "support-tickets.js"
+          "support-tickets.js",
+          "notifications.js",
+          "reports.js"
         ]
       }
     }

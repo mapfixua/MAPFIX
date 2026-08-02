@@ -1,0 +1,18 @@
+{
+  "name": "Mapfix",
+  "short_name": "Mapfix",
+  "description": "Карта локальних послуг України",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#eceef2",
+  "theme_color": "#12c4b5",
+  "lang": "uk",
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

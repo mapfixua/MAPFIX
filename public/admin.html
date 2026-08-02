@@ -437,6 +437,7 @@
           <button type="button" class="active" data-admin-nav="overview">Огляд</button>
           <button type="button" data-admin-nav="users">Користувачі <span class="nav-count" id="navCountUsers">0</span></button>
           <button type="button" data-admin-nav="support">Підтримка <span class="nav-count" id="navCountSupport">0</span></button>
+          <button type="button" data-admin-nav="reports">Скарги <span class="nav-count" id="navCountReports">0</span></button>
           <button type="button" data-admin-nav="providers">Провайдери <span class="nav-count" id="navCountProviders">0</span></button>
           <button type="button" data-admin-nav="locations">Локації <span class="nav-count" id="navCountLocations">0</span></button>
           <button type="button" data-admin-nav="trash">Кошик <span class="nav-count" id="navCountTrash">0</span></button>
@@ -466,6 +467,12 @@
               <div id="supportTicketsList"><p class="list-item-meta">Завантаження…</p></div>
             </div>
             <div id="supportDetailView" class="hidden"></div>
+          </div>
+
+          <div id="adminPaneReports" class="admin-pane card">
+            <h2>Скарги на заклади</h2>
+            <p class="field-hint">Скарги з карти. Змініть статус після перевірки.</p>
+            <div id="adminReportsList"><p class="list-item-meta">Завантаження…</p></div>
           </div>
 
           <div id="adminPaneProviders" class="admin-pane card">
@@ -729,6 +736,12 @@
         <div class="admin-main">
           <div id="providerPaneProfile" class="admin-pane active card">
             <h2>Профіль компанії</h2>
+            <div id="providerChecklistBox" class="tg-status-box" style="margin-bottom:14px">
+              <p class="tg-status-title">Готовність профілю</p>
+              <p class="tg-status-hint" id="providerChecklistHint">Завантаження…</p>
+              <div id="providerChecklistList" style="margin-top:8px;font-size:0.9rem"></div>
+              <div id="providerStatsRow" class="stat-grid" style="margin-top:12px"></div>
+            </div>
             <div id="telegramStatusBox" class="tg-status-box unverified">
               <div class="tg-status-row">
                 <div>
@@ -744,7 +757,7 @@
               <input type="text" id="companyName" required>
               <label>Телефон для входу (код у Telegram)</label>
               <input type="tel" id="companyPhone" placeholder="+380XXXXXXXXX" autocomplete="tel">
-              <p class="field-hint">Цей номер зберігається в акаунті. Після зміни знову підключіть Telegram, якщо вхід по коду не працює.</p>
+              <p class="field-hint">Цей номер зберігається в акаунті. Після зміни знову підключіть Telegram, якщо вхід по коду не працює. Заповніть прайс на локаціях — клієнти бачать «ціну уточнюйте», доки немає цін.</p>
               <button type="submit">Зберегти профіль</button>
             </form>
           </div>
@@ -892,7 +905,7 @@
     </div>
 
     <div id="message" class="msg"></div>
-    <p class="links"><a href="/" id="backToMapLink">← На головну карту</a></p>
+    <p class="links"><a href="/" id="backToMapLink">← На головну карту</a> · <a href="/privacy.html">Конфіденційність</a> · <a href="/terms.html">Умови</a></p>
   </div>
 
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
@@ -1087,6 +1100,58 @@
       if (name === 'locations' && !opts.keepDetail) showLocationsList();
       if (name === 'trash') renderTrashList();
       if (name === 'support') loadAdminSupportTickets();
+      if (name === 'reports') loadAdminReports();
+    }
+
+    async function loadAdminReports() {
+      const listEl = document.getElementById('adminReportsList');
+      if (!listEl) return;
+      listEl.innerHTML = '<p class="list-item-meta">Завантаження…</p>';
+      try {
+        const data = await apiFetch('/api/admin/reports');
+        const countEl = document.getElementById('navCountReports');
+        if (countEl) countEl.textContent = String(data.openCount || 0);
+        const reports = data.reports || [];
+        if (!reports.length) {
+          listEl.innerHTML = '<p class="list-item-meta">Скарг ще немає</p>';
+          return;
+        }
+        listEl.innerHTML = reports
+          .map(
+            (r) => `
+          <div class="list-item" style="margin-bottom:10px">
+            <div class="list-item-title">${esc(r.locationTitle || r.locationId || 'Без точки')} · ${esc(r.status)}</div>
+            <div class="list-item-meta">@${esc(r.reporterLogin)} · ${esc(formatSupportDate(r.createdAt))}</div>
+            <div class="list-item-meta" style="white-space:pre-wrap;margin-top:6px">${esc(r.message)}</div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">
+              <select data-report-status="${esc(r.id)}">
+                <option value="new"${r.status === 'new' ? ' selected' : ''}>Нове</option>
+                <option value="reviewing"${r.status === 'reviewing' ? ' selected' : ''}>Перевірка</option>
+                <option value="resolved"${r.status === 'resolved' ? ' selected' : ''}>Вирішено</option>
+                <option value="rejected"${r.status === 'rejected' ? ' selected' : ''}>Відхилено</option>
+              </select>
+              <button type="button" class="btn-secondary" style="width:auto" data-report-save="${esc(r.id)}">Зберегти</button>
+              ${r.locationId ? `<a class="btn-secondary" style="width:auto;text-decoration:none;padding:8px 12px" href="/?loc=${encodeURIComponent(r.locationId)}" target="_blank">На карті</a>` : ''}
+            </div>
+          </div>`
+          )
+          .join('');
+        listEl.querySelectorAll('[data-report-save]').forEach((btn) => {
+          btn.onclick = async () => {
+            const id = btn.dataset.reportSave;
+            const sel = listEl.querySelector(`[data-report-status="${id}"]`);
+            await fetch('/api/admin/reports/' + encodeURIComponent(id), {
+              method: 'PATCH',
+              headers: { 'Content-Type': 'application/json' },
+              credentials: 'same-origin',
+              body: JSON.stringify({ status: sel?.value }),
+            });
+            loadAdminReports();
+          };
+        });
+      } catch (err) {
+        listEl.innerHTML = `<p class="list-item-meta" style="color:#b91c1c">${esc(err.message)}</p>`;
+      }
     }
 
     function supportStatusLabel(status) {
@@ -2266,6 +2331,8 @@
       document.getElementById('navCountCatalog').textContent = String(data.catalogCategories || 0);
       const supportCountEl = document.getElementById('navCountSupport');
       if (supportCountEl) supportCountEl.textContent = String(data.supportOpenCount || 0);
+      const reportsCountEl = document.getElementById('navCountReports');
+      if (reportsCountEl) reportsCountEl.textContent = String(data.reportsOpenCount || 0);
 
       document.getElementById('overviewStats').innerHTML = [
         ['Користувачі', data.usersTotal || usersCount],
@@ -2277,6 +2344,7 @@
         ['Категорії', data.catalogCategories || 0],
         ['Замовлення', data.ordersTotal || 0],
         ['Підтримка (відкриті)', data.supportOpenCount || 0],
+        ['Скарги (відкриті)', data.reportsOpenCount || 0],
       ]
         .map(
           ([label, value]) =>
@@ -2841,7 +2909,7 @@
       renderLocPhotos(loc);
     }
 
-    const MAX_LOC_PHOTOS = 3;
+    const MAX_LOC_PHOTOS = 6;
     const MAX_LOC_PHOTO_BYTES = 5 * 1024 * 1024;
 
     function showLocPhotosMsg(text, ok) {
@@ -3129,6 +3197,47 @@
       const data = await apiFetch('/api/provider/dashboard');
       providerData = data;
       catalog = data.masterCatalog || {};
+      renderProviderChecklist();
+    }
+
+    function renderProviderChecklist() {
+      const hint = document.getElementById('providerChecklistHint');
+      const list = document.getElementById('providerChecklistList');
+      const statsRow = document.getElementById('providerStatsRow');
+      if (!hint || !list) return;
+      const cl = providerData?.checklist || {};
+      const prog = providerData?.checklistProgress || { done: 0, total: 0 };
+      const labels = {
+        companyName: 'Назва компанії',
+        phone: 'Телефон',
+        telegram: 'Telegram підключено (верифікація)',
+        hasLocation: 'Є хоча б одна точка',
+        hasPrices: 'Додано прайс',
+        hasPhotos: 'Додано фото',
+        hasDescription: 'Опис точки (від 20 символів)',
+      };
+      hint.textContent = `Заповнено ${prog.done || 0} з ${prog.total || 0}. ${
+        providerData?.account?.verified ? 'Акаунт верифіковано ✓' : 'Підключіть Telegram для бейджа «перевірено».'
+      }`;
+      list.innerHTML = Object.keys(labels)
+        .map((k) => `<div>${cl[k] ? '✅' : '⬜'} ${esc(labels[k])}</div>`)
+        .join('');
+      const st = providerData?.stats || {};
+      if (statsRow) {
+        statsRow.innerHTML = [
+          ['Локації', st.locationsCount || 0],
+          ['Послуги', st.servicesCount || 0],
+          ['Перегляди', st.views || 0],
+          ['Відгуки', st.reviewsCount || 0],
+          ['Замовлення', st.ordersCount || 0],
+          ['Відкриті', st.ordersOpen || 0],
+        ]
+          .map(
+            ([label, value]) =>
+              `<div class="stat-card"><div class="stat-label">${esc(label)}</div><div class="stat-value">${esc(String(value))}</div></div>`
+          )
+          .join('');
+      }
     }
 
     async function loadProviderOrders() {
@@ -3154,6 +3263,9 @@
             <div class="list-item-title">${esc(o.serviceName)}</div>
             <div class="list-item-meta">${esc(o.locationTitle)} · ${esc(o.price)}</div>
             <div class="list-item-meta">Клієнт: ${esc(o.clientLogin)} · ${new Date(o.createdAt).toLocaleString('uk-UA')}</div>
+            ${o.preferredAt ? `<div class="list-item-meta">Бажаний час: ${esc(o.preferredAt)}</div>` : ''}
+            ${o.note ? `<div class="list-item-meta">Коментар: ${esc(o.note)}</div>` : ''}
+            ${o.contactMode === 'call' ? '<div class="list-item-meta">Клієнт просить передзвонити</div>' : ''}
             <label style="margin-top:8px;font-size:0.8rem">Статус</label>
             <select class="order-status-select" data-id="${o.id}" style="margin-bottom:0">${opts}</select>
           </div>`;
@@ -3168,7 +3280,7 @@
             });
             const j = await r.json();
             if (!r.ok) return showMessage(j.error, true);
-            showMessage('Статус оновлено');
+            showMessage('Статус оновлено · клієнта сповіщено в Telegram (якщо підключено)');
           };
         });
       } catch (err) {

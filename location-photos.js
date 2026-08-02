@@ -4,7 +4,7 @@ const crypto = require('crypto');
 const { supabaseClient } = require('./supabaseClient.js');
 
 const BUCKET = process.env.SUPABASE_LOCATION_PHOTOS_BUCKET || 'location-photos';
-const MAX_PHOTOS = 3;
+const MAX_PHOTOS = 6;
 const MAX_BYTES = 5 * 1024 * 1024;
 const ALLOWED_MIME = new Set(['image/jpeg', 'image/png', 'image/webp']);
 

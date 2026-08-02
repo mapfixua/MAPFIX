@@ -5,6 +5,15 @@
     <meta http-equiv="Pragma" content="no-cache">
     <meta http-equiv="Expires" content="0">
     <title>Mapfix — Карта послуг</title>
+    <meta name="description" content="Mapfix — карта локальних послуг поруч із вами. Знайдіть майстра, замовте послугу, залиште відгук.">
+    <meta property="og:title" content="Mapfix — Карта послуг">
+    <meta property="og:description" content="Знайдіть майстра поруч: краса, авто, ремонт, дім та інше.">
+    <meta property="og:type" content="website">
+    <meta property="og:url" content="https://mapfix-wine.vercel.app/">
+    <meta name="theme-color" content="#12c4b5">
+    <link rel="manifest" href="/manifest.json">
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+    <link rel="apple-touch-icon" href="/favicon.svg">
 
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
     <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css">
@@ -1049,9 +1058,19 @@
                                 <option value="alphabet">За алфавітом (А-Я)</option>
                             </select>
                         </div>
-                        <div class="hotline-filter-bar">
-                            <input type="checkbox" id="onlyOpenCheckbox">
-                            <label for="onlyOpenCheckbox" style="cursor:pointer; user-select:none;">Тільки відчинені зараз</label>
+                        <div class="hotline-filter-bar" style="flex-wrap:wrap">
+                            <label style="display:inline-flex;align-items:center;gap:6px;cursor:pointer">
+                                <input type="checkbox" id="onlyOpenCheckbox"> Тільки відчинені
+                            </label>
+                            <label style="display:inline-flex;align-items:center;gap:6px;cursor:pointer">
+                                <input type="checkbox" id="onlyPhoneCheckbox"> Є телефон
+                            </label>
+                            <label style="display:inline-flex;align-items:center;gap:6px;cursor:pointer">
+                                <input type="checkbox" id="onlyPriceCheckbox"> Є прайс
+                            </label>
+                            <label style="display:inline-flex;align-items:center;gap:6px;cursor:pointer">
+                                <input type="checkbox" id="onlyRatedCheckbox"> З відгуками
+                            </label>
                         </div>
                     </div>
                 </div>
@@ -1151,6 +1170,9 @@
                 userCoords: { ...DEFAULT_CENTER },
                 geoReady: false,
                 onlyOpen: false,
+                onlyPhone: false,
+                onlyPrice: false,
+                onlyRated: false,
                 sortType: 'distance',
                 formRatingScore: 5,
                 currentUser: null,
@@ -1486,15 +1508,68 @@
                     alert('Замовлення доступне лише для ролі клієнта');
                     return;
                 }
+                const preferredAt = prompt('Бажана дата/час (або залиште порожнім):', '') || '';
+                const note = prompt('Коментар для майстра (необовʼязково):', '') || '';
+                const callBack = confirm('Натисніть OK, якщо зручніше, щоб майстер передзвонив. Cancel — без уподобань.')
+                    ? 'call'
+                    : 'any';
                 try {
                     const res = await fetch('/api/orders', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ locationId, serviceName }),
+                        credentials: 'same-origin',
+                        body: JSON.stringify({
+                            locationId,
+                            serviceName,
+                            preferredAt: preferredAt.trim() || undefined,
+                            note: note.trim() || undefined,
+                            contactMode: callBack,
+                        }),
                     });
                     const data = await res.json();
                     if (!res.ok) throw new Error(data.error);
-                    alert('Замовлення створено! Статус: Очікує. Переглянути в кабінеті клієнта.');
+                    alert('Замовлення створено! Майстра сповіщено. Дивіться статус у кабінеті клієнта.');
+                } catch (err) {
+                    alert(err.message);
+                }
+            };
+
+            window.shareLocation = async function(locationId) {
+                const loc = window.mockLocations.find((l) => l.id === locationId);
+                const url = `${location.origin}/?loc=${encodeURIComponent(locationId)}`;
+                const title = loc?.title || 'Mapfix';
+                const text = loc ? `${loc.title} — ${loc.address || 'на Mapfix'}` : 'Mapfix';
+                try {
+                    if (navigator.share) {
+                        await navigator.share({ title, text, url });
+                        return;
+                    }
+                } catch (_) {}
+                try {
+                    await navigator.clipboard.writeText(url);
+                    alert('Посилання скопійовано');
+                } catch (_) {
+                    prompt('Скопіюйте посилання:', url);
+                }
+            };
+
+            window.reportLocation = async function(locationId) {
+                if (!State.currentUser) {
+                    if (confirm('Увійдіть, щоб надіслати скаргу. Перейти до входу?')) location.href = '/login.html';
+                    return;
+                }
+                const message = prompt('Опишіть проблему з цим закладом:');
+                if (!message || message.trim().length < 5) return;
+                try {
+                    const res = await fetch('/api/reports', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        credentials: 'same-origin',
+                        body: JSON.stringify({ locationId, reason: 'location', message: message.trim() }),
+                    });
+                    const data = await res.json();
+                    if (!res.ok) throw new Error(data.error);
+                    alert('Скаргу надіслано. Дякуємо!');
                 } catch (err) {
                     alert(err.message);
                 }
@@ -1748,6 +1823,9 @@
 
             document.getElementById('sortSelect').addEventListener('change', (e) => { State.sortType = e.target.value; renderLocationList(); });
             document.getElementById('onlyOpenCheckbox').addEventListener('change', (e) => { State.onlyOpen = e.target.checked; syncUI(); });
+            document.getElementById('onlyPhoneCheckbox')?.addEventListener('change', (e) => { State.onlyPhone = e.target.checked; syncUI(); });
+            document.getElementById('onlyPriceCheckbox')?.addEventListener('change', (e) => { State.onlyPrice = e.target.checked; syncUI(); });
+            document.getElementById('onlyRatedCheckbox')?.addEventListener('change', (e) => { State.onlyRated = e.target.checked; syncUI(); });
             navBackBtn.addEventListener('click', handleNavBack);
 
             function createNavItem(label, meta, onClick) {
@@ -1795,6 +1873,9 @@
                 }
                 if (State.service && !locationMatchesSelectedService(loc)) return false;
                 if (State.onlyOpen && loc.openStatus !== 'open') return false;
+                if (State.onlyPhone && !String(loc.phone || '').trim()) return false;
+                if (State.onlyPrice && !Object.keys(loc.prices || {}).length) return false;
+                if (State.onlyRated && !(Number(loc.reviewsCount) > 0)) return false;
                 return true;
             }
 
@@ -1996,6 +2077,8 @@
                         <button type="button" class="action-btn btn-route" onclick="event.stopPropagation(); panToMaster(${Number(loc.lat)}, ${Number(loc.lng)})">🗺️ На карті</button>
                         ${directionsBtn}
                         <button type="button" class="btn-fav-header ${isFav ? 'active' : ''}" onclick="event.stopPropagation(); toggleFavorite('${escapeHtml(loc.id)}')">${isFav ? '★ В обраному' : '☆ В обране'}</button>
+                        <button type="button" class="action-btn btn-route" onclick="event.stopPropagation(); shareLocation('${escapeHtml(loc.id)}')">↗ Поділитись</button>
+                        <button type="button" class="action-btn btn-route" onclick="event.stopPropagation(); reportLocation('${escapeHtml(loc.id)}')">⚑ Скарга</button>
                         ${manageLocationBtnHtml(loc)}
                         ${diveBtn}
                     </div>
@@ -2180,25 +2263,32 @@
                 });
             }
 
-            window.addNewReviewClick = function(locId) {
+            window.addNewReviewClick = async function(locId) {
                 const text = document.getElementById('reviewTextarea').value.trim();
                 if (!text) { alert('Будь ласка, введіть текст вашого відгуку.'); return; }
-
-                const loc = window.mockLocations.find(l => l.id === locId);
-                if (!loc) return;
-
-                const today = new Date();
-                const formattedDate = `${String(today.getDate()).padStart(2, '0')}.${String(today.getMonth() + 1).padStart(2, '0')}.${today.getFullYear()}`;
-                
-                const newReview = { text: text, rating: State.formRatingScore, date: formattedDate };
-                if (!loc.reviews) loc.reviews = [];
-                loc.reviews.unshift(newReview);
-
-                const totalScore = loc.reviews.reduce((sum, r) => sum + r.rating, 0);
-                loc.reviewsCount = loc.reviews.length;
-                loc.rating = totalScore / loc.reviewsCount;
-
-                openMasterDetail(loc.id, { mode: 'dive', forceMode: true });
+                if (!State.currentUser || State.currentUser.role !== 'client') {
+                    if (confirm('Відгуки можуть залишати клієнти. Увійти?')) location.href = '/login.html';
+                    return;
+                }
+                try {
+                    const res = await fetch(`/api/locations/${encodeURIComponent(locId)}/reviews`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        credentials: 'same-origin',
+                        body: JSON.stringify({ text, rating: State.formRatingScore }),
+                    });
+                    const data = await res.json();
+                    if (!res.ok) throw new Error(data.error || 'Помилка');
+                    const loc = window.mockLocations.find((l) => l.id === locId);
+                    if (loc) {
+                        loc.reviews = data.reviews || loc.reviews;
+                        loc.rating = data.rating;
+                        loc.reviewsCount = data.reviewsCount;
+                    }
+                    openMasterDetail(locId, { mode: 'dive', forceMode: true });
+                } catch (err) {
+                    alert(err.message);
+                }
             };
 
             window.closeMasterDetail = function() {
@@ -2471,8 +2561,15 @@
                 State.detailMode = null;
                 State.aiSuggestions = [];
                 State.onlyOpen = false;
+                State.onlyPhone = false;
+                State.onlyPrice = false;
+                State.onlyRated = false;
                 const onlyOpenCheckbox = document.getElementById('onlyOpenCheckbox');
                 if (onlyOpenCheckbox) onlyOpenCheckbox.checked = false;
+                ['onlyPhoneCheckbox', 'onlyPriceCheckbox', 'onlyRatedCheckbox'].forEach((id) => {
+                    const el = document.getElementById(id);
+                    if (el) el.checked = false;
+                });
                 closeMasterDetail();
                 collapseBottomSheet();
                 syncUI();
@@ -2789,6 +2886,10 @@
                 MapfixDataSync.subscribe(() => {
                     refreshMapData().catch((err) => console.warn('refreshMapData:', err));
                 });
+            }
+
+            if ('serviceWorker' in navigator) {
+                navigator.serviceWorker.register('/sw.js').catch(() => {});
             }
         });
     </script>

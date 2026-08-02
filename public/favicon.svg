@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-label="Mapfix">
+  <rect width="128" height="128" rx="28" fill="#12c4b5"/>
+  <circle cx="64" cy="54" r="22" fill="#fff"/>
+  <path d="M64 78c18 0 34 10 34 22H30c0-12 16-22 34-22z" fill="#0b0d10" opacity=".85"/>
+  <circle cx="64" cy="54" r="8" fill="#12c4b5"/>
+</svg>

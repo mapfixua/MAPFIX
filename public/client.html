@@ -101,6 +101,8 @@
 
     <p class="links">
       <a href="/">🗺️ Відкрити карту</a>
+      · <a href="/privacy.html">Конфіденційність</a>
+      · <a href="/terms.html">Умови</a>
     </p>
   </div>
 
@@ -255,6 +257,8 @@
             <div class="item-title">${escapeHtml(o.serviceName)}</div>
             <div class="item-meta">${escapeHtml(o.locationTitle)} · ${escapeHtml(o.price)}</div>
             <div class="item-meta">${escapeHtml(o.locationAddress)}</div>
+            ${o.preferredAt ? `<div class="item-meta">Бажаний час: ${escapeHtml(o.preferredAt)}</div>` : ''}
+            ${o.note ? `<div class="item-meta">Коментар: ${escapeHtml(o.note)}</div>` : ''}
             <div class="item-meta">${formatDate(o.createdAt)}</div>
             <span class="status ${statusClass(o.status)}">${escapeHtml(o.status)}</span>
           </div>`
