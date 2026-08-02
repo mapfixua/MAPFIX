@@ -559,6 +559,11 @@ function phonesMatch(a, b) {
   return na.replace(/\D/g, '') === nb.replace(/\D/g, '');
 }
 
+/** Normalize location/account phone for storage and claim matching. */
+function formatLocationPhone(raw) {
+  return normalizePhone(raw);
+}
+
 function isClaimableLocation(loc) {
   if (!loc || isLocationTrashed(loc)) return false;
   if (loc.providerId) return false;
