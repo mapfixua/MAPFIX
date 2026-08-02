@@ -131,14 +131,10 @@ function makeLocationId(seed) {
   return `loc-imp-${hash}`;
 }
 
+const { normalizePhone: normalizePhoneAuth } = require('./telegram-auth.js');
+
 function normalizePhone(raw) {
-  if (!raw) return '';
-  const digits = String(raw).replace(/\D/g, '');
-  if (!digits) return '';
-  if (digits.length === 10 && digits.startsWith('0')) return '+38' + digits;
-  if (digits.startsWith('380')) return '+' + digits;
-  if (digits.startsWith('38')) return '+' + digits;
-  return String(raw).trim();
+  return normalizePhoneAuth(raw);
 }
 
 function haversineMeters(a, b) {

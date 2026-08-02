@@ -20,6 +20,7 @@ const {
   mountTelegramWebhook,
   startTelegramBotRuntime,
   getTelegramStatus,
+  sendOtpToTelegram,
 } = require('./telegram-bot.js');
 const {
   createTelegramLinkToken,
@@ -29,6 +30,7 @@ const {
   updateUserPhone,
 } = require('./telegram-auth.js');
 const { createAuthRouter } = require('./routes/auth.js');
+const otpAuth = require('./otp-auth.js');
 let oauthPublicConfig = () => ({
   googleClientId: '',
   appleClientId: '',
@@ -550,11 +552,30 @@ function ownsLocation(loc, userId) {
   return loc && loc.providerId === userId;
 }
 
-function formatLocationPhone(raw) {
-  const phoneRaw = String(raw || '').trim();
-  if (!phoneRaw) return '';
-  const normalized = normalizePhone(phoneRaw);
-  return normalized.replace(/\D/g, '').length >= 10 ? normalized : phoneRaw;
+function phonesMatch(a, b) {
+  const na = normalizePhone(a);
+  const nb = normalizePhone(b);
+  if (!na || !nb) return false;
+  return na.replace(/\D/g, '') === nb.replace(/\D/g, '');
+}
+
+function isClaimableLocation(loc) {
+  if (!loc || isLocationTrashed(loc)) return false;
+  if (loc.providerId) return false;
+  const phone = formatLocationPhone(loc.phone);
+  return phone.replace(/\D/g, '').length >= 10;
+}
+
+function publicClaimPreview(loc) {
+  return {
+    id: loc.id,
+    title: loc.title,
+    address: loc.address || '',
+    phone: loc.phone || '',
+    cat: loc.cat,
+    imported: isImportedLocation(loc),
+    importSource: loc.importSource || null,
+  };
 }
 
 function defaultLocation(providerId, body) {
@@ -2658,6 +2679,242 @@ app.get('/api/geocode/reverse', requireAuth, requireProviderOrAdmin, async (req,
     res.json({ ok: true, ...result });
   } catch (err) {
     res.status(400).json({ error: err.message || 'Не вдалося визначити адресу' });
+  }
+});
+
+app.get('/api/provider/claimable', requireAuth, requireProvider, async (req, res) => {
+  try {
+    const user = getSessionUser(req);
+    const fullUser = (await readUsers()).find((u) => u.id === user.id) || user;
+    const accountPhone = formatLocationPhone(fullUser.phone || '');
+    const data = await readData();
+    const claimable = activeLocations(data.mockLocations)
+      .filter((loc) => isClaimableLocation(loc) && phonesMatch(accountPhone, loc.phone))
+      .map(publicClaimPreview);
+    res.json({
+      ok: true,
+      phone: accountPhone || null,
+      telegramLinked: Boolean(
+        fullUser.telegramId || (accountPhone && (await getTelegramIdForPhone(accountPhone)))
+      ),
+      locations: claimable,
+    });
+  } catch (err) {
+    console.error('[claimable]', err);
+    res.status(500).json({ error: 'Не вдалося завантажити список' });
+  }
+});
+
+app.get('/api/provider/locations/:id/claim-info', requireAuth, requireProvider, async (req, res) => {
+  try {
+    const user = getSessionUser(req);
+    const fullUser = (await readUsers()).find((u) => u.id === user.id) || user;
+    const data = await readData();
+    const loc = findLocation(data, req.params.id);
+    if (!loc || isLocationTrashed(loc)) {
+      return res.status(404).json({ error: 'Локацію не знайдено' });
+    }
+    const accountPhone = formatLocationPhone(fullUser.phone || '');
+    const locPhone = formatLocationPhone(loc.phone);
+    const phoneMatch = Boolean(accountPhone && locPhone && phonesMatch(accountPhone, locPhone));
+    res.json({
+      ok: true,
+      location: publicClaimPreview(loc),
+      claimable: isClaimableLocation(loc) && phoneMatch,
+      ownedByYou: loc.providerId === user.id,
+      hasOwner: Boolean(loc.providerId),
+      phoneMatch,
+      accountPhone: accountPhone || null,
+      locationHasPhone: Boolean(locPhone),
+      telegramLinked: Boolean(
+        fullUser.telegramId || (accountPhone && (await getTelegramIdForPhone(accountPhone)))
+      ),
+    });
+  } catch (err) {
+    console.error('[claim-info]', err);
+    res.status(500).json({ error: 'Помилка' });
+  }
+});
+
+app.post('/api/provider/locations/:id/claim/request', requireAuth, requireProvider, async (req, res) => {
+  try {
+    const user = getSessionUser(req);
+    const fullUser = (await readUsers()).find((u) => u.id === user.id) || user;
+    const data = await readData();
+    const loc = findLocation(data, req.params.id);
+    if (!loc || isLocationTrashed(loc)) {
+      return res.status(404).json({ error: 'Локацію не знайдено' });
+    }
+    if (loc.providerId) {
+      return res.status(409).json({
+        error:
+          loc.providerId === user.id
+            ? 'Ця точка вже ваша'
+            : 'Точку вже забрав інший майстер',
+      });
+    }
+    const locPhone = formatLocationPhone(loc.phone);
+    if (!locPhone) {
+      return res.status(400).json({
+        error: 'У точки немає телефону. Напишіть у підтримку — адмін призначить вручну.',
+      });
+    }
+
+    let accountPhone = formatLocationPhone(fullUser.phone || '');
+    // Allow adopting location phone onto account if empty
+    if (!accountPhone) {
+      const conflict = (await readUsers()).find(
+        (u) => u.id !== user.id && phonesMatch(u.phone, locPhone)
+      );
+      if (conflict) {
+        return res.status(409).json({
+          error: 'Цей телефон уже привʼязаний до іншого акаунта',
+        });
+      }
+      const updErr = await updateUserPhone(user.id, locPhone);
+      if (updErr) {
+        console.error('[claim] set phone:', updErr.message);
+        return res.status(500).json({ error: 'Не вдалося зберегти телефон в акаунт' });
+      }
+      accountPhone = locPhone;
+    }
+
+    if (!phonesMatch(accountPhone, locPhone)) {
+      return res.status(403).json({
+        error: `Телефон акаунта (${accountPhone}) не збігається з телефоном закладу (${locPhone}). Оновіть телефон у профілі або зверніться в підтримку.`,
+      });
+    }
+
+    const otpResult = await otpAuth.requestOtp(accountPhone, JWT_SECRET);
+    if (!otpResult.ok) {
+      const map = {
+        invalid_phone: 'Некоректний телефон',
+        user_not_found: 'Спочатку збережіть цей телефон у профілі',
+        telegram_not_linked: 'Підключіть Telegram до цього номера — код прийде в бот',
+        too_many_requests: 'Зачекайте хвилину перед повторним запитом коду',
+        db_error: 'Помилка бази OTP',
+      };
+      const status = otpResult.error === 'telegram_not_linked' ? 403 : 400;
+      return res.status(status).json({
+        error: map[otpResult.error] || 'Не вдалося надіслати код',
+        code: otpResult.error,
+        needsTelegramLink: otpResult.error === 'telegram_not_linked',
+      });
+    }
+
+    const sendResult = await sendOtpToTelegram(accountPhone, otpResult.code);
+    if (!sendResult.ok) {
+      await otpAuth.cancelOtpById(otpResult.otpId);
+      return res.status(503).json({
+        error: 'Не вдалося надіслати код у Telegram',
+        code: sendResult.error,
+      });
+    }
+
+    res.json({
+      ok: true,
+      phone: accountPhone,
+      expiresAt: otpResult.expiresAt,
+      message: 'Код надіслано в Telegram. Введіть його, щоб забрати заклад.',
+    });
+  } catch (err) {
+    console.error('[claim/request]', err);
+    res.status(500).json({ error: 'Помилка запиту claim' });
+  }
+});
+
+app.post('/api/provider/locations/:id/claim/confirm', requireAuth, requireProvider, async (req, res) => {
+  try {
+    const user = getSessionUser(req);
+    const code = String(req.body?.code || '').trim();
+    const claimAll = Boolean(req.body?.claimAll);
+    const fullUser = (await readUsers()).find((u) => u.id === user.id) || user;
+    const accountPhone = formatLocationPhone(fullUser.phone || '');
+    if (!accountPhone) {
+      return res.status(400).json({ error: 'Спочатку підтвердіть телефон (запит коду)' });
+    }
+
+    const verify = await otpAuth.verifyOtp(accountPhone, code, JWT_SECRET);
+    if (!verify.ok) {
+      const map = {
+        invalid_code: 'Невірний код',
+        code_expired: 'Код прострочено',
+        code_not_found: 'Спочатку запросіть код',
+        too_many_attempts: 'Забагато спроб',
+      };
+      return res.status(400).json({ error: map[verify.error] || 'Код не підтверджено' });
+    }
+    if (verify.user?.id && verify.user.id !== user.id) {
+      return res.status(403).json({ error: 'Код належить іншому акаунту' });
+    }
+
+    const data = await readData();
+    const primary = findLocation(data, req.params.id);
+    if (!primary || isLocationTrashed(primary)) {
+      return res.status(404).json({ error: 'Локацію не знайдено' });
+    }
+    if (!phonesMatch(accountPhone, primary.phone)) {
+      return res.status(403).json({ error: 'Телефон не збігається з точкою' });
+    }
+
+    const targets = claimAll
+      ? activeLocations(data.mockLocations).filter(
+          (loc) => isClaimableLocation(loc) && phonesMatch(accountPhone, loc.phone)
+        )
+      : [primary];
+
+    if (!targets.length) {
+      return res.status(409).json({ error: 'Немає доступних точок для claim' });
+    }
+
+    const now = new Date().toISOString();
+    const claimed = [];
+    for (const loc of targets) {
+      if (loc.providerId && loc.providerId !== user.id) continue;
+      loc.providerId = user.id;
+      loc.claimedAt = now;
+      claimed.push(loc);
+    }
+    await persistLocationsPatch(data, claimed);
+    res.json({
+      ok: true,
+      claimedCount: claimed.length,
+      locations: claimed.map(publicClaimPreview),
+    });
+  } catch (err) {
+    console.error('[claim/confirm]', err);
+    res.status(500).json({ error: 'Не вдалося забрати заклад' });
+  }
+});
+
+app.post('/api/admin/locations/:id/assign', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const providerIdRaw = req.body?.providerId;
+    const providerId =
+      providerIdRaw === null || providerIdRaw === ''
+        ? null
+        : String(providerIdRaw || '').trim();
+    const data = await readData();
+    const loc = findLocation(data, req.params.id);
+    if (!loc) return res.status(404).json({ error: 'Локацію не знайдено' });
+
+    if (providerId) {
+      const users = await readUsers();
+      const provider = users.find((u) => u.id === providerId && u.role === 'provider');
+      if (!provider) {
+        return res.status(400).json({ error: 'Провайдера не знайдено' });
+      }
+      loc.providerId = provider.id;
+      loc.claimedAt = new Date().toISOString();
+    } else {
+      loc.providerId = null;
+      loc.claimedAt = null;
+    }
+    await persistLocationsPatch(data, [loc]);
+    res.json({ ok: true, location: loc });
+  } catch (err) {
+    console.error('[assign]', err);
+    res.status(500).json({ error: 'Не вдалося призначити власника' });
   }
 });
 

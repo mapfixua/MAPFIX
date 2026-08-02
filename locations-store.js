@@ -27,6 +27,7 @@ function toDbRow(loc) {
     views: Number(loc.views) || 0,
     photos: Array.isArray(loc.photos) ? loc.photos : [],
     import_source: loc.importSource || loc.importMeta?.source || null,
+    claimed_at: loc.claimedAt || null,
     deleted_at: loc.deletedAt || null,
     deleted_reason: loc.deletedReason || null,
     updated_at: new Date().toISOString(),
@@ -57,6 +58,7 @@ function fromDbRow(row) {
     views: Number(row.views) || 0,
     photos: Array.isArray(row.photos) ? row.photos : [],
     importSource: row.import_source || null,
+    claimedAt: row.claimed_at || null,
     deletedAt: row.deleted_at || null,
     deletedReason: row.deleted_reason || null,
   };
@@ -85,6 +87,10 @@ async function upsertLocationsToSupabase(locations) {
 
   // Drop optional columns gradually if migration not applied yet
   const stripMatchers = [
+    [/claimed_at/i, (r) => {
+      const { claimed_at, ...rest } = r;
+      return rest;
+    }],
     [/deleted_at|deleted_reason/i, (r) => {
       const { deleted_at, deleted_reason, ...rest } = r;
       return rest;

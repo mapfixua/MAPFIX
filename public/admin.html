@@ -728,6 +728,7 @@
           <div class="admin-nav-title">Меню</div>
           <button type="button" class="active" data-provider-nav="profile">Профіль</button>
           <button type="button" data-provider-nav="locations">Мої локації <span class="nav-count" id="navCountMyLocs">0</span></button>
+          <button type="button" data-provider-nav="claim">Забрати з карти</button>
           <button type="button" data-provider-nav="orders">Замовлення</button>
           <button type="button" data-provider-nav="support">Підтримка</button>
           <button type="button" data-provider-nav="import">Імпорт</button>
@@ -788,6 +789,16 @@
             <h2>Мої локації</h2>
             <div id="myLocationsList"></div>
             <button type="button" id="showNewLocBtn" class="btn-secondary" style="margin-top:12px;width:100%">+ Нова локація вручну</button>
+          </div>
+
+          <div id="providerPaneClaim" class="admin-pane card">
+            <h2>Забрати заклад з карти</h2>
+            <p class="field-hint">
+              Показуються імпортовані точки без власника, де телефон збігається з телефоном вашого акаунта.
+              Підтвердження — код у Telegram.
+            </p>
+            <div id="providerClaimStatus" class="field-hint" style="margin-bottom:12px"></div>
+            <div id="providerClaimList"><p class="list-item-meta">Завантаження…</p></div>
           </div>
 
           <div id="providerPaneImport" class="admin-pane card">
@@ -1359,7 +1370,20 @@
               <div class="kv"><div class="k">Перегляди</div><div class="v">${Number(l.views) || 0}</div></div>
               <div class="kv"><div class="k">Рейтинг</div><div class="v">★ ${Number(l.rating || 0).toFixed(1)} (${l.reviewsCount || 0})</div></div>
               <div class="kv"><div class="k">Замовлення</div><div class="v">${l.ordersCount || 0}</div></div>
-              <div class="kv"><div class="k">Провайдер</div><div class="v">${l.provider ? esc(l.provider.companyName + ' (@' + l.provider.login + ')') : 'системна'}</div></div>
+              <div class="kv"><div class="k">Провайдер</div><div class="v">${l.provider ? esc(l.provider.companyName + ' (@' + l.provider.login + ')') : 'системна / без власника'}</div></div>
+            </div>
+            <div class="detail-section" style="margin:12px 0;padding:12px;background:#f8fafc;border-radius:10px">
+              <h3 style="margin:0 0 8px;font-size:0.95rem">Власник (claim)</h3>
+              <p class="field-hint">Призначити майстра вручну або зняти власника з імпортованої точки.</p>
+              <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end">
+                <div style="flex:1;min-width:180px">
+                  <label>ID провайдера</label>
+                  <input type="text" id="locAssignProviderId" placeholder="uuid провайдера або порожньо" value="${esc(l.providerId || '')}">
+                </div>
+                <button type="button" class="btn-secondary" style="width:auto" id="locAssignBtn">Призначити</button>
+                <button type="button" class="btn-danger" style="width:auto" id="locUnassignBtn">Зняти власника</button>
+              </div>
+              <div id="locAssignMsg" class="msg" style="display:none;margin-top:8px"></div>
             </div>
             <div class="inline-actions">
               <button type="submit" class="btn-primary" style="width:auto" id="locDetailSaveBtn">Зберегти зміни</button>
@@ -1440,6 +1464,42 @@
             openProviderDetail(l.provider.id);
           };
         }
+
+        async function assignOwner(providerId) {
+          const msg = document.getElementById('locAssignMsg');
+          try {
+            const res = await fetch('/api/admin/locations/' + encodeURIComponent(l.id) + '/assign', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              credentials: 'same-origin',
+              body: JSON.stringify({ providerId }),
+            });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error || 'Помилка');
+            if (msg) {
+              msg.style.display = 'block';
+              msg.className = 'msg ok';
+              msg.textContent = providerId ? 'Власника призначено' : 'Власника знято';
+            }
+            notifyMapDataChanged();
+            await openLocationDetail(l.id);
+          } catch (err) {
+            if (msg) {
+              msg.style.display = 'block';
+              msg.className = 'msg err';
+              msg.textContent = err.message;
+            }
+          }
+        }
+        document.getElementById('locAssignBtn').onclick = () => {
+          const id = document.getElementById('locAssignProviderId').value.trim();
+          if (!id) return showMessage('Вкажіть ID провайдера', true);
+          assignOwner(id);
+        };
+        document.getElementById('locUnassignBtn').onclick = () => {
+          if (!confirm('Зняти власника з цієї точки?')) return;
+          assignOwner(null);
+        };
       } catch (err) {
         detail.innerHTML = `<button type="button" class="detail-back" id="locationsBackBtn">← Назад</button><p class="list-item-meta">${esc(err.message)}</p>`;
         document.getElementById('locationsBackBtn').onclick = showLocationsList;
@@ -3329,6 +3389,7 @@
       const map = {
         profile: 'providerPaneProfile',
         locations: 'providerPaneLocations',
+        claim: 'providerPaneClaim',
         orders: 'providerPaneOrders',
         support: 'providerPaneSupport',
         import: 'providerPaneImport',
@@ -3341,6 +3402,85 @@
       if (editor && name !== 'locations') editor.classList.add('hidden');
       if (name === 'orders') loadProviderOrders();
       if (name === 'support') loadProviderSupport();
+      if (name === 'claim') loadProviderClaim();
+    }
+
+    async function loadProviderClaim() {
+      const statusEl = document.getElementById('providerClaimStatus');
+      const listEl = document.getElementById('providerClaimList');
+      if (!listEl) return;
+      listEl.innerHTML = '<p class="list-item-meta">Завантаження…</p>';
+      try {
+        const data = await apiFetch('/api/provider/claimable');
+        if (statusEl) {
+          statusEl.innerHTML = data.phone
+            ? `Телефон акаунта: <b>${esc(data.phone)}</b>. Telegram: ${
+                data.telegramLinked ? 'підключено ✓' : 'не підключено — <a href="/link-telegram.html">підключити</a>'
+              }`
+            : 'У профілі немає телефону. Вкажіть телефон у профілі (той самий, що на імпортованій точці), або почніть claim з карти — підставимо телефон із точки.';
+        }
+        const locs = data.locations || [];
+        if (!locs.length) {
+          listEl.innerHTML =
+            '<p class="list-item-meta">Немає точок із вашим телефоном без власника. Відкрийте заклад на карті → «Це мій заклад».</p>';
+          return;
+        }
+        listEl.innerHTML =
+          `<label class="subcat-pick-row" style="margin-bottom:10px"><input type="checkbox" id="claimAllSamePhone"> <span>Забрати всі точки з цим телефоном за один код</span></label>` +
+          locs
+            .map(
+              (l) => `
+          <div class="list-item" style="margin-bottom:10px">
+            <div class="list-item-title">${esc(l.title)}</div>
+            <div class="list-item-meta">${esc(l.address)} · ${esc(l.phone)}</div>
+            <button type="button" class="btn-secondary" style="width:auto;margin-top:8px" data-claim-id="${esc(l.id)}">Забрати заклад</button>
+          </div>`
+            )
+            .join('');
+        listEl.querySelectorAll('[data-claim-id]').forEach((btn) => {
+          btn.onclick = () => startClaimFlow(btn.dataset.claimId);
+        });
+      } catch (err) {
+        listEl.innerHTML = `<p class="list-item-meta" style="color:#b91c1c">${esc(err.message)}</p>`;
+      }
+    }
+
+    async function startClaimFlow(locationId) {
+      try {
+        const claimAll = Boolean(document.getElementById('claimAllSamePhone')?.checked);
+        const req = await fetch(`/api/provider/locations/${encodeURIComponent(locationId)}/claim/request`, {
+          method: 'POST',
+          credentials: 'same-origin',
+          headers: { 'Content-Type': 'application/json' },
+        });
+        const reqData = await req.json();
+        if (!req.ok) {
+          if (reqData.needsTelegramLink) {
+            if (confirm(reqData.error + '\nВідкрити підключення Telegram?')) {
+              location.href = '/link-telegram.html';
+            }
+            return;
+          }
+          throw new Error(reqData.error || 'Помилка');
+        }
+        const code = prompt(`Код з Telegram для ${reqData.phone}:`);
+        if (!code) return;
+        const conf = await fetch(`/api/provider/locations/${encodeURIComponent(locationId)}/claim/confirm`, {
+          method: 'POST',
+          credentials: 'same-origin',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ code: code.trim(), claimAll }),
+        });
+        const confData = await conf.json();
+        if (!conf.ok) throw new Error(confData.error || 'Не підтверджено');
+        showMessage(`Готово: забрано точок — ${confData.claimedCount}`);
+        await reloadProvider();
+        renderMyLocations();
+        loadProviderClaim();
+        showProviderPane('locations');
+      } catch (err) {
+        showMessage(err.message, true);
+      }
     }
 
     async function loadProviderSupport() {

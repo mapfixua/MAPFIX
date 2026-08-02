@@ -2079,6 +2079,7 @@
                         <button type="button" class="btn-fav-header ${isFav ? 'active' : ''}" onclick="event.stopPropagation(); toggleFavorite('${escapeHtml(loc.id)}')">${isFav ? '★ В обраному' : '☆ В обране'}</button>
                         <button type="button" class="action-btn btn-route" onclick="event.stopPropagation(); shareLocation('${escapeHtml(loc.id)}')">↗ Поділитись</button>
                         <button type="button" class="action-btn btn-route" onclick="event.stopPropagation(); reportLocation('${escapeHtml(loc.id)}')">⚑ Скарга</button>
+                        <button type="button" class="action-btn btn-route" id="claimLocBtn" style="display:none" onclick="event.stopPropagation(); claimLocationFromMap('${escapeHtml(loc.id)}')">🏷 Це мій заклад</button>
                         ${manageLocationBtnHtml(loc)}
                         ${diveBtn}
                     </div>
@@ -2097,6 +2098,76 @@
                 map.panTo([loc.lat, loc.lng]);
                 // У preview не відкриваємо popup — zoomToShowLayer/кластери зривають 2-й тап на мобілці
                 if (mode === 'dive') openPopupForLocation(loc);
+                refreshClaimButton(loc);
+            };
+
+            async function refreshClaimButton(loc) {
+                const btn = document.getElementById('claimLocBtn');
+                if (!btn) return;
+                btn.style.display = 'none';
+                if (!State.currentUser || State.currentUser.role !== 'provider') return;
+                if (loc.providerId) return;
+                try {
+                    const res = await fetch(
+                      `/api/provider/locations/${encodeURIComponent(loc.id)}/claim-info`,
+                      { credentials: 'same-origin' }
+                    );
+                    const data = await res.json();
+                    if (!res.ok) return;
+                    if (data.claimable || (data.locationHasPhone && !data.hasOwner)) {
+                        btn.style.display = '';
+                        btn.textContent = data.claimable
+                          ? '🏷 Це мій заклад'
+                          : '🏷 Це мій заклад (перевірка телефону)';
+                    }
+                } catch (_) {}
+            }
+
+            window.claimLocationFromMap = async function(locationId) {
+                if (!State.currentUser || State.currentUser.role !== 'provider') {
+                    if (confirm('Увійдіть як майстер, щоб забрати заклад. Перейти до входу?')) {
+                        location.href = '/login.html?next=/admin';
+                    }
+                    return;
+                }
+                try {
+                    const req = await fetch(
+                      `/api/provider/locations/${encodeURIComponent(locationId)}/claim/request`,
+                      {
+                        method: 'POST',
+                        credentials: 'same-origin',
+                        headers: { 'Content-Type': 'application/json' },
+                      }
+                    );
+                    const reqData = await req.json();
+                    if (!req.ok) {
+                        if (reqData.needsTelegramLink) {
+                            if (confirm(reqData.error + '\nВідкрити Telegram?')) {
+                                location.href = '/link-telegram.html';
+                            }
+                            return;
+                        }
+                        throw new Error(reqData.error || 'Помилка');
+                    }
+                    const code = prompt(`Код з Telegram (${reqData.phone}):`);
+                    if (!code) return;
+                    const conf = await fetch(
+                      `/api/provider/locations/${encodeURIComponent(locationId)}/claim/confirm`,
+                      {
+                        method: 'POST',
+                        credentials: 'same-origin',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ code: code.trim(), claimAll: false }),
+                      }
+                    );
+                    const confData = await conf.json();
+                    if (!conf.ok) throw new Error(confData.error || 'Не підтверджено');
+                    alert(`Заклад ваш! Забрано точок: ${confData.claimedCount}`);
+                    await refreshMapData();
+                    openMasterDetail(locationId, { mode: 'dive', forceMode: true });
+                } catch (err) {
+                    alert(err.message);
+                }
             };
 
             function manageLocationBtnHtml(loc) {
