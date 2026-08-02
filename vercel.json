@@ -34,7 +34,9 @@
           "rate-limit.js",
           "support-tickets.js",
           "notifications.js",
-          "reports.js"
+          "reports.js",
+          "billing.js",
+          "analytics.js"
         ]
       }
     }

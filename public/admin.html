@@ -462,6 +462,7 @@
         <aside class="admin-nav" aria-label="Розділи адмінки">
           <div class="admin-nav-title">Панелі</div>
           <button type="button" class="active" data-admin-nav="overview">Огляд</button>
+          <button type="button" data-admin-nav="analytics">Статистика <span class="nav-count" id="navCountOnline">0</span></button>
           <button type="button" data-admin-nav="users">Користувачі <span class="nav-count" id="navCountUsers">0</span></button>
           <button type="button" data-admin-nav="support">Підтримка <span class="nav-count" id="navCountSupport">0</span></button>
           <button type="button" data-admin-nav="reports">Скарги <span class="nav-count" id="navCountReports">0</span></button>
@@ -477,7 +478,46 @@
           <div id="adminPaneOverview" class="admin-pane active card">
             <h2>Огляд платформи</h2>
             <div class="stat-grid" id="overviewStats"></div>
-            <p class="field-hint">Оберіть розділ зліва, щоб переглянути списки. Клік по рядку відкриває деталі.</p>
+            <p class="field-hint">Детальна аналітика — у розділі «Статистика». Оберіть розділ зліва для списків.</p>
+          </div>
+
+          <div id="adminPaneAnalytics" class="admin-pane card">
+            <h2>Статистика платформи</h2>
+            <p class="field-hint">Онлайн оновлюється з heartbeat (~30 с). Кліки каталогу — з карти. Пошук — з поля вводу / голосу.</p>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">
+              <button type="button" class="btn-secondary" style="width:auto" id="analyticsRefreshBtn">Оновити</button>
+              <span class="field-hint" id="analyticsUpdatedAt" style="margin:0;align-self:center"></span>
+            </div>
+            <h3 style="font-size:1rem;margin:0 0 8px">Зараз на сайті</h3>
+            <div class="stat-grid" id="analyticsLiveStats" style="margin-bottom:14px"></div>
+            <div id="analyticsLivePaths" class="field-hint" style="margin-bottom:16px"></div>
+
+            <h3 style="font-size:1rem;margin:0 0 8px">Ключові метрики</h3>
+            <div class="stat-grid" id="analyticsKpis" style="margin-bottom:16px"></div>
+
+            <h3 style="font-size:1rem;margin:0 0 8px">Куди заходять (сторінки)</h3>
+            <div id="analyticsPages"><p class="list-item-meta">Завантаження…</p></div>
+
+            <h3 style="font-size:1rem;margin:16px 0 8px">Категорії (кліки)</h3>
+            <div id="analyticsCats"><p class="list-item-meta">—</p></div>
+
+            <h3 style="font-size:1rem;margin:16px 0 8px">Підкатегорії (кліки)</h3>
+            <div id="analyticsSubs"><p class="list-item-meta">—</p></div>
+
+            <h3 style="font-size:1rem;margin:16px 0 8px">Послуги (кліки)</h3>
+            <div id="analyticsSvcs"><p class="list-item-meta">—</p></div>
+
+            <h3 style="font-size:1rem;margin:16px 0 8px">Що шукають</h3>
+            <div id="analyticsSearches"><p class="list-item-meta">—</p></div>
+
+            <h3 style="font-size:1rem;margin:16px 0 8px">Останні пошукові запити</h3>
+            <div id="analyticsRecentSearches"><p class="list-item-meta">—</p></div>
+
+            <h3 style="font-size:1rem;margin:16px 0 8px">Топ локацій за переглядами картки</h3>
+            <div id="analyticsTopLocs"><p class="list-item-meta">—</p></div>
+
+            <h3 style="font-size:1rem;margin:16px 0 8px">Останні 14 днів</h3>
+            <div id="analyticsDaily"><p class="list-item-meta">—</p></div>
           </div>
 
           <div id="adminPaneUsers" class="admin-pane card">
@@ -1228,7 +1268,163 @@
       if (name === 'support') loadAdminSupportTickets();
       if (name === 'reports') loadAdminReports();
       if (name === 'billing') loadAdminBilling();
+      if (name === 'analytics') loadAdminAnalytics();
     }
+
+    function rankingListHtml(items, emptyText, lineFn) {
+      if (!items || !items.length) return `<p class="list-item-meta">${esc(emptyText)}</p>`;
+      return items
+        .map(
+          (item, i) =>
+            `<div class="list-item" style="margin-bottom:6px;display:flex;justify-content:space-between;gap:12px">
+              <div>${i + 1}. ${lineFn(item)}</div>
+              <strong>${esc(String(item.count ?? item.views ?? 0))}</strong>
+            </div>`
+        )
+        .join('');
+    }
+
+    async function loadAdminAnalytics() {
+      const liveEl = document.getElementById('analyticsLiveStats');
+      const kpisEl = document.getElementById('analyticsKpis');
+      if (!liveEl || !kpisEl) return;
+      liveEl.innerHTML = '';
+      kpisEl.innerHTML = '<p class="list-item-meta">Завантаження…</p>';
+      try {
+        const data = await apiFetch('/api/admin/analytics');
+        const live = data.live || {};
+        const kpis = data.kpis || {};
+        const onlineEl = document.getElementById('navCountOnline');
+        if (onlineEl) onlineEl.textContent = String(live.onlineNow || 0);
+        const updated = document.getElementById('analyticsUpdatedAt');
+        if (updated) updated.textContent = 'Оновлено: ' + formatBillingDate(data.generatedAt);
+
+        liveEl.innerHTML = [
+          ['Онлайн зараз', live.onlineNow || 0],
+          ['Сесії (heartbeat)', (live.sessions || []).length],
+        ]
+          .map(
+            ([label, value]) =>
+              `<div class="stat-card"><div class="stat-label">${esc(label)}</div><div class="stat-value">${esc(String(value))}</div></div>`
+          )
+          .join('');
+
+        const paths = live.byPath || {};
+        const pathsEl = document.getElementById('analyticsLivePaths');
+        if (pathsEl) {
+          const entries = Object.entries(paths);
+          pathsEl.textContent = entries.length
+            ? 'Де зараз: ' + entries.map(([p, n]) => `${p} (${n})`).join(' · ')
+            : 'Ніхто не на звʼязку (відкрийте карту в іншій вкладці для перевірки).';
+        }
+
+        kpisEl.innerHTML = [
+          ['Перегляди сторінок', kpis.pageViewsTotal],
+          ['Завантаження карти', kpis.mapLoadsTotal],
+          ['Відкриття карток', kpis.locationCardViews],
+          ['Пошукові запити', kpis.searchesTotal],
+          ['Замовлення', kpis.ordersTotal],
+          ['Обране', kpis.favoritesTotal],
+          ['Входи', kpis.loginsTotal],
+          ['Реєстрації', kpis.registersTotal],
+          ['Користувачі', kpis.usersTotal],
+          ['Провайдери', kpis.providersCount],
+          ['Клієнти', kpis.clientsCount],
+          ['Локації', kpis.locationsTotal],
+          ['З власником', kpis.locationsClaimed],
+          ['З фото', kpis.locationsWithPhotos],
+          ['З прайсом', kpis.locationsWithPrices],
+          ['Кліки донат', kpis.donateClicks],
+          ['Кліки Pro', kpis.subscribeClicks],
+          ['Активні Pro', kpis.activePaid],
+        ]
+          .map(
+            ([label, value]) =>
+              `<div class="stat-card"><div class="stat-label">${esc(label)}</div><div class="stat-value">${esc(String(value ?? 0))}</div></div>`
+          )
+          .join('');
+
+        const funnel = data.catalogFunnel || {};
+        document.getElementById('analyticsPages').innerHTML = rankingListHtml(
+          data.pages,
+          'Ще немає переглядів сторінок',
+          (x) => `<code>${esc(x.key)}</code>`
+        );
+        document.getElementById('analyticsCats').innerHTML = rankingListHtml(
+          funnel.categories,
+          data.catalogClicksMissing
+            ? 'Таблиця catalog_clicks відсутня — виконайте міграції 011/015'
+            : 'Кліків по категоріях ще немає',
+          (x) => esc(x.name || x.key)
+        );
+        document.getElementById('analyticsSubs').innerHTML = rankingListHtml(
+          funnel.subcategories,
+          'Кліків по підкатегоріях ще немає',
+          (x) => `${esc(x.catName)} → ${esc(x.name)}`
+        );
+        document.getElementById('analyticsSvcs').innerHTML = rankingListHtml(
+          funnel.services,
+          'Кліків по послугах ще немає',
+          (x) => `${esc(x.catName)} / ${esc(x.subName)} → ${esc(x.name)}`
+        );
+        document.getElementById('analyticsSearches').innerHTML = rankingListHtml(
+          data.searchesTop,
+          'Пошукових запитів ще немає',
+          (x) => `«${esc(x.key)}»`
+        );
+        const recent = data.recentSearches || [];
+        document.getElementById('analyticsRecentSearches').innerHTML = recent.length
+          ? recent
+              .map(
+                (s) =>
+                  `<div class="list-item" style="margin-bottom:6px">
+                    <div class="list-item-title">«${esc(s.q)}»</div>
+                    <div class="list-item-meta">${esc(formatBillingDate(s.at))} · ${esc(s.source || '')}${s.matched ? ' · matched' : ''}</div>
+                  </div>`
+              )
+              .join('')
+          : '<p class="list-item-meta">Порожньо</p>';
+
+        document.getElementById('analyticsTopLocs').innerHTML = rankingListHtml(
+          (data.topLocations || []).map((l) => ({ ...l, count: l.views })),
+          'Переглядів карток ще немає',
+          (x) => esc(x.title || x.id)
+        );
+
+        const daily = data.daily || [];
+        document.getElementById('analyticsDaily').innerHTML = daily.length
+          ? `<div style="overflow:auto"><table style="width:100%;border-collapse:collapse;font-size:0.85rem">
+              <thead><tr>
+                <th style="text-align:left;padding:6px;border-bottom:1px solid #e5e7eb">День</th>
+                <th style="padding:6px;border-bottom:1px solid #e5e7eb">Сесії</th>
+                <th style="padding:6px;border-bottom:1px solid #e5e7eb">Стор.</th>
+                <th style="padding:6px;border-bottom:1px solid #e5e7eb">Карта</th>
+                <th style="padding:6px;border-bottom:1px solid #e5e7eb">Пошук</th>
+                <th style="padding:6px;border-bottom:1px solid #e5e7eb">Картки</th>
+                <th style="padding:6px;border-bottom:1px solid #e5e7eb">Зам.</th>
+              </tr></thead>
+              <tbody>
+                ${daily
+                  .map(
+                    (d) => `<tr>
+                      <td style="padding:6px;border-bottom:1px solid #f1f5f9">${esc(d.day)}</td>
+                      <td style="text-align:center;padding:6px;border-bottom:1px solid #f1f5f9">${esc(String(d.uniqueSessions || 0))}</td>
+                      <td style="text-align:center;padding:6px;border-bottom:1px solid #f1f5f9">${esc(String(d.pageViews || 0))}</td>
+                      <td style="text-align:center;padding:6px;border-bottom:1px solid #f1f5f9">${esc(String(d.mapLoads || 0))}</td>
+                      <td style="text-align:center;padding:6px;border-bottom:1px solid #f1f5f9">${esc(String(d.searches || 0))}</td>
+                      <td style="text-align:center;padding:6px;border-bottom:1px solid #f1f5f9">${esc(String(d.locationOpens || 0))}</td>
+                      <td style="text-align:center;padding:6px;border-bottom:1px solid #f1f5f9">${esc(String(d.orders || 0))}</td>
+                    </tr>`
+                  )
+                  .join('')}
+              </tbody></table></div>`
+          : '<p class="list-item-meta">Дані зʼявляться після трафіку</p>';
+      } catch (err) {
+        kpisEl.innerHTML = `<p class="list-item-meta" style="color:#b91c1c">${esc(err.message)}</p>`;
+      }
+    }
+
+    document.getElementById('analyticsRefreshBtn')?.addEventListener('click', () => loadAdminAnalytics());
 
     function formatBillingDate(iso) {
       if (!iso) return '—';
@@ -2644,6 +2840,23 @@
             `<div class="stat-card"><div class="stat-label">${esc(label)}</div><div class="stat-value">${esc(String(value))}</div></div>`
         )
         .join('');
+
+      // Live online badge (non-blocking)
+      apiFetch('/api/admin/analytics')
+        .then((an) => {
+          const n = an?.live?.onlineNow || 0;
+          const el = document.getElementById('navCountOnline');
+          if (el) el.textContent = String(n);
+          const grid = document.getElementById('overviewStats');
+          if (grid && !grid.querySelector('[data-online-stat]')) {
+            const card = document.createElement('div');
+            card.className = 'stat-card';
+            card.setAttribute('data-online-stat', '1');
+            card.innerHTML = `<div class="stat-label">Онлайн зараз</div><div class="stat-value">${esc(String(n))}</div>`;
+            grid.prepend(card);
+          }
+        })
+        .catch(() => {});
 
       const allUsers = [
         ...(data.admins || []).map((u) => ({ ...u, role: 'admin' })),
@@ -4227,5 +4440,6 @@
       }
     })();
   </script>
+  <script src="/mf-analytics.js" defer></script>
 </body>
 </html>

@@ -95,6 +95,7 @@ const {
   deleteLocationPhotoFile,
 } = require('./location-photos.js');
 const billing = require('./billing.js');
+const analytics = require('./analytics.js');
 
 const LOGIN_RE = /^[a-z0-9._-]{3,32}$/;
 
@@ -854,6 +855,7 @@ app.post('/api/register', async (req, res) => {
     }
 
     setSessionUser(res, newUser);
+    analytics.bumpTotal('registers').catch(() => {});
 
     let telegramLink = null;
     if (normalizedPhone && isTelegramConfigured() && process.env.TELEGRAM_BOT_USERNAME) {
@@ -994,6 +996,7 @@ app.post('/api/login', authRateLimit, async (req, res) => {
 
     setSessionUser(res, user);
     const data = await readData();
+    analytics.bumpTotal('logins').catch(() => {});
     res.json({ ok: true, user: await toPublicUserWithProfile(user, data) });
   } catch (err) {
     console.error(err);
@@ -1139,6 +1142,101 @@ app.post('/api/catalog/click', async (req, res) => {
   }
 });
 
+app.post('/api/analytics/page', async (req, res) => {
+  try {
+    const user = getSessionUser(req);
+    await analytics.trackPageView({
+      path: req.body?.path,
+      sid: req.body?.sid,
+      role: user?.role || 'guest',
+    });
+    res.json({ ok: true });
+  } catch (err) {
+    console.warn('[analytics page]', err.message);
+    res.json({ ok: true, skipped: true });
+  }
+});
+
+app.post('/api/analytics/search', async (req, res) => {
+  try {
+    await analytics.trackSearch({
+      query: req.body?.query,
+      source: req.body?.source,
+      sid: req.body?.sid,
+      matched: req.body?.matched,
+    });
+    res.json({ ok: true });
+  } catch (err) {
+    console.warn('[analytics search]', err.message);
+    res.json({ ok: true, skipped: true });
+  }
+});
+
+app.post('/api/analytics/heartbeat', async (req, res) => {
+  try {
+    const user = getSessionUser(req);
+    const result = await analytics.heartbeat({
+      sid: req.body?.sid,
+      path: req.body?.path,
+      role: user?.role || 'guest',
+    });
+    res.json({ ok: true, online: result.online || 0 });
+  } catch (err) {
+    console.warn('[analytics heartbeat]', err.message);
+    res.json({ ok: true, skipped: true });
+  }
+});
+
+app.post('/api/analytics/event', async (req, res) => {
+  try {
+    const name = String(req.body?.name || '').trim();
+    const map = {
+      location_open: 'locationOpens',
+      order: 'orders',
+      favorite: 'favorites',
+      login: 'logins',
+      register: 'registers',
+      claim: 'claims',
+      support: 'supportTickets',
+      report: 'reports',
+      donate: 'donateClicks',
+      subscribe: 'subscribeClicks',
+      map_load: 'mapLoads',
+    };
+    if (map[name]) await analytics.bumpTotal(map[name]);
+    res.json({ ok: true });
+  } catch (err) {
+    res.json({ ok: true, skipped: true });
+  }
+});
+
+app.get('/api/admin/analytics', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const [data, clicksRes, orders, users, billingOverview] = await Promise.all([
+      readData(),
+      fetchCatalogClicksMap(),
+      readOrders().catch(() => []),
+      readUsers().catch(() => []),
+      billing.adminOverview({}).catch(() => ({ stats: {} })),
+    ]);
+    const locations = (data.mockLocations || []).filter((l) => !isLocationTrashed(l));
+    const report = await analytics.buildAdminReport({
+      catalogClicks: clicksRes.clicks || {},
+      masterCatalog: data.masterCatalog || {},
+      locations,
+      ordersTotal: Array.isArray(orders) ? orders.length : 0,
+      usersTotal: Array.isArray(users) ? users.length : 0,
+      providersCount: Array.isArray(users) ? users.filter((u) => u.role === 'provider').length : 0,
+      clientsCount: Array.isArray(users) ? users.filter((u) => u.role === 'client').length : 0,
+      billingStats: billingOverview.stats || null,
+    });
+    res.json({ ok: true, ...report, catalogClicksMissing: Boolean(clicksRes.missing) });
+  } catch (err) {
+    console.error('[admin analytics]', err);
+    res.status(500).json({ error: 'Не вдалося завантажити аналітику' });
+  }
+});
+
 app.post('/api/search-ai', searchRateLimit, async (req, res) => {
   try {
     const text = req.body?.text?.trim();
@@ -1150,6 +1248,14 @@ app.post('/api/search-ai', searchRateLimit, async (req, res) => {
     const result = await parseVoiceSearch(text, data.masterCatalog, {
       geminiApiKey: GEMINI_API_KEY || undefined,
     });
+
+    analytics
+      .trackSearch({
+        query: text,
+        source: result.source === 'gemini' ? 'ai_gemini' : 'ai_catalog',
+        matched: Boolean(result.category),
+      })
+      .catch(() => {});
 
     if (!result.category) {
       return res.status(404).json({
@@ -1460,6 +1566,7 @@ app.post('/api/locations/:id/view', async (req, res) => {
     if (!loc) return res.status(404).json({ error: 'not_found' });
     loc.views = (Number(loc.views) || 0) + 1;
     await persistLocationsPatch(data, [loc]);
+    analytics.bumpTotal('locationOpens').catch(() => {});
     res.json({ ok: true, views: loc.views });
   } catch (err) {
     console.error('[POST /api/locations/:id/view]', err);
@@ -1601,6 +1708,7 @@ app.post('/api/billing/click', requireAuth, async (req, res) => {
         trialStartedAt: profile?.createdAt || null,
       },
     });
+    analytics.bumpTotal(type === 'subscribe' ? 'subscribeClicks' : 'donateClicks').catch(() => {});
     res.json({ ok: true, ...result });
   } catch (err) {
     console.error('[billing click]', err);
@@ -2658,6 +2766,7 @@ app.post('/api/orders', requireAuth, requireClient, async (req, res) => {
     const orders = await readOrders();
     orders.push(order);
     await writeOrders(orders);
+    analytics.bumpTotal('orders').catch(() => {});
 
     const users = await readUsers();
     const enriched = enrichOrder(order, data, users);
@@ -2747,6 +2856,7 @@ app.post('/api/client/favorites', requireAuth, requireClient, async (req, res) =
         addedAt: new Date().toISOString(),
       });
       await writeFavorites(favorites);
+      analytics.bumpTotal('favorites').catch(() => {});
     }
     res.json({ ok: true });
   } catch (err) {
