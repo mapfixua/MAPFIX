@@ -82,6 +82,33 @@ async function deleteLocationPhotoFile(path) {
   return { ok: true };
 }
 
+async function uploadSupportPhoto({ ticketId, userId, dataUrl }) {
+  const { mime, buffer } = parseDataUrl(dataUrl);
+  const photoId = crypto.randomUUID();
+  const ext = extForMime(mime);
+  const path = `support/${userId || 'anon'}/${ticketId || 'ticket'}/${photoId}.${ext}`;
+
+  const { error } = await supabaseClient.storage.from(BUCKET).upload(path, buffer, {
+    contentType: mime,
+    upsert: false,
+  });
+  if (error) {
+    const msg = String(error.message || error);
+    if (/Bucket not found|not found/i.test(msg)) {
+      throw new Error('Сховище фото не налаштовано (bucket location-photos)');
+    }
+    throw new Error(msg);
+  }
+
+  const { data } = supabaseClient.storage.from(BUCKET).getPublicUrl(path);
+  return {
+    id: photoId,
+    url: data.publicUrl,
+    path,
+    createdAt: new Date().toISOString(),
+  };
+}
+
 module.exports = {
   MAX_PHOTOS,
   MAX_BYTES,
@@ -89,5 +116,6 @@ module.exports = {
   normalizePhotos,
   parseDataUrl,
   uploadLocationPhoto,
+  uploadSupportPhoto,
   deleteLocationPhotoFile,
 };

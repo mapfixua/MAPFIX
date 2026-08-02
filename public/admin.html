@@ -436,6 +436,7 @@
           <div class="admin-nav-title">Панелі</div>
           <button type="button" class="active" data-admin-nav="overview">Огляд</button>
           <button type="button" data-admin-nav="users">Користувачі <span class="nav-count" id="navCountUsers">0</span></button>
+          <button type="button" data-admin-nav="support">Підтримка <span class="nav-count" id="navCountSupport">0</span></button>
           <button type="button" data-admin-nav="providers">Провайдери <span class="nav-count" id="navCountProviders">0</span></button>
           <button type="button" data-admin-nav="locations">Локації <span class="nav-count" id="navCountLocations">0</span></button>
           <button type="button" data-admin-nav="trash">Кошик <span class="nav-count" id="navCountTrash">0</span></button>
@@ -456,6 +457,15 @@
               <div id="usersList"></div>
             </div>
             <div id="usersDetailView" class="hidden"></div>
+          </div>
+
+          <div id="adminPaneSupport" class="admin-pane card">
+            <div id="supportListView">
+              <h2>Звернення в підтримку</h2>
+              <p class="field-hint">Повідомлення від клієнтів і майстрів. Можна відповісти текстом і додати фото.</p>
+              <div id="supportTicketsList"><p class="list-item-meta">Завантаження…</p></div>
+            </div>
+            <div id="supportDetailView" class="hidden"></div>
           </div>
 
           <div id="adminPaneProviders" class="admin-pane card">
@@ -690,8 +700,8 @@
                     <input type="text" id="adminService" required minlength="2" placeholder="напр. Манікюр + гель-лак">
                   </div>
                   <div class="field-block">
-                    <label>Орієнтовна ціна</label>
-                    <input type="text" id="adminPrice" placeholder="800" required>
+                    <label>Орієнтовна ціна (необовʼязково)</label>
+                    <input type="text" id="adminPrice" placeholder="залиште порожнім, якщо ціни ще немає">
                   </div>
                   <button type="submit">Додати послугу</button>
                 </form>
@@ -712,6 +722,7 @@
           <button type="button" class="active" data-provider-nav="profile">Профіль</button>
           <button type="button" data-provider-nav="locations">Мої локації <span class="nav-count" id="navCountMyLocs">0</span></button>
           <button type="button" data-provider-nav="orders">Замовлення</button>
+          <button type="button" data-provider-nav="support">Підтримка</button>
           <button type="button" data-provider-nav="import">Імпорт</button>
         </aside>
 
@@ -741,6 +752,23 @@
           <div id="providerPaneOrders" class="admin-pane card">
             <h2>Вхідні замовлення</h2>
             <div id="providerOrdersList"><p class="list-item-meta">Завантаження…</p></div>
+          </div>
+
+          <div id="providerPaneSupport" class="admin-pane card">
+            <h2>Звʼязатись з підтримкою</h2>
+            <p class="field-hint">Опишіть проблему або питання. Можна додати до 3 фото.</p>
+            <form id="providerSupportForm">
+              <label>Тема</label>
+              <input type="text" id="providerSupportSubject" required maxlength="120" placeholder="Наприклад: не зберігається точка">
+              <label>Повідомлення</label>
+              <textarea id="providerSupportMessage" required rows="4" maxlength="4000" placeholder="Деталі…" style="width:100%;padding:10px 12px;border:1px solid #e2e8f0;border-radius:8px;font:inherit"></textarea>
+              <label>Фото (необовʼязково)</label>
+              <input type="file" id="providerSupportPhotos" accept="image/jpeg,image/png,image/webp" multiple>
+              <button type="submit" style="margin-top:10px">Надіслати</button>
+              <div id="providerSupportMsg" class="msg" style="display:none;margin-top:10px"></div>
+            </form>
+            <h3 style="margin-top:24px;font-size:1rem">Мої звернення</h3>
+            <div id="providerSupportList"><p class="list-item-meta">Порожньо</p></div>
           </div>
 
           <div id="providerPaneLocations" class="admin-pane card">
@@ -1014,13 +1042,145 @@
         btn.classList.toggle('active', btn.dataset.adminNav === name);
       });
       const paneId = 'adminPane' + name.charAt(0).toUpperCase() + name.slice(1);
-      document.querySelectorAll('.admin-pane').forEach((pane) => {
+      document.querySelectorAll('#adminPanel .admin-pane').forEach((pane) => {
         pane.classList.toggle('active', pane.id === paneId);
       });
       if (name === 'users') showUsersList();
       if (name === 'providers') showProvidersList();
       if (name === 'locations' && !opts.keepDetail) showLocationsList();
       if (name === 'trash') renderTrashList();
+      if (name === 'support') loadAdminSupportTickets();
+    }
+
+    function supportStatusLabel(status) {
+      if (status === 'done') return 'Вирішено';
+      if (status === 'in_progress') return 'В роботі';
+      return 'Нове';
+    }
+
+    function supportPhotosHtml(photos) {
+      if (!Array.isArray(photos) || !photos.length) return '';
+      return `<div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:8px">${photos
+        .map(
+          (p) =>
+            `<a href="${esc(p.url)}" target="_blank" rel="noopener"><img src="${esc(p.url)}" alt="" style="width:72px;height:72px;object-fit:cover;border-radius:8px;border:1px solid #e2e8f0"></a>`
+        )
+        .join('')}</div>`;
+    }
+
+    async function filesToDataUrls(fileList, max = 3) {
+      const files = [...(fileList || [])].slice(0, max);
+      const out = [];
+      for (const file of files) {
+        out.push(await compressImageFile(file));
+      }
+      return out;
+    }
+
+    async function loadAdminSupportTickets() {
+      const listEl = document.getElementById('supportTicketsList');
+      const detail = document.getElementById('supportDetailView');
+      const listView = document.getElementById('supportListView');
+      if (detail) detail.classList.add('hidden');
+      if (listView) listView.classList.remove('hidden');
+      listEl.innerHTML = '<p class="list-item-meta">Завантаження…</p>';
+      try {
+        const data = await apiFetch('/api/admin/support/tickets');
+        const tickets = data.tickets || [];
+        const countEl = document.getElementById('navCountSupport');
+        if (countEl) countEl.textContent = String(data.openCount || 0);
+        if (!tickets.length) {
+          listEl.innerHTML = '<p class="list-item-meta">Звернень ще немає</p>';
+          return;
+        }
+        listEl.innerHTML = tickets
+          .map(
+            (t) => `
+          <button type="button" class="click-row" data-support-id="${esc(t.id)}">
+            <div class="row-main">
+              <div class="row-title">${esc(t.subject)}</div>
+              <div class="row-meta">${esc(supportStatusLabel(t.status))} · @${esc(t.userLogin || '—')} (${esc(roleLabel(t.userRole))}) · ${esc(formatSupportDate(t.createdAt))}</div>
+            </div>
+            <span class="row-chevron">›</span>
+          </button>`
+          )
+          .join('');
+        listEl.querySelectorAll('[data-support-id]').forEach((btn) => {
+          btn.onclick = () => openAdminSupportDetail(btn.dataset.supportId, tickets);
+        });
+      } catch (err) {
+        listEl.innerHTML = `<p class="list-item-meta" style="color:#b91c1c">${esc(err.message)}</p>`;
+      }
+    }
+
+    function formatSupportDate(iso) {
+      try {
+        return new Date(iso).toLocaleString('uk-UA');
+      } catch (_) {
+        return iso || '';
+      }
+    }
+
+    function openAdminSupportDetail(id, tickets) {
+      const t = (tickets || []).find((x) => x.id === id);
+      if (!t) return;
+      const listView = document.getElementById('supportListView');
+      const detail = document.getElementById('supportDetailView');
+      listView.classList.add('hidden');
+      detail.classList.remove('hidden');
+      detail.innerHTML = `
+        <button type="button" class="btn-secondary" id="supportBackBtn" style="width:auto;margin-bottom:12px">← До списку</button>
+        <h2>${esc(t.subject)}</h2>
+        <p class="field-hint">@${esc(t.userLogin)} · ${esc(roleLabel(t.userRole))} · ${esc(formatSupportDate(t.createdAt))}</p>
+        <div class="detail-section" style="margin:12px 0;padding:12px;background:#f8fafc;border-radius:10px;white-space:pre-wrap">${esc(t.message)}</div>
+        ${supportPhotosHtml(t.photos)}
+        <label style="margin-top:16px;display:block">Статус</label>
+        <select id="supportStatusSelect">
+          <option value="new"${t.status === 'new' ? ' selected' : ''}>Нове</option>
+          <option value="in_progress"${t.status === 'in_progress' ? ' selected' : ''}>В роботі</option>
+          <option value="done"${t.status === 'done' ? ' selected' : ''}>Вирішено</option>
+        </select>
+        <label style="margin-top:12px;display:block">Відповідь підтримки</label>
+        <textarea id="supportAdminReply" rows="4" maxlength="4000" style="width:100%;padding:10px 12px;border:1px solid #e2e8f0;border-radius:8px;font:inherit">${esc(t.adminReply || '')}</textarea>
+        <label style="margin-top:12px;display:block">Додати фото до відповіді</label>
+        <input type="file" id="supportAdminPhotos" accept="image/jpeg,image/png,image/webp" multiple>
+        ${t.adminPhotos?.length ? `<p class="field-hint" style="margin-top:8px">Вже додані:</p>${supportPhotosHtml(t.adminPhotos)}` : ''}
+        <button type="button" id="supportSaveBtn" style="margin-top:12px">Зберегти відповідь</button>
+        <div id="supportAdminMsg" class="msg" style="display:none;margin-top:10px"></div>
+      `;
+      document.getElementById('supportBackBtn').onclick = () => loadAdminSupportTickets();
+      document.getElementById('supportSaveBtn').onclick = async () => {
+        const msgEl = document.getElementById('supportAdminMsg');
+        try {
+          const photos = await filesToDataUrls(document.getElementById('supportAdminPhotos').files, 3);
+          const body = {
+            status: document.getElementById('supportStatusSelect').value,
+            adminReply: document.getElementById('supportAdminReply').value,
+          };
+          if (photos.length) body.photos = photos;
+          const res = await fetch('/api/admin/support/tickets/' + encodeURIComponent(t.id), {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'same-origin',
+            body: JSON.stringify(body),
+          });
+          const data = await res.json();
+          if (!res.ok) throw new Error(data.error || 'Помилка збереження');
+          msgEl.style.display = 'block';
+          msgEl.className = 'msg ok';
+          msgEl.textContent = 'Збережено';
+          openAdminSupportDetail(t.id, [data.ticket, ...(tickets || []).filter((x) => x.id !== t.id)]);
+          const countEl = document.getElementById('navCountSupport');
+          if (countEl) {
+            const list = await apiFetch('/api/admin/support/tickets');
+            countEl.textContent = String(list.openCount || 0);
+          }
+        } catch (err) {
+          msgEl.style.display = 'block';
+          msgEl.className = 'msg err';
+          msgEl.textContent = err.message;
+        }
+      };
     }
 
     function locDetailCatOptions(selectedCat) {
@@ -2067,6 +2227,8 @@
       document.getElementById('navCountLocations').textContent = String(data.locations?.length || 0);
       document.getElementById('navCountTrash').textContent = String(data.trashCount || data.trash?.length || 0);
       document.getElementById('navCountCatalog').textContent = String(data.catalogCategories || 0);
+      const supportCountEl = document.getElementById('navCountSupport');
+      if (supportCountEl) supportCountEl.textContent = String(data.supportOpenCount || 0);
 
       document.getElementById('overviewStats').innerHTML = [
         ['Користувачі', data.usersTotal || usersCount],
@@ -2077,6 +2239,7 @@
         ['Кошик', data.trashCount || 0],
         ['Категорії', data.catalogCategories || 0],
         ['Замовлення', data.ordersTotal || 0],
+        ['Підтримка (відкриті)', data.supportOpenCount || 0],
       ]
         .map(
           ([label, value]) =>
@@ -3018,6 +3181,7 @@
         profile: 'providerPaneProfile',
         locations: 'providerPaneLocations',
         orders: 'providerPaneOrders',
+        support: 'providerPaneSupport',
         import: 'providerPaneImport',
       };
       Object.values(map).forEach((id) => {
@@ -3027,6 +3191,77 @@
       const editor = document.getElementById('locationEditor');
       if (editor && name !== 'locations') editor.classList.add('hidden');
       if (name === 'orders') loadProviderOrders();
+      if (name === 'support') loadProviderSupport();
+    }
+
+    async function loadProviderSupport() {
+      const listEl = document.getElementById('providerSupportList');
+      if (!listEl) return;
+      listEl.innerHTML = '<p class="list-item-meta">Завантаження…</p>';
+      try {
+        const res = await fetch('/api/support/tickets/mine', { credentials: 'same-origin' });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Помилка');
+        const tickets = data.tickets || [];
+        if (!tickets.length) {
+          listEl.innerHTML = '<p class="list-item-meta">Звернень ще немає</p>';
+          return;
+        }
+        listEl.innerHTML = tickets
+          .map(
+            (t) => `
+          <div class="list-item" style="margin-bottom:10px">
+            <div class="list-item-title">${esc(t.subject)} · ${esc(supportStatusLabel(t.status))}</div>
+            <div class="list-item-meta">${esc(formatSupportDate(t.createdAt))}</div>
+            <div class="list-item-meta" style="white-space:pre-wrap;margin-top:6px">${esc(t.message)}</div>
+            ${supportPhotosHtml(t.photos)}
+            ${
+              t.adminReply
+                ? `<div style="margin-top:8px;padding:10px;background:#eff6ff;border-radius:8px"><b>Відповідь:</b><div style="white-space:pre-wrap;margin-top:4px">${esc(t.adminReply)}</div>${supportPhotosHtml(t.adminPhotos)}</div>`
+                : ''
+            }
+          </div>`
+          )
+          .join('');
+      } catch (err) {
+        listEl.innerHTML = `<p class="list-item-meta" style="color:#b91c1c">${esc(err.message)}</p>`;
+      }
+    }
+
+    const providerSupportForm = document.getElementById('providerSupportForm');
+    if (providerSupportForm) {
+      providerSupportForm.onsubmit = async (e) => {
+        e.preventDefault();
+        const msgEl = document.getElementById('providerSupportMsg');
+        const btn = providerSupportForm.querySelector('button[type="submit"]');
+        btn.disabled = true;
+        try {
+          const photos = await filesToDataUrls(document.getElementById('providerSupportPhotos').files, 3);
+          const res = await fetch('/api/support/tickets', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'same-origin',
+            body: JSON.stringify({
+              subject: document.getElementById('providerSupportSubject').value,
+              message: document.getElementById('providerSupportMessage').value,
+              photos,
+            }),
+          });
+          const data = await res.json();
+          if (!res.ok) throw new Error(data.error || 'Помилка');
+          msgEl.style.display = 'block';
+          msgEl.className = 'msg ok';
+          msgEl.textContent = 'Звернення надіслано';
+          providerSupportForm.reset();
+          loadProviderSupport();
+        } catch (err) {
+          msgEl.style.display = 'block';
+          msgEl.className = 'msg err';
+          msgEl.textContent = err.message;
+        } finally {
+          btn.disabled = false;
+        }
+      };
     }
 
     document.querySelectorAll('[data-provider-nav]').forEach((btn) => {

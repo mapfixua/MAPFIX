@@ -31,7 +31,8 @@
           "search-ai.js",
           "app-state-store.js",
           "kv-store.js",
-          "rate-limit.js"
+          "rate-limit.js",
+          "support-tickets.js"
         ]
       }
     }

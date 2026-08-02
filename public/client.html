@@ -27,6 +27,14 @@
     .status-wait { background: #fef3c7; color: #92400e; }
     .status-work { background: #dbeafe; color: #1e40af; }
     .status-done { background: #dcfce7; color: #166534; }
+    label { display: block; font-size: 0.85rem; font-weight: 600; margin: 10px 0 6px; }
+    input, textarea {
+      width: 100%;
+      padding: 10px 12px;
+      border: 1px solid #e2e8f0;
+      border-radius: 8px;
+      font: inherit;
+    }
     button, .btn-link {
       padding: 8px 14px;
       border-radius: 8px;
@@ -45,6 +53,12 @@
     .empty { color: #94a3b8; text-align: center; padding: 20px; font-size: 0.9rem; }
     .links { text-align: center; margin-top: 20px; }
     .links a { color: #007bff; }
+    .msg { margin-top: 10px; font-size: 0.9rem; }
+    .msg.ok { color: #166534; }
+    .msg.err { color: #b91c1c; }
+    .photo-row { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+    .photo-row img { width: 72px; height: 72px; object-fit: cover; border-radius: 8px; border: 1px solid #e2e8f0; }
+    .reply-box { margin-top: 8px; padding: 10px; background: #eff6ff; border-radius: 8px; }
   </style>
 </head>
 <body>
@@ -68,6 +82,23 @@
       <div id="favoritesList"><p class="empty">Завантаження…</p></div>
     </div>
 
+    <div class="card">
+      <h2>🆘 Звʼязатись з підтримкою</h2>
+      <p class="sub" style="margin-top:-8px;margin-bottom:12px">Напишіть нам — можна додати фото проблеми</p>
+      <form id="supportForm">
+        <label for="supportSubject">Тема</label>
+        <input id="supportSubject" type="text" required maxlength="120" placeholder="Коротко про питання">
+        <label for="supportMessage">Повідомлення</label>
+        <textarea id="supportMessage" required rows="4" maxlength="4000" placeholder="Опишіть деталі…"></textarea>
+        <label for="supportPhotos">Фото (до 3)</label>
+        <input id="supportPhotos" type="file" accept="image/jpeg,image/png,image/webp" multiple>
+        <button type="submit">Надіслати</button>
+        <div id="supportMsg" class="msg"></div>
+      </form>
+      <h2 style="margin-top:24px">Мої звернення</h2>
+      <div id="supportList"><p class="empty">Порожньо</p></div>
+    </div>
+
     <p class="links">
       <a href="/">🗺️ Відкрити карту</a>
     </p>
@@ -80,6 +111,12 @@
       return 'status-wait';
     }
 
+    function supportStatusLabel(status) {
+      if (status === 'done') return 'Вирішено';
+      if (status === 'in_progress') return 'В роботі';
+      return 'Нове';
+    }
+
     function formatDate(iso) {
       try {
         return new Date(iso).toLocaleString('uk-UA');
@@ -88,9 +125,110 @@
       }
     }
 
+    function escapeHtml(s) {
+      const d = document.createElement('div');
+      d.textContent = s || '';
+      return d.innerHTML;
+    }
+
+    function photosHtml(photos) {
+      if (!Array.isArray(photos) || !photos.length) return '';
+      return `<div class="photo-row">${photos
+        .map((p) => `<a href="${escapeHtml(p.url)}" target="_blank" rel="noopener"><img src="${escapeHtml(p.url)}" alt=""></a>`)
+        .join('')}</div>`;
+    }
+
+    function compressImageFile(file) {
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onerror = () => reject(new Error('Не вдалося прочитати файл'));
+        reader.onload = () => {
+          const img = new Image();
+          img.onerror = () => reject(new Error('Невірне зображення'));
+          img.onload = () => {
+            const max = 1280;
+            let { width, height } = img;
+            if (width > max || height > max) {
+              const scale = Math.min(max / width, max / height);
+              width = Math.round(width * scale);
+              height = Math.round(height * scale);
+            }
+            const canvas = document.createElement('canvas');
+            canvas.width = width;
+            canvas.height = height;
+            canvas.getContext('2d').drawImage(img, 0, 0, width, height);
+            resolve(canvas.toDataURL('image/jpeg', 0.82));
+          };
+          img.src = reader.result;
+        };
+        reader.readAsDataURL(file);
+      });
+    }
+
     document.getElementById('logoutBtn').onclick = async () => {
       await fetch('/api/logout', { method: 'POST' }).catch(() => {});
       location.href = '/login.html';
+    };
+
+    async function loadSupport() {
+      const el = document.getElementById('supportList');
+      const res = await fetch('/api/support/tickets/mine');
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Помилка звернень');
+      const tickets = data.tickets || [];
+      if (!tickets.length) {
+        el.innerHTML = '<p class="empty">Звернень ще немає</p>';
+        return;
+      }
+      el.innerHTML = tickets
+        .map(
+          (t) => `
+        <div class="item">
+          <div class="item-title">${escapeHtml(t.subject)}</div>
+          <div class="item-meta">${escapeHtml(supportStatusLabel(t.status))} · ${escapeHtml(formatDate(t.createdAt))}</div>
+          <div class="item-meta" style="white-space:pre-wrap;margin-top:6px">${escapeHtml(t.message)}</div>
+          ${photosHtml(t.photos)}
+          ${
+            t.adminReply
+              ? `<div class="reply-box"><b>Відповідь підтримки</b><div style="white-space:pre-wrap;margin-top:4px">${escapeHtml(t.adminReply)}</div>${photosHtml(t.adminPhotos)}</div>`
+              : ''
+          }
+        </div>`
+        )
+        .join('');
+    }
+
+    document.getElementById('supportForm').onsubmit = async (e) => {
+      e.preventDefault();
+      const msg = document.getElementById('supportMsg');
+      const btn = e.target.querySelector('button[type="submit"]');
+      btn.disabled = true;
+      msg.textContent = '';
+      try {
+        const files = [...document.getElementById('supportPhotos').files].slice(0, 3);
+        const photos = [];
+        for (const f of files) photos.push(await compressImageFile(f));
+        const res = await fetch('/api/support/tickets', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            subject: document.getElementById('supportSubject').value,
+            message: document.getElementById('supportMessage').value,
+            photos,
+          }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Не вдалося надіслати');
+        msg.className = 'msg ok';
+        msg.textContent = 'Звернення надіслано';
+        e.target.reset();
+        await loadSupport();
+      } catch (err) {
+        msg.className = 'msg err';
+        msg.textContent = err.message;
+      } finally {
+        btn.disabled = false;
+      }
     };
 
     async function load() {
@@ -148,12 +286,8 @@
           };
         });
       }
-    }
 
-    function escapeHtml(s) {
-      const d = document.createElement('div');
-      d.textContent = s || '';
-      return d.innerHTML;
+      await loadSupport();
     }
 
     load().catch((e) => alert(e.message));

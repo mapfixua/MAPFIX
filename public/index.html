@@ -1907,7 +1907,7 @@
                         el.className = 'nav-item';
                         const metaBits = [`${providersCount} місць`];
                         if (withExactPrice) metaBits.push(`${withExactPrice} з ціною`);
-                        metaBits.push(`від ${srv.price || '—'}`);
+                        if (srv.price) metaBits.push(`від ${srv.price}`);
                         el.innerHTML = `
                             <div>
                                 <div>${srv.name}</div>

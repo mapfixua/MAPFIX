@@ -114,6 +114,8 @@ const {
   readFavorites,
   writeFavorites,
 } = require('./kv-store.js');
+const supportTickets = require('./support-tickets.js');
+const supportRateLimit = createRateLimiter({ windowMs: 15 * 60 * 1000, max: 20 });
 
 function resolveJwtSecret() {
   const secret = String(process.env.JWT_SECRET || process.env.SESSION_SECRET || '').trim();
@@ -1227,6 +1229,13 @@ app.get('/api/admin/overview', requireAuth, requireAdmin, async (req, res) => {
       deletedReason: loc.deletedReason || '',
     }));
 
+    let supportOpenCount = 0;
+    try {
+      supportOpenCount = await supportTickets.countOpenTickets();
+    } catch (err) {
+      console.warn('[overview] support count skip:', err.message);
+    }
+
     res.json({
       providers,
       clients,
@@ -1238,6 +1247,7 @@ app.get('/api/admin/overview', requireAuth, requireAdmin, async (req, res) => {
       importedCount: locations.filter((l) => l.imported).length,
       catalogCategories: Object.keys(data.masterCatalog).length,
       ordersTotal: orders.length,
+      supportOpenCount,
       importCities: CITY_PRESETS,
       importCategories: Object.keys(CATEGORY_OSM_FILTERS),
       googlePlacesConfigured: Boolean(
@@ -1957,12 +1967,12 @@ app.post('/api/add-item', requireAuth, requireAdmin, async (req, res) => {
     const category = req.body.category?.trim();
     const subcategory = req.body.subcategory?.trim();
     const service = req.body.service?.trim();
-    const price = req.body.price?.trim();
+    const price = req.body.price?.trim() || '';
 
-    if (!category || !subcategory || !service || !price) {
-      return res.status(400).json({ error: 'Заповніть усі поля форми' });
+    if (!category || !subcategory || !service) {
+      return res.status(400).json({ error: 'Заповніть категорію, підкатегорію та назву послуги' });
     }
-    if (!isValidPrice(price)) {
+    if (price && !isValidPrice(price)) {
       return res.status(400).json({ error: 'Ціна має містити число (наприклад 650 або 650 грн)' });
     }
 
@@ -1991,12 +2001,14 @@ app.post('/api/add-item', requireAuth, requireAdmin, async (req, res) => {
     }
 
     const sub = cat.subcats[subKey];
-    const priceStr = formatPrice(price);
     const existing = sub.items.find((i) => i.name === service);
+    const itemPayload = { name: service };
+    if (price && isValidPrice(price)) itemPayload.price = formatPrice(price);
     if (existing) {
-      existing.price = priceStr;
+      if (itemPayload.price) existing.price = itemPayload.price;
+      else delete existing.price;
     } else {
-      sub.items.push({ name: service, price: priceStr });
+      sub.items.push(itemPayload);
     }
 
     await writeData(data);
@@ -2123,10 +2135,7 @@ app.post('/api/admin/catalog/service', requireAuth, requireAdmin, async (req, re
     if (name.length < 2) {
       return res.status(400).json({ error: 'Назва послуги має містити щонайменше 2 символи' });
     }
-    if (!price) {
-      return res.status(400).json({ error: 'Вкажіть орієнтовну ціну' });
-    }
-    if (!isValidPrice(price)) {
+    if (price && !isValidPrice(price)) {
       return res.status(400).json({ error: 'Ціна має містити число (наприклад 650 або 650 грн)' });
     }
 
@@ -2139,12 +2148,14 @@ app.post('/api/admin/catalog/service', requireAuth, requireAdmin, async (req, re
     }
     if (!Array.isArray(sub.items)) sub.items = [];
 
-    const priceStr = formatPrice(price);
     const existing = sub.items.find((i) => String(i.name).toLowerCase() === name.toLowerCase());
     if (existing) {
-      existing.price = priceStr;
+      if (price) existing.price = formatPrice(price);
+      else delete existing.price;
     } else {
-      sub.items.push({ name, price: priceStr });
+      const item = { name };
+      if (price) item.price = formatPrice(price);
+      sub.items.push(item);
       const tag = name.toLowerCase();
       if (!Array.isArray(sub.tags)) sub.tags = [];
       if (!sub.tags.includes(tag)) sub.tags.push(tag);
@@ -2162,6 +2173,105 @@ app.post('/api/admin/catalog/service', requireAuth, requireAdmin, async (req, re
   } catch (err) {
     console.error('[POST /api/admin/catalog/service]', err);
     res.status(500).json({ error: 'Не вдалося додати послугу' });
+  }
+});
+
+app.post('/api/admin/clear-example-prices', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const data = await readData();
+    let catalogItemsCleared = 0;
+    let locationsCleared = 0;
+
+    for (const cat of Object.values(data.masterCatalog || {})) {
+      for (const sub of Object.values(cat?.subcats || {})) {
+        if (!Array.isArray(sub.items)) continue;
+        for (const item of sub.items) {
+          if (item && item.price != null && String(item.price).trim() !== '') {
+            delete item.price;
+            catalogItemsCleared += 1;
+          }
+        }
+      }
+    }
+
+    for (const loc of data.mockLocations || []) {
+      if (loc.prices && Object.keys(loc.prices).length) {
+        locationsCleared += 1;
+      }
+      loc.prices = {};
+    }
+
+    const writeResult = await writeData(data);
+    const writeErr = catalogWriteError(writeResult);
+    if (writeErr) return res.status(503).json({ error: writeErr });
+
+    res.json({
+      ok: true,
+      catalogItemsCleared,
+      locationsCleared,
+      locationsTotal: (data.mockLocations || []).length,
+    });
+  } catch (err) {
+    console.error('[clear-example-prices]', err);
+    res.status(500).json({ error: 'Не вдалося очистити ціни' });
+  }
+});
+
+app.post('/api/support/tickets', requireAuth, supportRateLimit, async (req, res) => {
+  try {
+    const user = getSessionUser(req);
+    const ticket = await supportTickets.createTicket({
+      user,
+      subject: req.body?.subject,
+      message: req.body?.message,
+      photoDataUrls: req.body?.photos || req.body?.photoDataUrls,
+    });
+    res.status(201).json({ ok: true, ticket });
+  } catch (err) {
+    console.error('[support create]', err);
+    res.status(400).json({ error: err.message || 'Не вдалося надіслати звернення' });
+  }
+});
+
+app.get('/api/support/tickets/mine', requireAuth, async (req, res) => {
+  try {
+    const user = getSessionUser(req);
+    const tickets = await supportTickets.listTicketsForUser(user.id);
+    res.json({ ok: true, tickets });
+  } catch (err) {
+    console.error('[support mine]', err);
+    res.status(500).json({ error: 'Не вдалося завантажити звернення' });
+  }
+});
+
+app.get('/api/admin/support/tickets', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const tickets = await supportTickets.listAllTickets();
+    res.json({
+      ok: true,
+      tickets,
+      openCount: tickets.filter((t) => t.status === 'new' || t.status === 'in_progress').length,
+    });
+  } catch (err) {
+    console.error('[support admin list]', err);
+    res.status(500).json({ error: 'Не вдалося завантажити звернення' });
+  }
+});
+
+app.patch('/api/admin/support/tickets/:id', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const user = getSessionUser(req);
+    const ticket = await supportTickets.updateTicketAdmin(req.params.id, {
+      status: req.body?.status,
+      adminReply: req.body?.adminReply,
+      photoDataUrls: req.body?.photos || req.body?.photoDataUrls,
+      adminUserId: user.id,
+    });
+    res.json({ ok: true, ticket });
+  } catch (err) {
+    console.error('[support admin update]', err);
+    const status = /не знайдено/i.test(err.message || '') ? 404 : 400;
+    res.status(status).json({ error: err.message || 'Не вдалося оновити звернення' });
   }
 });
 
@@ -2251,9 +2361,10 @@ app.post('/api/orders', requireAuth, requireClient, async (req, res) => {
     const data = await readData();
     const loc = findLocation(data, locationId);
     if (!loc) return res.status(404).json({ error: 'Локацію не знайдено' });
-    if (!loc.prices || !loc.prices[serviceName]) {
-      return res.status(400).json({ error: 'Послуга недоступна в цьому закладі' });
-    }
+
+    const price =
+      (loc.prices && loc.prices[serviceName]) ||
+      'уточнюйте';
 
     const serviceId = makeServiceId(locationId, serviceName);
     const order = {
@@ -2263,7 +2374,7 @@ app.post('/api/orders', requireAuth, requireClient, async (req, res) => {
       locationId,
       serviceId,
       serviceName,
-      price: loc.prices[serviceName],
+      price,
       status: 'Очікує',
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
