@@ -107,17 +107,36 @@ if (IS_VERCEL) {
   console.log('[vercel] login.html exists:', fs.existsSync(path.join(PUBLIC_DIR, 'login.html')));
 }
 const DATA_FILE = path.join(ROOT, 'data.json');
-const ORDERS_FILE = path.join(ROOT, 'orders.json');
-const FAVORITES_FILE = path.join(ROOT, 'favorites.json');
-const JWT_SECRET =
-  process.env.JWT_SECRET ||
-  process.env.SESSION_SECRET ||
-  'mapfix-dev-secret-change-in-production';
+const { createRateLimiter } = require('./rate-limit.js');
+const {
+  readOrders,
+  writeOrders,
+  readFavorites,
+  writeFavorites,
+} = require('./kv-store.js');
+
+function resolveJwtSecret() {
+  const secret = String(process.env.JWT_SECRET || process.env.SESSION_SECRET || '').trim();
+  const isProd = IS_VERCEL || process.env.NODE_ENV === 'production';
+  if (isProd) {
+    if (!secret || secret === 'mapfix-dev-secret-change-in-production') {
+      throw new Error(
+        'JWT_SECRET must be set to a strong random value in production (Vercel Environment Variables)'
+      );
+    }
+    return secret;
+  }
+  return secret || 'mapfix-dev-secret-change-in-production';
+}
+
+const JWT_SECRET = resolveJwtSecret();
 const BCRYPT_ROUNDS = 10;
 const VALID_ROLES = ['client', 'provider'];
 const ADMIN_PANEL_ROLES = ['provider', 'admin'];
 const ALL_KNOWN_ROLES = ['client', 'provider', 'admin'];
 const ORDER_STATUSES = ['Очікує', 'В роботі', 'Виконано'];
+const authRateLimit = createRateLimiter({ windowMs: 15 * 60 * 1000, max: 40 });
+const searchRateLimit = createRateLimiter({ windowMs: 60 * 1000, max: 20 });
 
 app.use(express.json({ limit: '7mb' }));
 app.use(cookieParser());
@@ -253,36 +272,6 @@ function requireClient(req, res, next) {
 
 function makeServiceId(locationId, serviceName) {
   return `${locationId}::${serviceName}`;
-}
-
-async function readOrders() {
-  try {
-    const raw = await fsPromises.readFile(ORDERS_FILE, 'utf8');
-    const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed : [];
-  } catch (err) {
-    if (err.code === 'ENOENT') return [];
-    throw err;
-  }
-}
-
-async function writeOrders(orders) {
-  await fsPromises.writeFile(ORDERS_FILE, JSON.stringify(orders, null, 2), 'utf8');
-}
-
-async function readFavorites() {
-  try {
-    const raw = await fsPromises.readFile(FAVORITES_FILE, 'utf8');
-    const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed : [];
-  } catch (err) {
-    if (err.code === 'ENOENT') return [];
-    throw err;
-  }
-}
-
-async function writeFavorites(favorites) {
-  await fsPromises.writeFile(FAVORITES_FILE, JSON.stringify(favorites, null, 2), 'utf8');
 }
 
 function enrichOrder(order, data, users) {
@@ -880,6 +869,7 @@ async function finishOauthSignIn(res, result) {
       apple_not_configured: 'Apple-вхід ще не налаштовано (APPLE_CLIENT_ID)',
       invalid_token: 'Невірний токен авторизації',
       invalid_nonce: 'Помилка безпеки Apple Sign In. Спробуйте ще раз',
+      email_not_verified: 'Email Google/Apple не підтверджено. Використайте інший акаунт',
     };
     return res.status(status).json({
       ok: false,
@@ -914,7 +904,7 @@ async function finishOauthSignIn(res, result) {
   });
 }
 
-app.post('/api/auth/google', async (req, res) => {
+app.post('/api/auth/google', authRateLimit, async (req, res) => {
   try {
     const result = await signInWithGoogle({
       idToken: req.body?.credential || req.body?.idToken,
@@ -928,7 +918,7 @@ app.post('/api/auth/google', async (req, res) => {
   }
 });
 
-app.post('/api/auth/apple', async (req, res) => {
+app.post('/api/auth/apple', authRateLimit, async (req, res) => {
   try {
     const result = await signInWithApple({
       idToken: req.body?.idToken || req.body?.identityToken,
@@ -944,7 +934,7 @@ app.post('/api/auth/apple', async (req, res) => {
   }
 });
 
-app.post('/api/login', async (req, res) => {
+app.post('/api/login', authRateLimit, async (req, res) => {
   try {
     const inputLogin = req.body.login?.trim().toLowerCase();
     const password = req.body.password;
@@ -1033,6 +1023,7 @@ app.post('/api/auth/telegram/link', requireAuth, async (req, res) => {
 
 app.use(
   '/api/auth',
+  authRateLimit,
   createAuthRouter({
     jwtSecret: JWT_SECRET,
     toPublicUserWithProfile,
@@ -1104,7 +1095,7 @@ app.post('/api/catalog/click', async (req, res) => {
   }
 });
 
-app.post('/api/search-ai', async (req, res) => {
+app.post('/api/search-ai', searchRateLimit, async (req, res) => {
   try {
     const text = req.body?.text?.trim();
     if (!text) {

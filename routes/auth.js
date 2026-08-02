@@ -65,12 +65,14 @@ function otpErrorResponse(res, error, status) {
 }
 
 function resolveJwtSecret(explicitSecret) {
-  return (
-    explicitSecret ||
-    process.env.JWT_SECRET ||
-    process.env.SESSION_SECRET ||
-    'mapfix-dev-secret-change-in-production'
-  );
+  const secret = String(
+    explicitSecret || process.env.JWT_SECRET || process.env.SESSION_SECRET || ''
+  ).trim();
+  const isProd = process.env.NODE_ENV === 'production' || !!process.env.VERCEL;
+  if (isProd && (!secret || secret === 'mapfix-dev-secret-change-in-production')) {
+    throw new Error('JWT_SECRET must be set in production');
+  }
+  return secret || 'mapfix-dev-secret-change-in-production';
 }
 
 function getPublicBaseUrl(req) {

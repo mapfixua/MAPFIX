@@ -217,6 +217,16 @@ async function findUserByOauth({ googleId, appleId, email }) {
         .maybeSingle();
       if (!error && data) return mapUserRow(data);
     }
+    try {
+      const { findUserIdInOauthIndex } = require('./kv-store.js');
+      const mappedId = await findUserIdInOauthIndex('google', googleId);
+      if (mappedId) {
+        const { data, error } = await supabaseClient.from(USERS_TABLE).select('*').eq('id', mappedId).maybeSingle();
+        if (!error && data) return mapUserRow(data);
+      }
+    } catch (err) {
+      console.warn('[oauth] index lookup:', err.message);
+    }
   }
   if (appleId) {
     for (const column of ['appleId', 'apple_id']) {
@@ -226,6 +236,16 @@ async function findUserByOauth({ googleId, appleId, email }) {
         .eq(column, appleId)
         .maybeSingle();
       if (!error && data) return mapUserRow(data);
+    }
+    try {
+      const { findUserIdInOauthIndex } = require('./kv-store.js');
+      const mappedId = await findUserIdInOauthIndex('apple', appleId);
+      if (mappedId) {
+        const { data, error } = await supabaseClient.from(USERS_TABLE).select('*').eq('id', mappedId).maybeSingle();
+        if (!error && data) return mapUserRow(data);
+      }
+    } catch (err) {
+      console.warn('[oauth] index lookup:', err.message);
     }
   }
   if (email) {
@@ -325,6 +345,13 @@ async function createOauthUser({
   if (appleId) user.appleId = appleId;
 
   await insertUserWithOauth(user, { googleId, appleId });
+  try {
+    const { linkOauthInIndex } = require('./kv-store.js');
+    if (googleId) await linkOauthInIndex('google', googleId, user.id);
+    if (appleId) await linkOauthInIndex('apple', appleId, user.id);
+  } catch (err) {
+    console.warn('[oauth] index link:', err.message);
+  }
 
   return { user, companyName: role === 'provider' ? companyName || name || login : null };
 }
@@ -332,11 +359,17 @@ async function createOauthUser({
 async function signInWithGoogle({ idToken, role, companyName }) {
   const verified = await verifyGoogleIdToken(idToken);
   if (!verified.ok) return verified;
+  if (!verified.email || !verified.emailVerified) {
+    return { ok: false, error: 'email_not_verified' };
+  }
 
   let user = await findUserByOauth({
     googleId: verified.googleId,
     email: verified.email,
   });
+
+  // Never allow elevating to admin via OAuth body; provider only with company intent from register.
+  const safeRole = role === 'provider' && companyName ? 'provider' : 'client';
 
   let created = false;
   let profileCompany = null;
@@ -344,7 +377,7 @@ async function signInWithGoogle({ idToken, role, companyName }) {
     const createdUser = await createOauthUser({
       email: verified.email,
       name: verified.name,
-      role,
+      role: safeRole,
       companyName,
       googleId: verified.googleId,
     });
@@ -354,19 +387,31 @@ async function signInWithGoogle({ idToken, role, companyName }) {
   } else {
     await attachOauthIds(user.id, { googleId: verified.googleId });
     user.googleId = verified.googleId;
+    try {
+      const { linkOauthInIndex } = require('./kv-store.js');
+      await linkOauthInIndex('google', verified.googleId, user.id);
+    } catch (_) {
+      /* ignore */
+    }
   }
 
   return { ok: true, user, created, profileCompany, provider: 'google' };
 }
 
 async function signInWithApple({ idToken, rawNonce, role, companyName, name }) {
+  if (!rawNonce) return { ok: false, error: 'invalid_nonce' };
   const verified = await verifyAppleIdToken(idToken, rawNonce);
   if (!verified.ok) return verified;
+  if (verified.email && verified.emailVerified === false) {
+    return { ok: false, error: 'email_not_verified' };
+  }
 
   let user = await findUserByOauth({
     appleId: verified.appleId,
     email: verified.email,
   });
+
+  const safeRole = role === 'provider' && companyName ? 'provider' : 'client';
 
   let created = false;
   let profileCompany = null;
@@ -374,7 +419,7 @@ async function signInWithApple({ idToken, rawNonce, role, companyName, name }) {
     const createdUser = await createOauthUser({
       email: verified.email,
       name: name || verified.name,
-      role,
+      role: safeRole,
       companyName,
       appleId: verified.appleId,
     });
@@ -384,6 +429,12 @@ async function signInWithApple({ idToken, rawNonce, role, companyName, name }) {
   } else {
     await attachOauthIds(user.id, { appleId: verified.appleId });
     user.appleId = verified.appleId;
+    try {
+      const { linkOauthInIndex } = require('./kv-store.js');
+      await linkOauthInIndex('apple', verified.appleId, user.id);
+    } catch (_) {
+      /* ignore */
+    }
   }
 
   return { ok: true, user, created, profileCompany, provider: 'apple' };

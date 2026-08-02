@@ -169,6 +169,15 @@ function getTelegramBot() {
 }
 
 async function handleTelegramWebhookUpdate(req, res) {
+  const expectedSecret = String(process.env.TELEGRAM_WEBHOOK_SECRET || '').trim();
+  if (expectedSecret) {
+    const got = String(req.get('x-telegram-bot-api-secret-token') || '');
+    if (got !== expectedSecret) {
+      console.warn('[telegram] webhook: bad secret token');
+      return res.status(401).json({ ok: false, error: 'unauthorized' });
+    }
+  }
+
   const update = req.body;
 
   if (!update || typeof update.update_id !== 'number') {
@@ -223,7 +232,9 @@ async function setTelegramWebhook(publicBaseUrl) {
   if (!bot || !publicBaseUrl) return null;
 
   const url = `${String(publicBaseUrl).replace(/\/$/, '')}${WEBHOOK_PATH}`;
-  await bot.telegram.setWebhook(url);
+  const secret = String(process.env.TELEGRAM_WEBHOOK_SECRET || '').trim();
+  const opts = secret ? { secret_token: secret } : undefined;
+  await bot.telegram.setWebhook(url, opts);
   return url;
 }
 

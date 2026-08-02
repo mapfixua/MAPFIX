@@ -10,6 +10,7 @@
     "check": "node scripts/architecture-check.js",
     "db:sync": "node scripts/sync-database.js",
     "db:verify": "node scripts/verify-database-schema.js",
+    "db:harden": "node scripts/apply-security-hardening.js",
     "import:places": "node scripts/import-places.js",
     "import:kotsyubynske": "node scripts/import-places.js --source osm --city kotsyubynske --category beauty --write"
   },

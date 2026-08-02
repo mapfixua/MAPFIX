@@ -137,7 +137,8 @@ async function checkLoginFlow() {
   const hasLoginRoute = serverJs.includes("app.post('/api/login'");
   const hasRedirect = loginHtml.includes('/api/login') && loginHtml.includes('redirectByRole');
   const adminUser = users.find((u) => u.login === 'admin');
-  const hashOk = adminUser
+  const hashPresent = Boolean(adminUser?.passwordHash && String(adminUser.passwordHash).startsWith('$2'));
+  const defaultPasswordStillWorks = adminUser
     ? await bcrypt.compare('admin123', adminUser.passwordHash)
     : false;
 
@@ -145,7 +146,7 @@ async function checkLoginFlow() {
   try {
     const res = await httpRequest('POST', '/api/login', {
       login: 'admin',
-      password: 'admin123',
+      password: process.env.MAPFIX_ADMIN_PASSWORD || '',
     });
     apiLoginOk = res.status === 200;
   } catch (_) {
@@ -155,7 +156,8 @@ async function checkLoginFlow() {
   const ok =
     hasLoginRoute &&
     hasRedirect &&
-    hashOk &&
+    hashPresent &&
+    !defaultPasswordStillWorks &&
     users.every((u) => u.id && u.login && u.passwordHash && u.role);
   return {
     id: 4,
@@ -163,9 +165,10 @@ async function checkLoginFlow() {
     ok,
     details: [
       `users.json записів: ${users.length}`,
-      `bcrypt admin/admin123: ${hashOk ? 'OK' : 'FAIL'}`,
+      `admin hash present: ${hashPresent ? 'OK' : 'FAIL'}`,
+      `default admin123 disabled: ${!defaultPasswordStillWorks ? 'OK' : 'FAIL (still works)'}`,
       `login.html → redirectByRole: ${hasRedirect ? 'OK' : 'FAIL'}`,
-      `POST /api/login: ${apiLoginOk ? 'OK (live)' : 'offline або FAIL'}`,
+      `POST /api/login (MAPFIX_ADMIN_PASSWORD): ${apiLoginOk ? 'OK (live)' : 'skip/offline'}`,
     ],
   };
 }

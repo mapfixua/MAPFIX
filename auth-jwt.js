@@ -29,7 +29,11 @@ function verifyToken(token, secret) {
     .createHmac('sha256', secret)
     .update(`${header}.${body}`)
     .digest('base64url');
-  if (sig !== expected) return null;
+  const expectedBuf = Buffer.from(expected);
+  const sigBuf = Buffer.from(sig);
+  if (expectedBuf.length !== sigBuf.length || !crypto.timingSafeEqual(expectedBuf, sigBuf)) {
+    return null;
+  }
   try {
     const payload = JSON.parse(Buffer.from(body, 'base64url').toString());
     if (payload.exp && payload.exp < Math.floor(Date.now() / 1000)) return null;

@@ -28,7 +28,10 @@
           "otp-auth.js",
           "routes/**",
           "catalog-data.js",
-          "search-ai.js"
+          "search-ai.js",
+          "app-state-store.js",
+          "kv-store.js",
+          "rate-limit.js"
         ]
       }
     }

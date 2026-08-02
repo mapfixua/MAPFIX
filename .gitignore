@@ -1,4 +1,9 @@
 node_modules/
 .env
+.env.local
+.env.vercel.tmp
+.env.vercel.prod.tmp
+.admin-credentials.local
 .DS_Store
 imports/*.preview.json
+.vercel
