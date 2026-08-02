@@ -87,7 +87,24 @@
     let telegramConfigured = false;
     let savedPhone = '';
 
+    function safeNextPath() {
+      try {
+        const next = new URLSearchParams(location.search).get('next') || '';
+        if (next.startsWith('/') && !next.startsWith('//') && !next.includes('\\')) return next;
+      } catch (_) {}
+      return '';
+    }
+
     function redirectByRole(role) {
+      const next = safeNextPath();
+      if (next === '/admin' && (role === 'admin' || role === 'provider')) {
+        location.href = '/admin';
+        return;
+      }
+      if (next === '/client' && role === 'client') {
+        location.href = '/client';
+        return;
+      }
       if (role === 'admin' || role === 'provider') location.href = '/admin';
       else if (role === 'client') location.href = '/client';
       else location.href = '/';

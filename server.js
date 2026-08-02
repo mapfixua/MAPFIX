@@ -670,9 +670,14 @@ app.get('/admin.html', (req, res) => {
 app.get('/client', (req, res) => {
   const user = getSessionUser(req);
   if (!user || user.role !== 'client') {
-    return res.redirect('/login.html');
+    return res.redirect('/login.html?next=/client');
   }
+  res.set('Cache-Control', 'no-store');
   res.sendFile(path.resolve(PUBLIC_DIR, 'client.html'));
+});
+
+app.get('/client.html', (req, res) => {
+  res.redirect('/client');
 });
 
 app.get('/api/me', async (req, res) => {
@@ -1080,9 +1085,13 @@ app.post('/api/catalog/click', async (req, res) => {
 
     const result = await incrementCatalogClick(clickKey);
     if (!result.ok) {
+      // Table may be absent until 011/015 is applied — don't break map UX.
       if (result.missing) {
-        return res.status(503).json({
-          error: 'Виконайте міграцію 011_catalog_clicks.sql у Supabase',
+        return res.json({
+          ok: true,
+          skipped: true,
+          reason: 'catalog_clicks_missing',
+          clickKey,
         });
       }
       throw result.error || new Error('increment failed');

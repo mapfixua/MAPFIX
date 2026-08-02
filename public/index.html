@@ -1779,13 +1779,21 @@
                 return items.some((srv) => srv?.name && locationOffersService(loc, srv.name));
             }
 
+            /** Exact price match, or same subcategory (imported masters often lack filled prices). */
+            function locationMatchesSelectedService(loc) {
+                if (!State.service) return true;
+                if (locationOffersService(loc, State.service.name)) return true;
+                if (State.subcategory && getLocSubcats(loc).includes(State.subcategory)) return true;
+                return false;
+            }
+
             function locationMatchesMapFilter(loc) {
                 if (State.locationSearchQuery && !locationMatchesSearch(loc)) return false;
                 if (State.category && loc.cat !== State.category) return false;
                 if (State.subcategory && !locationInSubcategory(loc, State.category, State.subcategory)) {
                     return false;
                 }
-                if (State.service && !locationOffersService(loc, State.service.name)) return false;
+                if (State.service && !locationMatchesSelectedService(loc)) return false;
                 if (State.onlyOpen && loc.openStatus !== 'open') return false;
                 return true;
             }
@@ -1888,15 +1896,22 @@
                         const providersCount = window.mockLocations.filter(
                             (loc) =>
                                 loc.cat === State.category &&
-                                locationInSubcategory(loc, State.category, State.subcategory) &&
+                                locationInSubcategory(loc, State.category, State.subcategory)
+                        ).length;
+                        const withExactPrice = window.mockLocations.filter(
+                            (loc) =>
+                                loc.cat === State.category &&
                                 locationOffersService(loc, srv.name)
                         ).length;
                         const el = document.createElement('div');
                         el.className = 'nav-item';
+                        const metaBits = [`${providersCount} місць`];
+                        if (withExactPrice) metaBits.push(`${withExactPrice} з ціною`);
+                        metaBits.push(`від ${srv.price || '—'}`);
                         el.innerHTML = `
                             <div>
                                 <div>${srv.name}</div>
-                                <div class="nav-item-meta">${providersCount} місць · від ${srv.price || '—'}</div>
+                                <div class="nav-item-meta">${metaBits.join(' · ')}</div>
                             </div>
                             <span class="nav-item-arrow"><i class="fa-solid fa-chevron-right"></i></span>`;
                         el.addEventListener('click', () => handleL3Click(srv));
@@ -2243,8 +2258,10 @@
                 else if (State.sortType === 'rating') filtered.sort((a, b) => b.rating - a.rating);
                 else if (State.sortType === 'alphabet') filtered.sort((a, b) => a.title.localeCompare(b.title, 'uk'));
                 else if (State.sortType === 'price' && State.service) {
-                    const parsePrice = (pStr) => pStr ? parseInt(pStr.replace(/[^0-9]/g, '')) || Infinity : Infinity;
-                    filtered.sort((a, b) => parsePrice(a.prices[State.service.name]) - parsePrice(b.prices[State.service.name]));
+                    const parsePrice = (pStr) => pStr ? parseInt(String(pStr).replace(/[^0-9]/g, ''), 10) || Infinity : Infinity;
+                    filtered.sort((a, b) =>
+                        parsePrice(a.prices?.[State.service.name]) - parsePrice(b.prices?.[State.service.name])
+                    );
                 }
 
                 if (filtered.length === 0) {
@@ -2255,7 +2272,10 @@
                 filtered.forEach(loc => {
                     const card = document.createElement('div');
                     card.className = `provider-card ${State.selectedLocation?.id === loc.id ? 'active' : ''}`;
-                    let priceText = State.service ? (loc.prices[State.service.name] || '---') : 'Прайс-лист';
+                    const priceCount = Object.keys(loc.prices || {}).length;
+                    let priceText = State.service
+                        ? (loc.prices?.[State.service.name] || 'ціну уточнюйте')
+                        : (priceCount ? 'Прайс-лист' : 'Без прайсу');
 
                     card.innerHTML = `
                         <div class="provider-top">
@@ -2268,7 +2288,7 @@
                             <span class="distance-badge">📍 ${loc.currentDistance.toFixed(1)} км</span>
                         </div>
                         <div class="provider-price-row">
-                            <span class="provider-badge">${State.service ? 'Послуга' : 'Послуг: ' + Object.keys(loc.prices).length}</span>
+                            <span class="provider-badge">${State.service ? 'Послуга' : 'Послуг: ' + priceCount}</span>
                             <span class="provider-card-price">${priceText}</span>
                         </div>`;
 
