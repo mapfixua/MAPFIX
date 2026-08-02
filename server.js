@@ -57,6 +57,7 @@ const {
   CITY_PRESETS,
   CATEGORY_OSM_FILTERS,
   resolveCity,
+  reverseGeocodeLatLng,
   parseCsv,
   csvRowToLocation,
   PROVIDER_IMPORT_TEMPLATE_CSV,
@@ -2482,6 +2483,15 @@ app.delete('/api/client/favorites/:locationId', requireAuth, requireClient, asyn
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Помилка видалення з обраного' });
+  }
+});
+
+app.get('/api/geocode/reverse', requireAuth, requireProviderOrAdmin, async (req, res) => {
+  try {
+    const result = await reverseGeocodeLatLng(req.query.lat, req.query.lng);
+    res.json({ ok: true, ...result });
+  } catch (err) {
+    res.status(400).json({ error: err.message || 'Не вдалося визначити адресу' });
   }
 });
 

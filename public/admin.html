@@ -823,12 +823,12 @@
               <label>Опис</label>
               <textarea id="locText"></textarea>
               <label>Адреса</label>
-              <input type="text" id="locAddress" required>
+              <input type="text" id="locAddress" required placeholder="Підставиться з карти, можна змінити">
               <label>Телефон</label>
               <input type="text" id="locPhone">
               <div class="field-block loc-pick-map-wrap">
                 <label>Розташування на карті</label>
-                <p class="loc-map-hint">Клікніть на карту, щоб поставити маркер. Його можна перетягнути для уточнення.</p>
+                <p class="loc-map-hint">Клікніть на карту або перетягніть маркер — адреса заповниться автоматично. Поле адреси можна відредагувати вручну.</p>
                 <div id="locPickMap" class="loc-pick-map"></div>
                 <p class="loc-coords-hint" id="locCoordsHint">Оберіть точку на карті</p>
                 <input type="hidden" id="locLat">
@@ -902,6 +902,8 @@
     const LOC_MAP_DEFAULT = [50.4501, 30.5234];
     let locPickMap = null;
     let locPickMarker = null;
+    let locGeocodeTimer = null;
+    let locGeocodeSeq = 0;
 
     function setLocCoords(lat, lng) {
       document.getElementById('locLat').value = lat === '' ? '' : String(lat);
@@ -915,7 +917,40 @@
       hint.textContent = `Координати: ${Number(lat).toFixed(5)}, ${Number(lng).toFixed(5)}`;
     }
 
-    function placeLocPickMarker(lat, lng, panTo) {
+    async function fillAddressFromCoords(lat, lng) {
+      const addressInput = document.getElementById('locAddress');
+      const hint = document.getElementById('locCoordsHint');
+      if (!addressInput || !Number.isFinite(Number(lat)) || !Number.isFinite(Number(lng))) return;
+      const seq = ++locGeocodeSeq;
+      if (hint) hint.textContent = 'Визначаємо адресу…';
+      try {
+        const res = await fetch(
+          `/api/geocode/reverse?lat=${encodeURIComponent(lat)}&lng=${encodeURIComponent(lng)}`,
+          { credentials: 'same-origin' }
+        );
+        const data = await res.json().catch(() => ({}));
+        if (seq !== locGeocodeSeq) return;
+        if (!res.ok) throw new Error(data.error || 'Не вдалося визначити адресу');
+        addressInput.value = data.address || '';
+        setLocCoords(lat, lng);
+        if (hint) {
+          hint.textContent = `Координати: ${Number(lat).toFixed(5)}, ${Number(lng).toFixed(5)} · адресу підставлено (можна змінити)`;
+        }
+      } catch (err) {
+        if (seq !== locGeocodeSeq) return;
+        setLocCoords(lat, lng);
+        if (hint) {
+          hint.textContent = `Координати: ${Number(lat).toFixed(5)}, ${Number(lng).toFixed(5)} · адресу не знайдено — введіть вручну`;
+        }
+      }
+    }
+
+    function scheduleAddressFromCoords(lat, lng) {
+      clearTimeout(locGeocodeTimer);
+      locGeocodeTimer = setTimeout(() => fillAddressFromCoords(lat, lng), 350);
+    }
+
+    function placeLocPickMarker(lat, lng, panTo, opts = {}) {
       if (!locPickMap) return;
       if (locPickMarker) {
         locPickMarker.setLatLng([lat, lng]);
@@ -924,9 +959,11 @@
         locPickMarker.on('dragend', () => {
           const pos = locPickMarker.getLatLng();
           setLocCoords(pos.lat, pos.lng);
+          scheduleAddressFromCoords(pos.lat, pos.lng);
         });
       }
       setLocCoords(lat, lng);
+      if (opts.fillAddress) scheduleAddressFromCoords(lat, lng);
       if (panTo) locPickMap.setView([lat, lng], Math.max(locPickMap.getZoom(), 14));
     }
 
@@ -943,7 +980,7 @@
         attribution: '&copy; OpenStreetMap',
       }).addTo(locPickMap);
       locPickMap.on('click', (e) => {
-        placeLocPickMarker(e.latlng.lat, e.latlng.lng, false);
+        placeLocPickMarker(e.latlng.lat, e.latlng.lng, false, { fillAddress: true });
       });
       setTimeout(() => locPickMap.invalidateSize(), 250);
       return locPickMap;

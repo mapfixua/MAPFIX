@@ -1279,11 +1279,70 @@ async function buildCityImportCandidates({
   };
 }
 
+function formatNominatimAddress(hit) {
+  if (!hit || typeof hit !== 'object') return '';
+  const a = hit.address || {};
+  const road = [a.road || a.pedestrian || a.footway || a.path || a.residential || a.neighbourhood]
+    .filter(Boolean)[0];
+  const house = a.house_number || '';
+  const streetPart = [road, house].filter(Boolean).join(', ');
+  const locality =
+    a.city || a.town || a.village || a.municipality || a.suburb || a.county || '';
+  const parts = [streetPart, locality].filter(Boolean);
+  if (parts.length) return parts.join(', ');
+  return String(hit.display_name || '')
+    .split(',')
+    .slice(0, 3)
+    .map((s) => s.trim())
+    .filter(Boolean)
+    .join(', ');
+}
+
+async function reverseGeocodeLatLng(lat, lng) {
+  const la = Number(lat);
+  const lo = Number(lng);
+  if (!Number.isFinite(la) || !Number.isFinite(lo)) {
+    throw new Error('Некоректні координати');
+  }
+  if (la < -90 || la > 90 || lo < -180 || lo > 180) {
+    throw new Error('Координати поза межами');
+  }
+
+  const url =
+    'https://nominatim.openstreetmap.org/reverse?' +
+    new URLSearchParams({
+      format: 'jsonv2',
+      lat: String(la),
+      lon: String(lo),
+      'accept-language': 'uk',
+      addressdetails: '1',
+      zoom: '18',
+    }).toString();
+
+  const res = await fetch(url, {
+    headers: {
+      'User-Agent': 'MapfixReverseGeocode/1.0 (provider cabinet; contact@mapfix.local)',
+      Accept: 'application/json',
+    },
+  });
+  if (!res.ok) throw new Error(`Не вдалося визначити адресу (HTTP ${res.status})`);
+  const json = await res.json();
+  const address = formatNominatimAddress(json);
+  if (!address) throw new Error('Адресу для цієї точки не знайдено');
+  return {
+    address,
+    displayName: json.display_name || address,
+    lat: Number(json.lat) || la,
+    lng: Number(json.lon) || lo,
+  };
+}
+
 module.exports = {
   CITY_PRESETS,
   CATEGORY_OSM_FILTERS,
   resolveCity,
   geocodeCityUkraine,
+  reverseGeocodeLatLng,
   fetchOsmPlaces,
   fetchGooglePlaces,
   searchGooglePlacesText,
