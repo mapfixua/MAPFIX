@@ -471,6 +471,9 @@
         .top-header-row {
             display: flex; gap: 8px; align-items: center; width: 100%;
         }
+        .top-header-end {
+            display: flex; align-items: center; gap: 8px; flex-shrink: 0; pointer-events: auto;
+        }
         .brand-chip {
             display: inline-flex; align-items: center; gap: 8px;
             height: auto; min-height: 48px; padding: 6px 14px 6px 8px;
@@ -552,8 +555,11 @@
         .login-btn.hidden { display: none; }
         .profile-btn.hidden,
         .hidden { display: none !important; }
-        .add-business-btn { padding: 0 18px; color: var(--ink); background: var(--primary); white-space: nowrap; }
+        .add-business-btn {
+            padding: 0 14px; color: var(--ink); background: var(--primary); white-space: nowrap; gap: 6px;
+        }
         .add-business-btn:hover { filter: brightness(0.96); }
+        .add-business-btn .btn-label { margin-right: 0; }
         .user-menu {
             display: none;
             position: absolute;
@@ -845,10 +851,50 @@
             }
 
             .brand-chip-name { display: block; font-size: 0.85rem; }
-            .brand-chip-home { display: block; font-size: 9px; }
-            .brand-chip { padding: 5px 10px 5px 6px; width: auto; justify-content: flex-start; }
-            .login-btn span { display: none; }
-            .login-btn { width: 48px; padding: 0; }
+            .brand-chip-home { display: none; }
+            .brand-chip { padding: 5px 10px 5px 6px; width: auto; justify-content: flex-start; min-height: 44px; }
+
+            .top-header { top: 10px; left: 10px; right: 10px; gap: 8px; }
+            .top-header-main {
+                flex-wrap: wrap;
+                row-gap: 8px;
+                column-gap: 8px;
+            }
+            .brand-chip { order: 1; }
+            .top-header-end {
+                order: 2;
+                margin-left: auto;
+                gap: 6px;
+            }
+            .search-container {
+                order: 3;
+                flex: 1 1 100%;
+                width: 100%;
+                height: 44px;
+                min-width: 0;
+            }
+            .header-btn { height: 44px; }
+            .profile-btn { width: 44px; height: 44px; }
+
+            /* Компактніше «Додати», помітніше «Вхід» */
+            .add-business-btn {
+                padding: 0 10px;
+                font-size: 12px;
+                gap: 4px;
+                min-width: 0;
+            }
+            .add-business-btn .btn-label { font-size: 12px; }
+            .add-business-btn i { font-size: 12px; }
+
+            .login-btn span { display: inline; }
+            .login-btn {
+                width: auto;
+                min-width: 78px;
+                padding: 0 14px;
+                gap: 6px;
+                font-size: 13px;
+            }
+            .login-btn i { font-size: 13px; }
 
             #sidebar {
                 height: var(--sheet-h);
@@ -991,7 +1037,11 @@
         }
 
         @media (max-width: 380px) {
+            .brand-chip-name { display: none; }
+            .brand-chip { padding: 5px; min-width: 44px; justify-content: center; }
+            .add-business-btn { padding: 0 10px; }
             .add-business-btn span.btn-label { display: none; }
+            .login-btn { min-width: 70px; padding: 0 12px; }
             .category-card { flex: 0 0 58px; min-width: 58px; }
             .category-card-icon { width: 34px; height: 34px; font-size: 14px; }
             .category-card-label { font-size: 8px; max-width: 56px; }
@@ -1003,7 +1053,7 @@
     <div id="app-shell">
     <div id="map-container">
         <div class="top-header">
-            <div class="top-header-row">
+            <div class="top-header-row top-header-main">
                 <button type="button" class="brand-chip" id="brandHomeBtn" aria-label="Mapfix — на головну" title="На головну">
                     <span class="brand-chip-mark">M</span>
                     <span class="brand-chip-text">
@@ -1020,11 +1070,13 @@
                         <span id="voiceStatusText">Слухаю...</span>
                     </div>
                 </div>
-                <button type="button" class="header-btn add-business-btn" id="addBusinessBtn"><span class="btn-label">Додати </span><i class="fa-solid fa-plus"></i></button>
-                <a class="header-btn login-btn" id="loginHeaderBtn" href="/login.html"><i class="fa-solid fa-right-to-bracket"></i><span>Вхід</span></a>
-                <div class="profile-wrap">
-                    <button type="button" class="header-btn profile-btn hidden" id="profileBtn" title="Профіль" aria-haspopup="true" aria-expanded="false">👤</button>
-                    <div class="user-menu" id="userMenu" role="menu"></div>
+                <div class="top-header-end">
+                    <button type="button" class="header-btn add-business-btn" id="addBusinessBtn" title="Додати заклад"><span class="btn-label">Додати</span><i class="fa-solid fa-plus" aria-hidden="true"></i></button>
+                    <a class="header-btn login-btn" id="loginHeaderBtn" href="/login.html"><i class="fa-solid fa-right-to-bracket" aria-hidden="true"></i><span>Вхід</span></a>
+                    <div class="profile-wrap">
+                        <button type="button" class="header-btn profile-btn hidden" id="profileBtn" title="Профіль" aria-haspopup="true" aria-expanded="false">👤</button>
+                        <div class="user-menu" id="userMenu" role="menu"></div>
+                    </div>
                 </div>
             </div>
         </div>
