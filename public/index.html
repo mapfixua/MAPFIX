@@ -620,6 +620,17 @@
         .import-modal-primary { background: var(--primary); color: var(--ink); }
         .import-modal-secondary { background: var(--bg); color: var(--dark); }
         .import-preview { margin-top: 14px; padding: 14px; border-radius: 14px; background: var(--bg); font-size: 13px; line-height: 1.5; }
+        .import-subcats-box {
+            display: flex; flex-direction: column; gap: 6px;
+            max-height: 160px; overflow: auto;
+            padding: 10px 12px; border-radius: 12px;
+            background: #fff; border: 1px solid var(--border);
+        }
+        .import-subcats-box label {
+            display: flex !important; align-items: center; gap: 8px;
+            margin: 0 !important; font-weight: 600 !important; cursor: pointer;
+        }
+        .import-subcats-box input { width: 16px; height: 16px; accent-color: var(--primary); }
         .import-message { margin-top: 12px; font-size: 13px; font-weight: 700; }
         .import-message.error { color: var(--danger); }
         .import-message.success { color: var(--success); }
@@ -1377,10 +1388,16 @@
                     `<option value="${escapeHtml(category.key)}" ${category.key === data.category ? 'selected' : ''}>${escapeHtml(category.name || category.key)}</option>`
                 ).join('');
                 const selectedCategory = (data.catalogOptions || []).find((category) => category.key === data.category);
-                const subcategories = '<option value="">— без підкатегорії —</option>' +
-                    (selectedCategory?.subcats || []).map((subcategory) =>
-                        `<option value="${escapeHtml(subcategory.key)}" ${subcategory.key === data.subcategory ? 'selected' : ''}>${escapeHtml(subcategory.name || subcategory.key)}</option>`
-                    ).join('');
+                const selectedSubs = new Set(
+                    Array.isArray(data.subcategories) && data.subcategories.length
+                        ? data.subcategories
+                        : data.subcategory
+                          ? [data.subcategory]
+                          : []
+                );
+                const subCheckboxes = (selectedCategory?.subcats || []).map((subcategory) =>
+                    `<label><input type="checkbox" class="google-import-sub" value="${escapeHtml(subcategory.key)}" ${selectedSubs.has(subcategory.key) ? 'checked' : ''}> ${escapeHtml(subcategory.name || subcategory.key)}</label>`
+                ).join('');
                 const schedule = Object.entries(place.schedule || {})
                     .map(([day, hours]) => `${escapeHtml(day)}: ${escapeHtml(hours)}`)
                     .join('<br>');
@@ -1399,22 +1416,25 @@
                     ${partialNotice}
                     <label for="googleImportCategory">Категорія</label>
                     <select id="googleImportCategory">${categories}</select>
-                    <label for="googleImportSubcategory">Підкатегорія</label>
-                    <select id="googleImportSubcategory">${subcategories}</select>
+                    <label>Підкатегорії (можна кілька)</label>
+                    <div id="googleImportSubcats" class="import-subcats-box">${subCheckboxes || '<span style="color:var(--muted)">Немає підкатегорій</span>'}</div>
                     <div class="import-modal-actions">
                         <button type="button" class="import-modal-primary" id="googleImportSaveBtn">Додати на карту</button>
                     </div>`;
 
                 const categorySelect = document.getElementById('googleImportCategory');
-                const subcategorySelect = document.getElementById('googleImportSubcategory');
                 categorySelect.onchange = () => {
                     const category = (data.catalogOptions || []).find((item) => item.key === categorySelect.value);
-                    subcategorySelect.innerHTML = '<option value="">— без підкатегорії —</option>' +
-                        (category?.subcats || []).map((subcategory) =>
-                            `<option value="${escapeHtml(subcategory.key)}">${escapeHtml(subcategory.name || subcategory.key)}</option>`
-                        ).join('');
+                    const box = document.getElementById('googleImportSubcats');
+                    box.innerHTML = (category?.subcats || []).map((subcategory) =>
+                        `<label><input type="checkbox" class="google-import-sub" value="${escapeHtml(subcategory.key)}"> ${escapeHtml(subcategory.name || subcategory.key)}</label>`
+                    ).join('') || '<span style="color:var(--muted)">Немає підкатегорій</span>';
                 };
                 document.getElementById('googleImportSaveBtn').onclick = () => runGoogleImport(false);
+            }
+
+            function getGoogleImportSelectedSubcats() {
+                return [...document.querySelectorAll('.google-import-sub:checked')].map((el) => el.value);
             }
 
             async function runGoogleImport(dryRun) {
@@ -1429,7 +1449,9 @@
                 const body = { url, dryRun };
                 if (!dryRun) {
                     body.category = document.getElementById('googleImportCategory')?.value || googleImportData?.category;
-                    body.subcategory = document.getElementById('googleImportSubcategory')?.value || '';
+                    const subs = getGoogleImportSelectedSubcats();
+                    body.subcategories = subs;
+                    body.subcategory = subs[0] || '';
                 }
                 try {
                     const response = await fetch('/api/import-google-maps-url', {

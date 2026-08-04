@@ -1036,6 +1036,15 @@
 
             <hr style="margin:20px 0;border:none;border-top:1px solid #e2e8f0">
             <h2>Поточний прайс точки</h2>
+            <p class="field-hint">Скачайте шаблон Excel/CSV з послугами ваших підкатегорій, внесіть ціни в колонку <b>price</b> і імпортуйте файл назад — ціни з’являться на карті.</p>
+            <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px;align-items:center">
+              <a id="locPriceTemplateBtn" class="btn-secondary" style="width:auto;display:inline-block;text-decoration:none;padding:10px 14px" href="#">Скачати шаблон прайсу</a>
+              <label class="btn-secondary" style="width:auto;display:inline-block;cursor:pointer;padding:10px 14px;margin:0">
+                Імпортувати прайс (Excel/CSV)
+                <input type="file" id="locPriceImportFile" accept=".csv,.xlsx,.xls,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" style="display:none">
+              </label>
+            </div>
+            <div id="locPriceImportMsg" class="msg" style="display:none;margin-bottom:10px"></div>
             <div id="locPricesList"></div>
             <form id="priceForm" class="hidden"></form>
           </div>
@@ -2508,14 +2517,19 @@
             `<option value="${esc(c.key)}" ${c.key === data.category ? 'selected' : ''}>${esc(c.name || c.key)}</option>`
         )
         .join('');
-      const subOptions =
-        '<option value="">— без підкатегорії —</option>' +
-        ((data.catalogOptions || []).find((c) => c.key === data.category)?.subcats || [])
-          .map(
-            (s) =>
-              `<option value="${esc(s.key)}" ${s.key === data.subcategory ? 'selected' : ''}>${esc(s.name || s.key)}</option>`
-          )
-          .join('');
+      const selectedSubs = new Set(
+        Array.isArray(data.subcategories) && data.subcategories.length
+          ? data.subcategories
+          : data.subcategory
+            ? [data.subcategory]
+            : []
+      );
+      const subOptions = ((data.catalogOptions || []).find((c) => c.key === data.category)?.subcats || [])
+        .map(
+          (s) =>
+            `<label><input type="checkbox" class="gmaps-sub-cb" value="${esc(s.key)}" ${selectedSubs.has(s.key) ? 'checked' : ''}> ${esc(s.name || s.key)}</label>`
+        )
+        .join('');
       const reviewsPreview = (p.reviews || [])
         .slice(0, 3)
         .map((r) => `★${r.rating} ${esc((r.text || '').slice(0, 80))}`)
@@ -2539,8 +2553,8 @@
           <select id="gmapsCatSelect">${options}</select>
         </div>
         <div class="field-block">
-          <label>Підкатегорія</label>
-          <select id="gmapsSubSelect">${subOptions}</select>
+          <label>Підкатегорії (можна кілька)</label>
+          <div id="gmapsSubSelect" class="subcat-picker" style="max-height:180px">${subOptions || '<p class="list-item-meta">Немає підкатегорій</p>'}</div>
         </div>
         ${reviewsPreview ? `<div class="list-item-meta" style="margin-top:8px"><b>Відгуки:</b><br>${reviewsPreview}</div>` : ''}
         ${data.isPartial ? '<p class="field-hint" style="color:#b45309;margin-top:8px">Без API доступні лише базові дані: назва та координати.</p>' : ''}
@@ -2549,15 +2563,17 @@
       if (importBtn) importBtn.disabled = false;
 
       const catSel = document.getElementById('gmapsCatSelect');
-      const subSel = document.getElementById('gmapsSubSelect');
       catSel.onchange = () => {
         const cat = (data.catalogOptions || []).find((c) => c.key === catSel.value);
-        subSel.innerHTML =
-          '<option value="">— без підкатегорії —</option>' +
-          (cat?.subcats || [])
-            .map((s) => `<option value="${esc(s.key)}">${esc(s.name || s.key)}</option>`)
-            .join('');
+        const box = document.getElementById('gmapsSubSelect');
+        box.innerHTML = (cat?.subcats || [])
+          .map((s) => `<label><input type="checkbox" class="gmaps-sub-cb" value="${esc(s.key)}"> ${esc(s.name || s.key)}</label>`)
+          .join('') || '<p class="list-item-meta">Немає підкатегорій</p>';
       };
+    }
+
+    function getGmapsSelectedSubcats() {
+      return [...document.querySelectorAll('.gmaps-sub-cb:checked')].map((el) => el.value);
     }
 
     async function runGmapsImport(dryRun) {
@@ -2575,7 +2591,9 @@
         const body = { url, dryRun: Boolean(dryRun) };
         if (!dryRun) {
           body.category = document.getElementById('gmapsCatSelect')?.value || gmapsPreviewData?.category;
-          body.subcategory = document.getElementById('gmapsSubSelect')?.value || '';
+          const subs = getGmapsSelectedSubcats();
+          body.subcategories = subs;
+          body.subcategory = subs[0] || '';
         }
         const data = await apiFetch('/api/admin/import-google-maps-url', {
           method: 'POST',
@@ -3557,6 +3575,16 @@
 
     function renderLocPrices(loc) {
       const el = document.getElementById('locPricesList');
+      const tplBtn = document.getElementById('locPriceTemplateBtn');
+      if (tplBtn) {
+        if (loc?.id) {
+          tplBtn.href = '/api/provider/locations/' + encodeURIComponent(loc.id) + '/prices/template';
+          tplBtn.classList.remove('hidden');
+        } else {
+          tplBtn.href = '#';
+          tplBtn.classList.add('hidden');
+        }
+      }
       const prices = loc.prices || {};
       const keys = Object.keys(prices);
       el.innerHTML = '';
@@ -3588,6 +3616,54 @@
         });
       }
     }
+
+    function showLocPriceImportMsg(text, ok) {
+      const el = document.getElementById('locPriceImportMsg');
+      if (!el) return;
+      el.style.display = 'block';
+      el.className = 'msg ' + (ok ? 'ok' : 'err');
+      el.textContent = text;
+    }
+
+    document.getElementById('locPriceImportFile')?.addEventListener('change', async (e) => {
+      const file = e.target.files?.[0];
+      e.target.value = '';
+      const locId = document.getElementById('editLocId')?.value;
+      if (!file || !locId) {
+        showLocPriceImportMsg('Спочатку збережіть / відкрийте локацію', false);
+        return;
+      }
+      showLocPriceImportMsg('Читаємо файл…', true);
+      try {
+        const rows = await readImportFile(file);
+        const data = await apiFetch(
+          '/api/provider/locations/' + encodeURIComponent(locId) + '/prices/import',
+          {
+            method: 'POST',
+            body: JSON.stringify({ rows }),
+          }
+        );
+        await reloadProvider();
+        openLocationEditor(locId);
+        showLocPriceImportMsg(
+          `Імпортовано цін: ${data.updated}` +
+            (data.skippedInvalid ? `, пропущено невалідних: ${data.skippedInvalid}` : '') +
+            `. На карті тепер ${data.pricesCount} послуг.`,
+          true
+        );
+        notifyMapDataChanged();
+      } catch (err) {
+        showLocPriceImportMsg(err.message, false);
+      }
+    });
+
+    document.getElementById('locPriceTemplateBtn')?.addEventListener('click', (e) => {
+      const locId = document.getElementById('editLocId')?.value;
+      if (!locId) {
+        e.preventDefault();
+        showLocPriceImportMsg('Спочатку збережіть локацію з категорією та підкатегоріями', false);
+      }
+    });
 
     function getCatalogServicesForPicker(catKey) {
       const cat = catalog?.[catKey];
