@@ -426,49 +426,89 @@ function ensureDataShape(data) {
   return data;
 }
 
-async function readData() {
+/** Short in-process cache — cuts repeated Supabase round-trips on warm instances. */
+const READ_DATA_CACHE_TTL_MS = Math.max(
+  0,
+  Number(process.env.READ_DATA_CACHE_TTL_MS || 5000)
+);
+let readDataCache = { at: 0, value: null, inflight: null };
+
+function invalidateReadDataCache() {
+  readDataCache = { at: 0, value: null, inflight: null };
+}
+
+async function readDataUncached() {
   const raw = await fsPromises.readFile(DATA_FILE, 'utf8');
   const data = ensureDataShape(JSON.parse(raw));
   const fileCatalog = data.masterCatalog;
 
-  // Prefer Supabase locations when table is populated (Vercel-safe persistence)
-  try {
-    const remote = await fetchLocationsFromSupabase();
-    if (remote.ok && remote.locations.length > 0) {
-      data.mockLocations = remote.locations;
-    }
-  } catch (err) {
-    console.warn('[readData] Supabase locations skip:', err.message);
+  // Prefer Supabase when tables are populated (Vercel-safe persistence).
+  // Fetch in parallel — sequential round-trips were ~0.5–1.5s of /api/data TTFB.
+  const [remoteLocs, remoteCat, remoteProfiles] = await Promise.all([
+    fetchLocationsFromSupabase().catch((err) => {
+      console.warn('[readData] Supabase locations skip:', err.message);
+      return { ok: false, locations: [] };
+    }),
+    fetchCatalogFromSupabase().catch((err) => {
+      console.warn('[readData] Supabase catalog skip:', err.message);
+      return { ok: false, catalog: null };
+    }),
+    fetchProviderProfilesMap().catch((err) => {
+      console.warn('[readData] Supabase provider profiles skip:', err.message);
+      return { ok: false, profiles: null };
+    }),
+  ]);
+
+  if (remoteLocs.ok && remoteLocs.locations.length > 0) {
+    data.mockLocations = remoteLocs.locations;
   }
 
-  // Merge seeded data.json catalog with live Supabase snapshot (admin edits)
-  try {
-    const remoteCat = await fetchCatalogFromSupabase();
-    if (remoteCat.ok && remoteCat.catalog) {
-      data.masterCatalog = mergeCatalog(fileCatalog, remoteCat.catalog);
-    }
-  } catch (err) {
-    console.warn('[readData] Supabase catalog skip:', err.message);
+  if (remoteCat.ok && remoteCat.catalog) {
+    data.masterCatalog = mergeCatalog(fileCatalog, remoteCat.catalog);
   }
 
   pruneStaleEmptyCategories(data.masterCatalog);
 
-  try {
-    const remoteProfiles = await fetchProviderProfilesMap();
-    if (remoteProfiles.ok && remoteProfiles.profiles) {
-      data.providerProfiles = {
-        ...data.providerProfiles,
-        ...remoteProfiles.profiles,
-      };
-    }
-  } catch (err) {
-    console.warn('[readData] Supabase provider profiles skip:', err.message);
+  if (remoteProfiles.ok && remoteProfiles.profiles) {
+    data.providerProfiles = {
+      ...data.providerProfiles,
+      ...remoteProfiles.profiles,
+    };
   }
 
   return data;
 }
 
+async function readData() {
+  const now = Date.now();
+  if (
+    READ_DATA_CACHE_TTL_MS > 0 &&
+    readDataCache.value &&
+    now - readDataCache.at < READ_DATA_CACHE_TTL_MS
+  ) {
+    return readDataCache.value;
+  }
+  if (readDataCache.inflight) return readDataCache.inflight;
+
+  readDataCache.inflight = readDataUncached()
+    .then((data) => {
+      readDataCache = {
+        at: Date.now(),
+        value: data,
+        inflight: null,
+      };
+      return data;
+    })
+    .catch((err) => {
+      readDataCache.inflight = null;
+      throw err;
+    });
+
+  return readDataCache.inflight;
+}
+
 async function writeData(data) {
+  invalidateReadDataCache();
   const payload = ensureDataShape(data);
   pruneStaleEmptyCategories(payload.masterCatalog);
   console.log('[writeData]', DATA_FILE, 'locations:', payload.mockLocations?.length ?? 0);
@@ -613,6 +653,7 @@ function defaultLocation(providerId, body) {
 
 /** Persist only changed locations — avoids full catalog/location rewrite hangs on Vercel. */
 async function persistLocationsPatch(data, changedLocs) {
+  invalidateReadDataCache();
   const payload = ensureDataShape(data);
   try {
     await fsPromises.writeFile(DATA_FILE, JSON.stringify(payload, null, 2), 'utf8');
@@ -837,6 +878,7 @@ app.post('/api/register', async (req, res) => {
     if (providerProfile) {
       try {
         const saved = await upsertProviderProfile(newUser.id, providerProfile);
+        invalidateReadDataCache();
         if (!saved.ok && !saved.missing) {
           console.warn('[register] provider profile:', saved.error?.message || saved.error);
         }
@@ -931,6 +973,7 @@ async function finishOauthSignIn(res, result) {
     };
     try {
       await upsertProviderProfile(result.user.id, profile);
+      invalidateReadDataCache();
     } catch (err) {
       console.warn('[oauth] provider profile:', err.message);
     }
@@ -1077,14 +1120,14 @@ app.use(
 app.get('/api/data', async (req, res) => {
   try {
     res.set('Cache-Control', 'no-store');
-    const data = await readData();
-    let catalogClicks = {};
-    try {
-      const clicksRes = await fetchCatalogClicksMap();
-      if (clicksRes.ok) catalogClicks = clicksRes.clicks || {};
-    } catch (err) {
-      console.warn('[GET /api/data] catalog clicks skip:', err.message);
-    }
+    const [data, clicksRes] = await Promise.all([
+      readData(),
+      fetchCatalogClicksMap().catch((err) => {
+        console.warn('[GET /api/data] catalog clicks skip:', err.message);
+        return { ok: false, clicks: {} };
+      }),
+    ]);
+    const catalogClicks = clicksRes.ok ? clicksRes.clicks || {} : {};
     res.json({
       ...data,
       mockLocations: activeLocations(data.mockLocations),
@@ -3713,6 +3756,7 @@ app.put('/api/provider/profile', requireAuth, requireProvider, async (req, res) 
     }
     try {
       await upsertProviderProfile(user.id, profile);
+      invalidateReadDataCache();
     } catch (e) {
       console.warn('[profile] supabase profile:', e.message);
     }
