@@ -694,13 +694,15 @@
             border: 2px solid var(--ink);
             color: var(--dark);
             font-weight: 800;
-            font-size: 10px;
-            padding: 3px 7px;
+            font-size: 11px;
+            padding: 4px 8px;
             border-radius: 999px;
             box-shadow: 0 2px 8px rgba(0,0,0,0.16);
             white-space: nowrap;
             position: relative;
             line-height: 1.2;
+            min-width: 2.5rem;
+            text-align: center;
         }
         .mapfix-marker-price::after {
             content: '';
@@ -1372,6 +1374,30 @@
                 return String(value ?? '').replace(/[&<>"']/g, (char) => ({
                     '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
                 }[char]));
+            }
+
+            /** Display price: "1 200 грн", without kopeks. */
+            function formatDisplayPrice(raw) {
+                const s = String(raw || '').trim();
+                if (!s) return '';
+                if (/уточн/i.test(s) || /домовлен/i.test(s)) return s;
+                const compact = s.replace(/\s/g, '');
+                const m = compact.match(/(\d+)/);
+                if (!m) return s;
+                const formatted = m[1].replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
+                const prefix = /^від\s*/i.test(s) ? 'від ' : '';
+                return `${prefix}${formatted} грн`;
+            }
+
+            function findServicePrice(loc, serviceName) {
+                const prices = loc?.prices || {};
+                if (!serviceName) return '';
+                if (Object.prototype.hasOwnProperty.call(prices, serviceName) && prices[serviceName]) {
+                    return prices[serviceName];
+                }
+                const want = String(serviceName).trim().toLowerCase();
+                const key = Object.keys(prices).find((k) => String(k).trim().toLowerCase() === want);
+                return key ? prices[key] : '';
             }
 
             function openGoogleImport() {
@@ -2067,7 +2093,7 @@
                         el.className = 'nav-item';
                         const metaBits = [`${providersCount} місць`];
                         if (withExactPrice) metaBits.push(`${withExactPrice} з ціною`);
-                        if (srv.price) metaBits.push(`від ${srv.price}`);
+                        if (srv.price) metaBits.push(formatDisplayPrice(srv.price) || `від ${srv.price}`);
                         el.innerHTML = `
                             <div>
                                 <div>${srv.name}</div>
@@ -2289,7 +2315,7 @@
                             <button type="button" class="btn-order">Замовити</button>
                         </div>`;
                     row.querySelector('span').textContent = srvName;
-                    row.querySelector('.detail-price-val').textContent = srvPrice;
+                    row.querySelector('.detail-price-val').textContent = formatDisplayPrice(srvPrice) || srvPrice;
                     row.querySelector('.btn-order').onclick = () => placeOrder(loc.id, srvName);
                     pricesBox.appendChild(row);
                 }
@@ -2500,7 +2526,7 @@
                 else if (State.sortType === 'price' && State.service) {
                     const parsePrice = (pStr) => pStr ? parseInt(String(pStr).replace(/[^0-9]/g, ''), 10) || Infinity : Infinity;
                     filtered.sort((a, b) =>
-                        parsePrice(a.prices?.[State.service.name]) - parsePrice(b.prices?.[State.service.name])
+                        parsePrice(findServicePrice(a, State.service.name)) - parsePrice(findServicePrice(b, State.service.name))
                     );
                 }
 
@@ -2514,7 +2540,7 @@
                     card.className = `provider-card ${State.selectedLocation?.id === loc.id ? 'active' : ''}`;
                     const priceCount = Object.keys(loc.prices || {}).length;
                     let priceText = State.service
-                        ? (loc.prices?.[State.service.name] || 'ціну уточнюйте')
+                        ? (formatDisplayPrice(findServicePrice(loc, State.service.name)) || 'ціну уточнюйте')
                         : (priceCount ? 'Прайс-лист' : 'Без прайсу');
 
                     card.innerHTML = `
@@ -2613,13 +2639,14 @@
 
             function buildLocationIcon(loc) {
                 if (State.service) {
-                    const price = loc.prices?.[State.service.name] ?? '';
+                    const raw = findServicePrice(loc, State.service.name);
+                    const price = formatDisplayPrice(raw) || 'уточн.';
+                    const width = Math.min(120, Math.max(52, price.length * 7 + 16));
                     return L.divIcon({
                         className: 'mapfix-marker-wrap',
-                        html: `<div class="mapfix-marker-price">${price}</div>`,
-                        // tip (~5px) sits on the coordinate
-                        iconSize: [72, 32],
-                        iconAnchor: [36, 32],
+                        html: `<div class="mapfix-marker-price">${escapeHtml(price)}</div>`,
+                        iconSize: [width, 32],
+                        iconAnchor: [width / 2, 32],
                     });
                 }
                 const iconClass = categoryIconClass(loc.cat);

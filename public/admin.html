@@ -550,6 +550,18 @@
               після переказу позначте оплату нижче (логін / userId). Кліки по кнопках збираються одразу.
             </p>
             <div class="stat-grid" id="billingStats" style="margin-bottom:16px"></div>
+            <div id="billingLimitsBox" style="border:1px solid #e5e7eb;border-radius:12px;padding:14px;margin-bottom:16px;background:#f8fafc">
+              <h3 style="margin:0 0 8px;font-size:1rem">Ліміти підписки</h3>
+              <p class="field-hint" style="margin-top:0">
+                Коли вимкнено — усі майстри можуть додавати необмежений прайс і до 6 фото (режим запуску).
+                Увімкніть, коли користувачів стане більше: тоді знову діють пробний період / Pro.
+              </p>
+              <label style="display:flex;align-items:center;gap:10px;font-weight:700;cursor:pointer">
+                <input type="checkbox" id="billingLimitsEnabled" style="width:18px;height:18px">
+                <span>Увімкнути ліміти підписки</span>
+              </label>
+              <div id="billingLimitsMsg" class="msg" style="display:none;margin-top:8px"></div>
+            </div>
             <div style="border:1px solid #e5e7eb;border-radius:12px;padding:14px;margin-bottom:16px;background:#fafafa">
               <h3 style="margin:0 0 10px;font-size:1rem">Позначити оплату Pro</h3>
               <div class="form-row" style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
@@ -1469,12 +1481,18 @@
           ['Активні Pro', st.activePaid || 0],
           ['У пробному', st.inTrial || 0],
           ['Сума підтверджена', (st.revenueUah || 0) + ' грн'],
+          ['Ліміти', data.config?.limitsEnabled ? 'УВІМК' : 'ВИМК'],
         ]
           .map(
             ([label, value]) =>
               `<div class="stat-card"><div class="stat-label">${esc(label)}</div><div class="stat-value">${esc(String(value))}</div></div>`
           )
           .join('');
+
+        const limitsCb = document.getElementById('billingLimitsEnabled');
+        if (limitsCb) {
+          limitsCb.checked = Boolean(data.config?.limitsEnabled);
+        }
 
         const subs = data.subscriptions || [];
         if (!subs.length) {
@@ -1514,6 +1532,32 @@
         eventsEl.innerHTML = '';
       }
     }
+
+    document.getElementById('billingLimitsEnabled')?.addEventListener('change', async (e) => {
+      const msg = document.getElementById('billingLimitsMsg');
+      const enabled = Boolean(e.target.checked);
+      try {
+        await apiFetch('/api/admin/billing/settings', {
+          method: 'POST',
+          body: JSON.stringify({ limitsEnabled: enabled }),
+        });
+        if (msg) {
+          msg.style.display = 'block';
+          msg.className = 'msg ok';
+          msg.textContent = enabled
+            ? 'Ліміти увімкнено: діють пробний період і Pro'
+            : 'Ліміти вимкнено: усім доступні прайс без обмежень і до 6 фото';
+        }
+        loadAdminBilling();
+      } catch (err) {
+        e.target.checked = !enabled;
+        if (msg) {
+          msg.style.display = 'block';
+          msg.className = 'msg err';
+          msg.textContent = err.message || 'Помилка';
+        }
+      }
+    });
 
     document.getElementById('billingMarkPaidBtn')?.addEventListener('click', async () => {
       const msg = document.getElementById('billingMarkMsg');
@@ -3891,6 +3935,7 @@
         pro: 'Mapfix Pro',
         free: 'Безкоштовний тариф',
         admin: 'Адмін',
+        open: 'Відкритий доступ (ліміти вимкнено)',
       };
       banner.className =
         'billing-banner ' + (b.paid || b.inTrial ? 'pro' : b.plan === 'free' ? 'free' : '');

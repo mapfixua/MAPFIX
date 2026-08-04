@@ -13,33 +13,60 @@ const PAID_MAX_PHOTOS = 6;
 const MAX_EVENTS = 2000;
 
 function emptyState() {
-  return { subscriptions: {}, events: [] };
+  return {
+    subscriptions: {},
+    events: [],
+    settings: {
+      // When false — everyone gets Pro-like limits (photos + unlimited prices).
+      limitsEnabled: false,
+    },
+  };
 }
 
 async function readBilling() {
   const remote = await loadAppState(BILLING_ID, null);
   if (remote.ok && remote.value && typeof remote.value === 'object') {
+    const base = emptyState();
     return {
       subscriptions:
         remote.value.subscriptions && typeof remote.value.subscriptions === 'object'
           ? remote.value.subscriptions
           : {},
       events: Array.isArray(remote.value.events) ? remote.value.events : [],
+      settings: {
+        ...base.settings,
+        ...(remote.value.settings && typeof remote.value.settings === 'object'
+          ? remote.value.settings
+          : {}),
+      },
     };
   }
   return emptyState();
 }
 
 async function writeBilling(state) {
+  const base = emptyState();
   const payload = {
     subscriptions: state.subscriptions || {},
     events: Array.isArray(state.events) ? state.events.slice(0, MAX_EVENTS) : [],
+    settings: {
+      ...base.settings,
+      ...(state.settings && typeof state.settings === 'object' ? state.settings : {}),
+    },
   };
   const remote = await saveAppState(BILLING_ID, payload);
   if (!remote.ok && process.env.VERCEL && !remote.missing) {
     throw new Error('Не вдалося зберегти білінг');
   }
   return remote;
+}
+
+function limitsAreEnabled(state) {
+  // Default OFF until admin turns them on (launch mode).
+  if (!state?.settings || typeof state.settings.limitsEnabled === 'undefined') {
+    return false;
+  }
+  return Boolean(state.settings.limitsEnabled);
 }
 
 function addMonths(iso, months) {
@@ -99,12 +126,14 @@ function getEntitlements(opts = {}) {
     state = null,
   } = opts;
 
-  if (isAdmin) {
+  const limitsOn = limitsAreEnabled(state);
+
+  if (isAdmin || !limitsOn) {
     return {
-      plan: 'admin',
+      plan: isAdmin ? 'admin' : limitsOn ? 'free' : 'open',
       active: true,
       inTrial: false,
-      paid: true,
+      paid: isAdmin ? true : false,
       trialEndsAt: null,
       paidUntil: null,
       daysLeft: null,
@@ -116,6 +145,10 @@ function getEntitlements(opts = {}) {
       monoJarUrl: MONO_JAR_URL,
       canUploadPhotos: true,
       canAddUnlimitedPrices: true,
+      limitsEnabled: limitsOn,
+      login,
+      companyName,
+      clickCount: null,
     };
   }
 
@@ -150,6 +183,7 @@ function getEntitlements(opts = {}) {
     monoJarUrl: MONO_JAR_URL,
     canUploadPhotos: active,
     canAddUnlimitedPrices: active,
+    limitsEnabled: true,
     login: sub?.login || login,
     companyName: sub?.companyName || companyName,
     clickCount: null,
@@ -310,8 +344,23 @@ async function adminOverview(profilesByUserId = {}) {
       freeMaxPrices: FREE_MAX_PRICES,
       freeMaxPhotos: FREE_MAX_PHOTOS,
       paidMaxPhotos: PAID_MAX_PHOTOS,
+      limitsEnabled: limitsAreEnabled(state),
     },
     generatedAt: new Date(now).toISOString(),
+  };
+}
+
+async function setLimitsEnabled(enabled, meta = {}) {
+  const state = await readBilling();
+  if (!state.settings) state.settings = {};
+  state.settings.limitsEnabled = Boolean(enabled);
+  state.settings.limitsUpdatedAt = new Date().toISOString();
+  state.settings.limitsUpdatedBy = meta.adminLogin || '';
+  await writeBilling(state);
+  return {
+    ok: true,
+    limitsEnabled: state.settings.limitsEnabled,
+    settings: state.settings,
   };
 }
 
@@ -329,4 +378,6 @@ module.exports = {
   adminOverview,
   publicSubscription,
   readBilling,
+  setLimitsEnabled,
+  limitsAreEnabled,
 };

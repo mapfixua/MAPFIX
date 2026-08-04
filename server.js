@@ -183,13 +183,18 @@ function isValidPrice(price) {
   return /\d/.test(String(price || '').trim());
 }
 
+/** Store prices as "1 200 грн" (no kopeks). */
 function formatPrice(price) {
-  const p = String(price).trim();
+  const p = String(price || '').trim();
   if (!isValidPrice(p)) {
     throw new Error('INVALID_PRICE');
   }
-  if (/грн/i.test(p)) return p;
-  return `${p} грн`;
+  if (/уточн/i.test(p) || /домовлен/i.test(p)) return p;
+  const digits = p.replace(/\s/g, '').match(/(\d+)/);
+  if (!digits) return p;
+  const formatted = digits[1].replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
+  const prefix = /^від\s*/i.test(p) ? 'від ' : '';
+  return `${prefix}${formatted} грн`;
 }
 
 function normalizePricesMap(prices) {
@@ -1793,6 +1798,22 @@ app.post('/api/admin/billing/mark-paid', requireAuth, requireAdmin, async (req, 
   } catch (err) {
     console.error('[admin mark-paid]', err);
     res.status(400).json({ error: err.message || 'Помилка' });
+  }
+});
+
+app.post('/api/admin/billing/settings', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const admin = getSessionUser(req);
+    if (typeof req.body?.limitsEnabled !== 'boolean') {
+      return res.status(400).json({ error: 'Передайте limitsEnabled: true|false' });
+    }
+    const result = await billing.setLimitsEnabled(req.body.limitsEnabled, {
+      adminLogin: admin.login || '',
+    });
+    res.json({ ok: true, ...result });
+  } catch (err) {
+    console.error('[admin billing settings]', err);
+    res.status(400).json({ error: err.message || 'Помилка збереження налаштувань' });
   }
 });
 
