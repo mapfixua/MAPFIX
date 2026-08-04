@@ -1036,7 +1036,7 @@
 
             <hr style="margin:20px 0;border:none;border-top:1px solid #e2e8f0">
             <h2>Поточний прайс точки</h2>
-            <p class="field-hint">Скачайте шаблон Excel/CSV з послугами ваших підкатегорій, внесіть ціни в колонку <b>price</b> і імпортуйте файл назад — ціни з’являться на карті.</p>
+            <p class="field-hint">Позначте послуги вище (або оберіть підкатегорії), скачайте шаблон CSV, внесіть ціни в колонку <b>price</b> і імпортуйте файл назад — ціни з’являться на карті. Якщо нічого не позначено — у шаблон потраплять усі послуги обраних підкатегорій.</p>
             <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px;align-items:center">
               <a id="locPriceTemplateBtn" class="btn-secondary" style="width:auto;display:inline-block;text-decoration:none;padding:10px 14px" href="#">Скачати шаблон прайсу</a>
               <label class="btn-secondary" style="width:auto;display:inline-block;cursor:pointer;padding:10px 14px;margin:0">
@@ -3657,12 +3657,66 @@
       }
     });
 
-    document.getElementById('locPriceTemplateBtn')?.addEventListener('click', (e) => {
+    document.getElementById('locPriceTemplateBtn')?.addEventListener('click', async (e) => {
+      e.preventDefault();
       const locId = document.getElementById('editLocId')?.value;
       if (!locId) {
-        e.preventDefault();
         showLocPriceImportMsg('Спочатку збережіть локацію з категорією та підкатегоріями', false);
+        return;
       }
+
+      const catKey = document.getElementById('locCat')?.value || '';
+      const catName = catalog?.[catKey]?.name || catKey;
+      let services = getSelectedPriceServices();
+      if (!services.length) {
+        // If nothing checked — export all services from selected subcategories
+        services = getCatalogServicesForPicker(catKey).map((s) => ({
+          name: s.name,
+          refPrice: s.refPrice || '',
+        }));
+      }
+      if (!services.length) {
+        showLocPriceImportMsg(
+          'Немає послуг для шаблону. Оберіть підкатегорії та позначте послуги (або додайте свою), потім скачайте знову.',
+          false
+        );
+        return;
+      }
+
+      const header = ['service_name', 'price', 'subcategory', 'category'];
+      const lines = [header.join(',')];
+      const escCsv = (v) => {
+        const s = String(v ?? '');
+        return /[",\n\r;]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+      };
+      services.forEach((svc) => {
+        const price = locDraftPrices[svc.name] || svc.refPrice || '';
+        lines.push(
+          [escCsv(svc.name), escCsv(price === 'за домовленістю' ? '' : price), '', escCsv(catName)].join(',')
+        );
+      });
+
+      const bom = '\uFEFF';
+      const blob = new Blob([bom + lines.join('\n') + '\n'], {
+        type: 'text/csv;charset=utf-8',
+      });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      const title = (document.getElementById('locTitle')?.value || locId)
+        .replace(/[^\wа-яіїєґ\- ]+/gi, '')
+        .trim()
+        .replace(/\s+/g, '_')
+        .slice(0, 40) || 'location';
+      a.href = url;
+      a.download = `mapfix-prices-${title}.csv`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+      showLocPriceImportMsg(
+        `Шаблон скачано (${services.length} послуг). Заповніть колонку price і імпортуйте файл назад.`,
+        true
+      );
     });
 
     function getCatalogServicesForPicker(catKey) {

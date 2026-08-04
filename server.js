@@ -3463,30 +3463,55 @@ app.delete('/api/provider/locations/:id/prices', requireAuth, requireProviderOrA
   }
 });
 
-/** Build price-list rows from catalog services for a location's category/subcats. */
+/** Build price-list rows from catalog (+ custom) services for a location's category/subcats. */
 function buildLocationPriceTemplateRows(masterCatalog, loc) {
   const catKey = loc?.cat;
   const cat = masterCatalog?.[catKey];
   const rows = [];
   const seen = new Set();
+  const custom =
+    loc?.customSubcats && typeof loc.customSubcats === 'object' && !Array.isArray(loc.customSubcats)
+      ? loc.customSubcats
+      : {};
   const subKeys =
     Array.isArray(loc?.subcats) && loc.subcats.length
       ? loc.subcats
-      : Object.keys(cat?.subcats || {});
+      : [
+          ...Object.keys(cat?.subcats || {}),
+          ...Object.keys(custom).filter((k) => custom[k]?.category === catKey || !custom[k]?.category),
+        ];
 
   for (const subKey of subKeys) {
     const sub = cat?.subcats?.[subKey];
-    if (!sub) continue;
-    for (const item of sub.items || []) {
-      const name = String(item?.name || '').trim();
-      if (!name || seen.has(name)) continue;
-      seen.add(name);
-      rows.push({
-        service_name: name,
-        price: loc.prices?.[name] || '',
-        subcategory: sub.name || subKey,
-        category: cat?.name || catKey || '',
-      });
+    const customSub = custom[subKey];
+    const subLabel = sub?.name || customSub?.name || subKey;
+
+    if (sub) {
+      for (const item of sub.items || []) {
+        const name = String(item?.name || '').trim();
+        if (!name || seen.has(name)) continue;
+        seen.add(name);
+        rows.push({
+          service_name: name,
+          price: loc.prices?.[name] || '',
+          subcategory: subLabel,
+          category: cat?.name || catKey || '',
+        });
+      }
+    }
+
+    if (customSub && Array.isArray(customSub.services)) {
+      for (const raw of customSub.services) {
+        const name = String(raw || '').trim();
+        if (!name || seen.has(name)) continue;
+        seen.add(name);
+        rows.push({
+          service_name: name,
+          price: loc.prices?.[name] || '',
+          subcategory: subLabel,
+          category: cat?.name || catKey || '',
+        });
+      }
     }
   }
 
