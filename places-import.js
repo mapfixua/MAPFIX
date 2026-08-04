@@ -853,11 +853,19 @@ async function fetchGooglePlaceDetails({ placeId, apiKey }) {
   };
 }
 
-function googlePlaceToLocation(place, { providerId, cat, subcategory } = {}) {
+function googlePlaceToLocation(place, { providerId, cat, subcategory, subcategories } = {}) {
   const placeId = place.placeId || place.id;
   const subs = [];
-  if (subcategory) subs.push(subcategory);
-  else if (Array.isArray(place.subcats)) subs.push(...place.subcats);
+  const multi = Array.isArray(subcategories)
+    ? subcategories
+    : subcategory
+      ? [subcategory]
+      : [];
+  multi.forEach((s) => {
+    const key = String(s || '').trim();
+    if (key) subs.push(key);
+  });
+  if (!subs.length && Array.isArray(place.subcats)) subs.push(...place.subcats);
 
   const website = place.website || '';
   const baseText = place.text || place.summary || 'Імпортовано з Google Maps';

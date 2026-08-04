@@ -1982,10 +1982,30 @@ async function handleGoogleMapsUrlImport(req, res, { adminImport = false } = {})
       String(req.body?.category || '').trim() ||
       ai.category ||
       'home';
+    const bodySubs = Array.isArray(req.body?.subcategories)
+      ? req.body.subcategories
+      : Array.isArray(req.body?.subcats)
+        ? req.body.subcats
+        : null;
     const subcategory =
       String(req.body?.subcategory || '').trim() ||
+      (bodySubs && bodySubs[0] ? String(bodySubs[0]).trim() : '') ||
       ai.subcategory ||
       '';
+    const subcategories = [
+      ...new Set(
+        (bodySubs && bodySubs.length
+          ? bodySubs
+          : subcategory
+            ? [subcategory]
+            : ai.subcategory
+              ? [ai.subcategory]
+              : []
+        )
+          .map((s) => String(s || '').trim())
+          .filter(Boolean)
+      ),
+    ].filter((key) => Boolean(data.masterCatalog?.[category]?.subcats?.[key]));
 
     if (!data.masterCatalog?.[category]) {
       return res.status(400).json({
@@ -1998,7 +2018,8 @@ async function handleGoogleMapsUrlImport(req, res, { adminImport = false } = {})
     const loc = googlePlaceToLocation(place, {
       providerId: adminImport ? null : user.id,
       cat: category,
-      subcategory: subcategory || undefined,
+      subcategories,
+      subcategory: subcategories[0] || undefined,
     });
     loc.importMeta = {
       ...(loc.importMeta || {}),
@@ -2014,6 +2035,11 @@ async function handleGoogleMapsUrlImport(req, res, { adminImport = false } = {})
     const active = activeLocations(data.mockLocations);
     const trash = trashedLocations(data.mockLocations);
     const merged = mergeLocations(active, [loc], { updateExisting: false });
+
+    const subcategoryNames = subcategories.map((key) => ({
+      key,
+      name: data.masterCatalog[category]?.subcats?.[key]?.name || key,
+    }));
 
     if (!dryRun) {
       if (!merged.added.length) {
@@ -2036,14 +2062,13 @@ async function handleGoogleMapsUrlImport(req, res, { adminImport = false } = {})
         place,
         ai,
         category,
-        subcategory: subcategory || null,
+        subcategory: subcategories[0] || null,
+        subcategories,
+        subcategoryNames,
         categoryName: data.masterCatalog[category]?.name || category,
         dataSource: place.dataSource,
         isPartial: place.dataSource !== 'google_places_api',
-        subcategoryName:
-          subcategory && data.masterCatalog[category]?.subcats?.[subcategory]
-            ? data.masterCatalog[category].subcats[subcategory].name
-            : null,
+        subcategoryName: subcategoryNames[0]?.name || null,
       });
     }
 
@@ -2057,14 +2082,13 @@ async function handleGoogleMapsUrlImport(req, res, { adminImport = false } = {})
       location: loc,
       ai,
       category,
-      subcategory: subcategory || null,
+      subcategory: subcategories[0] || null,
+      subcategories,
+      subcategoryNames,
       categoryName: data.masterCatalog[category]?.name || category,
       dataSource: place.dataSource,
       isPartial: place.dataSource !== 'google_places_api',
-      subcategoryName:
-        subcategory && data.masterCatalog[category]?.subcats?.[subcategory]
-          ? data.masterCatalog[category].subcats[subcategory].name
-          : null,
+      subcategoryName: subcategoryNames[0]?.name || null,
       catalogOptions: Object.entries(data.masterCatalog || {}).map(([key, cat]) => ({
         key,
         name: cat.name,
@@ -3393,6 +3417,217 @@ app.delete('/api/provider/locations/:id/prices', requireAuth, requireProviderOrA
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Помилка видалення послуги' });
+  }
+});
+
+/** Build price-list rows from catalog services for a location's category/subcats. */
+function buildLocationPriceTemplateRows(masterCatalog, loc) {
+  const catKey = loc?.cat;
+  const cat = masterCatalog?.[catKey];
+  const rows = [];
+  const seen = new Set();
+  const subKeys =
+    Array.isArray(loc?.subcats) && loc.subcats.length
+      ? loc.subcats
+      : Object.keys(cat?.subcats || {});
+
+  for (const subKey of subKeys) {
+    const sub = cat?.subcats?.[subKey];
+    if (!sub) continue;
+    for (const item of sub.items || []) {
+      const name = String(item?.name || '').trim();
+      if (!name || seen.has(name)) continue;
+      seen.add(name);
+      rows.push({
+        service_name: name,
+        price: loc.prices?.[name] || '',
+        subcategory: sub.name || subKey,
+        category: cat?.name || catKey || '',
+      });
+    }
+  }
+
+  for (const [name, price] of Object.entries(loc?.prices || {})) {
+    if (seen.has(name)) continue;
+    seen.add(name);
+    rows.push({
+      service_name: name,
+      price: price || '',
+      subcategory: '',
+      category: cat?.name || catKey || '',
+    });
+  }
+
+  return rows;
+}
+
+function csvEscapeCell(value) {
+  const s = String(value ?? '');
+  if (/[",\n\r;]/.test(s)) return `"${s.replace(/"/g, '""')}"`;
+  return s;
+}
+
+function priceTemplateToCsv(rows) {
+  const header = ['service_name', 'price', 'subcategory', 'category'];
+  const lines = [header.join(',')];
+  for (const row of rows) {
+    lines.push(
+      [
+        csvEscapeCell(row.service_name),
+        csvEscapeCell(row.price),
+        csvEscapeCell(row.subcategory),
+        csvEscapeCell(row.category),
+      ].join(',')
+    );
+  }
+  return lines.join('\n') + '\n';
+}
+
+function parsePriceImportRows(rows) {
+  if (!Array.isArray(rows)) return [];
+  const out = [];
+  for (const raw of rows) {
+    if (!raw || typeof raw !== 'object') continue;
+    const entries = Object.entries(raw).map(([k, v]) => [String(k).trim().toLowerCase(), v]);
+    const map = Object.fromEntries(entries);
+    const name = String(
+      map.service_name ||
+        map.service ||
+        map.name ||
+        map.послуга ||
+        map['назва послуги'] ||
+        map.назва ||
+        map['service name'] ||
+        ''
+    ).trim();
+    const price = String(
+      map.price || map.ціна || map.грн || map.cost || map['вартість'] || ''
+    ).trim();
+    if (!name) continue;
+    out.push({ serviceName: name, price });
+  }
+  return out;
+}
+
+app.get('/api/provider/locations/:id/prices/template', requireAuth, requireProviderOrAdmin, async (req, res) => {
+  try {
+    const user = getSessionUser(req);
+    const data = await readData();
+    const loc = findLocation(data, req.params.id);
+    if (!canManageLocation(loc, user)) {
+      return res.status(403).json({ error: 'Немає доступу до цієї локації' });
+    }
+
+    const rows = buildLocationPriceTemplateRows(data.masterCatalog, loc);
+    if (!rows.length) {
+      return res.status(400).json({
+        error:
+          'Немає послуг для шаблону. Спочатку збережіть локацію з категорією та підкатегоріями.',
+      });
+    }
+
+    const format = String(req.query.format || 'csv').toLowerCase();
+    if (format === 'json') {
+      return res.json({
+        ok: true,
+        locationId: loc.id,
+        title: loc.title,
+        rows,
+        hint: 'Заповніть колонку price і імпортуйте файл назад у цю локацію',
+      });
+    }
+
+    const csv = priceTemplateToCsv(rows);
+    const safeName = String(loc.title || loc.id)
+      .replace(/[^\wа-яіїєґ\- ]+/gi, '')
+      .trim()
+      .replace(/\s+/g, '_')
+      .slice(0, 40) || 'location';
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename="mapfix-prices-${safeName}.csv"`
+    );
+    // BOM so Excel opens Ukrainian text correctly
+    res.send('\uFEFF' + csv);
+  } catch (err) {
+    console.error('[GET prices/template]', err);
+    res.status(500).json({ error: 'Не вдалося сформувати шаблон прайсу' });
+  }
+});
+
+app.post('/api/provider/locations/:id/prices/import', requireAuth, requireProviderOrAdmin, async (req, res) => {
+  try {
+    const user = getSessionUser(req);
+    const data = await readData();
+    const loc = findLocation(data, req.params.id);
+    if (!canManageLocation(loc, user)) {
+      return res.status(403).json({ error: 'Немає доступу до цієї локації' });
+    }
+
+    const parsed = parsePriceImportRows(req.body?.rows);
+    if (!parsed.length) {
+      return res.status(400).json({
+        error:
+          'У файлі немає рядків прайсу. Очікуються колонки service_name (або «послуга») та price (або «ціна»).',
+      });
+    }
+
+    const replace = Boolean(req.body?.replace);
+    const nextPrices = replace ? {} : { ...(loc.prices || {}) };
+    let updated = 0;
+    let skippedInvalid = 0;
+    const invalid = [];
+
+    for (const row of parsed) {
+      if (!row.price) {
+        // empty price = leave as-is (template download with blanks)
+        continue;
+      }
+      if (!isValidPrice(row.price)) {
+        skippedInvalid += 1;
+        if (invalid.length < 8) invalid.push(row.serviceName);
+        continue;
+      }
+      nextPrices[row.serviceName] = formatPrice(row.price);
+      updated += 1;
+    }
+
+    if (!updated) {
+      return res.status(400).json({
+        error:
+          'Не знайдено жодної валідної ціни. Заповніть колонку price (напр. 650 або 650 грн).',
+        invalid,
+      });
+    }
+
+    const profile = data.providerProfiles?.[loc.providerId || user.id] || null;
+    const ent = await billing.getEntitlementsForUser(user, profile);
+    const maxPrices = ent.maxPrices;
+    const nextCount = Object.keys(nextPrices).length;
+    if (maxPrices != null && nextCount > maxPrices) {
+      return res.status(403).json({
+        error: `На безкоштовному тарифі — до ${maxPrices} послуг із ціною (у файлі вийде ${nextCount}). Підписка Pro знімає ліміт.`,
+        code: 'subscription_required',
+        billing: ent,
+        wouldHave: nextCount,
+        maxPrices,
+      });
+    }
+
+    loc.prices = nextPrices;
+    await persistLocationsPatch(data, [loc]);
+    res.json({
+      ok: true,
+      updated,
+      skippedInvalid,
+      invalid,
+      pricesCount: Object.keys(loc.prices).length,
+      location: loc,
+    });
+  } catch (err) {
+    console.error('[POST prices/import]', err);
+    res.status(500).json({ error: err.message || 'Помилка імпорту прайсу' });
   }
 });
 
