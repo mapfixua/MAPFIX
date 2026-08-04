@@ -168,6 +168,25 @@
       background: #0b0d10;
       color: #fff;
     }
+    .admin-nav a.nav-home-link {
+      width: 100%;
+      text-align: left;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      box-sizing: border-box;
+      background: #eff6ff;
+      color: #1d4ed8;
+      border: 1px solid #bfdbfe;
+      border-radius: 12px;
+      padding: 12px;
+      margin-bottom: 8px;
+      font-weight: 800;
+      font-size: 0.92rem;
+      text-decoration: none;
+      font-family: inherit;
+    }
+    .admin-nav a.nav-home-link:hover { background: #dbeafe; }
     .admin-nav button .nav-count {
       font-size: 0.75rem;
       font-weight: 800;
@@ -461,6 +480,7 @@
       <div class="admin-shell">
         <aside class="admin-nav" aria-label="Розділи адмінки">
           <div class="admin-nav-title">Панелі</div>
+          <a class="nav-home-link" href="/" id="adminNavHomeLink">← На головну карту</a>
           <button type="button" class="active" data-admin-nav="overview">Огляд</button>
           <button type="button" data-admin-nav="analytics">Статистика <span class="nav-count" id="navCountOnline">0</span></button>
           <button type="button" data-admin-nav="users">Користувачі <span class="nav-count" id="navCountUsers">0</span></button>
@@ -846,6 +866,7 @@
       <div class="admin-shell">
         <aside class="admin-nav" aria-label="Кабінет провайдера">
           <div class="admin-nav-title">Меню</div>
+          <a class="nav-home-link" href="/" id="providerNavHomeLink">← На головну карту</a>
           <button type="button" class="active" data-provider-nav="profile">Профіль</button>
           <button type="button" data-provider-nav="locations">Мої локації <span class="nav-count" id="navCountMyLocs">0</span></button>
           <button type="button" data-provider-nav="claim">Забрати з карти</button>
@@ -4597,8 +4618,10 @@
       e.preventDefault();
     };
 
-    document.getElementById('backToMapLink').addEventListener('click', () => {
-      notifyMapDataChanged();
+    document.querySelectorAll('#backToMapLink, #adminNavHomeLink, #providerNavHomeLink').forEach((el) => {
+      el?.addEventListener('click', () => {
+        notifyMapDataChanged();
+      });
     });
 
     (async function init() {
