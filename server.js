@@ -3536,15 +3536,15 @@ function csvEscapeCell(value) {
 }
 
 function priceTemplateToCsv(rows) {
-  const header = ['service_name', 'price', 'subcategory', 'category'];
+  const header = ['Підкатегорія', 'Послуга', 'Ціна послуги грн'];
   const lines = [header.join(',')];
   for (const row of rows) {
+    const price = String(row.price || '').replace(/\s*грн\.?$/i, '').trim();
     lines.push(
       [
+        csvEscapeCell(row.subcategory || ''),
         csvEscapeCell(row.service_name),
-        csvEscapeCell(row.price),
-        csvEscapeCell(row.subcategory),
-        csvEscapeCell(row.category),
+        csvEscapeCell(price),
       ].join(',')
     );
   }
@@ -3556,23 +3556,43 @@ function parsePriceImportRows(rows) {
   const out = [];
   for (const raw of rows) {
     if (!raw || typeof raw !== 'object') continue;
-    const entries = Object.entries(raw).map(([k, v]) => [String(k).trim().toLowerCase(), v]);
+    const entries = Object.entries(raw).map(([k, v]) => [
+      String(k)
+        .trim()
+        .toLowerCase()
+        .replace(/\s+/g, ' '),
+      v,
+    ]);
     const map = Object.fromEntries(entries);
     const name = String(
-      map.service_name ||
+      map.послуга ||
+        map['назва послуги'] ||
+        map.service_name ||
         map.service ||
         map.name ||
-        map.послуга ||
-        map['назва послуги'] ||
         map.назва ||
         map['service name'] ||
         ''
     ).trim();
     const price = String(
-      map.price || map.ціна || map.грн || map.cost || map['вартість'] || ''
+      map['ціна послуги грн'] ||
+        map['ціна послуги'] ||
+        map['ціна грн'] ||
+        map.price ||
+        map.ціна ||
+        map.грн ||
+        map.cost ||
+        map['вартість'] ||
+        ''
     ).trim();
     if (!name) continue;
-    out.push({ serviceName: name, price });
+    out.push({
+      serviceName: name,
+      price,
+      subcategory: String(
+        map.підкатегорія || map.subcategory || map.subcat || ''
+      ).trim(),
+    });
   }
   return out;
 }
@@ -3601,7 +3621,7 @@ app.get('/api/provider/locations/:id/prices/template', requireAuth, requireProvi
         locationId: loc.id,
         title: loc.title,
         rows,
-        hint: 'Заповніть колонку price і імпортуйте файл назад у цю локацію',
+        hint: 'Заповніть колонку «Ціна послуги грн» і імпортуйте файл назад у цю локацію',
       });
     }
 
@@ -3637,7 +3657,7 @@ app.post('/api/provider/locations/:id/prices/import', requireAuth, requireProvid
     if (!parsed.length) {
       return res.status(400).json({
         error:
-          'У файлі немає рядків прайсу. Очікуються колонки service_name (або «послуга») та price (або «ціна»).',
+          'У файлі немає рядків прайсу. Очікуються колонки «Послуга» та «Ціна послуги грн» (або service_name / price).',
       });
     }
 
@@ -3664,7 +3684,7 @@ app.post('/api/provider/locations/:id/prices/import', requireAuth, requireProvid
     if (!updated) {
       return res.status(400).json({
         error:
-          'Не знайдено жодної валідної ціни. Заповніть колонку price (напр. 650 або 650 грн).',
+          'Не знайдено жодної валідної ціни. Заповніть колонку «Ціна послуги грн» (напр. 200 або 200 грн).',
         invalid,
       });
     }
