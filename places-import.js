@@ -921,6 +921,19 @@ function parseGoogleMapsUrlParts(finalUrl) {
     }
   }
 
+  const searchPath = href.match(/\/maps\/search\/([^/@?]+)/i);
+  if (searchPath && !out.title) {
+    const rawSeg = searchPath[1];
+    // Skip junk like "?api=1&query=..." when path is empty and querystring holds data
+    if (rawSeg && !rawSeg.startsWith('?')) {
+      try {
+        out.title = decodeURIComponent(rawSeg.replace(/\+/g, ' ')).trim();
+      } catch (_) {
+        out.title = rawSeg.replace(/\+/g, ' ').trim();
+      }
+    }
+  }
+
   const atMatch = href.match(/@(-?\d+\.\d+),(-?\d+\.\d+)/);
   if (atMatch) {
     out.lat = Number(atMatch[1]);
@@ -937,6 +950,23 @@ function parseGoogleMapsUrlParts(finalUrl) {
   const q = url.searchParams.get('q') || url.searchParams.get('query') || '';
   if (q) out.query = q.trim();
 
+  // q=50.45,30.52 or q=50.45,30.52(Name)
+  const qCoord = String(out.query || '').match(
+    /^\s*(-?\d+\.\d+)\s*,\s*(-?\d+\.\d+)\s*(?:\((.+)\))?\s*$/
+  );
+  if (qCoord) {
+    out.lat = Number(qCoord[1]);
+    out.lng = Number(qCoord[2]);
+    if (qCoord[3] && !out.title) out.title = qCoord[3].trim();
+  }
+
+  const ll = url.searchParams.get('ll') || url.searchParams.get('center') || '';
+  const llMatch = String(ll).match(/(-?\d+\.\d+)\s*,\s*(-?\d+\.\d+)/);
+  if (llMatch && !Number.isFinite(out.lat)) {
+    out.lat = Number(llMatch[1]);
+    out.lng = Number(llMatch[2]);
+  }
+
   const placeId =
     url.searchParams.get('place_id') ||
     url.searchParams.get('query_place_id') ||
@@ -949,7 +979,150 @@ function parseGoogleMapsUrlParts(finalUrl) {
     out.featureId = `g/${gMatch[1]}`;
   }
 
+  if (!out.title && out.query && !qCoord) {
+    out.title = out.query.replace(/\+/g, ' ').trim();
+  }
+
+  // Clean noisy titles like "Name - Google Maps"
+  if (out.title) {
+    out.title = out.title
+      .replace(/\s*[|–—-]\s*Google Maps\s*$/i, '')
+      .replace(/\+/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+
   return out;
+}
+
+function enrichResolvedFromHtml(html, resolved) {
+  const out = { ...resolved };
+  const text = String(html || '');
+  if (!text) return out;
+
+  if (!out.title) {
+    const og =
+      text.match(/property=["']og:title["']\s+content=["']([^"']+)["']/i) ||
+      text.match(/content=["']([^"']+)["']\s+property=["']og:title["']/i);
+    const titleTag = text.match(/<title>([^<]+)<\/title>/i);
+    const raw = (og && og[1]) || (titleTag && titleTag[1]) || '';
+    if (raw) {
+      out.title = String(raw)
+        .replace(/\s*[|–—-]\s*Google Maps\s*$/i, '')
+        .replace(/\s+/g, ' ')
+        .trim();
+    }
+  }
+
+  if (!Number.isFinite(out.lat) || !Number.isFinite(out.lng)) {
+    const patterns = [
+      /@(-?\d+\.\d{3,}),(-?\d+\.\d{3,})/,
+      /!3d(-?\d+\.\d+)[^!]{0,80}!4d(-?\d+\.\d+)/,
+      /null,null,(-?\d+\.\d{3,}),(-?\d+\.\d{3,})/,
+      /"latitude"\s*:\s*(-?\d+\.\d+)\s*,\s*"longitude"\s*:\s*(-?\d+\.\d+)/i,
+      /\[null,null,(-?\d+\.\d{4,}),(-?\d+\.\d{4,})\]/,
+    ];
+    for (const re of patterns) {
+      const m = text.match(re);
+      if (!m) continue;
+      const lat = Number(m[1]);
+      const lng = Number(m[2]);
+      if (Number.isFinite(lat) && Number.isFinite(lng) && Math.abs(lat) <= 90 && Math.abs(lng) <= 180) {
+        out.lat = lat;
+        out.lng = lng;
+        break;
+      }
+    }
+  }
+
+  if (!out.placeId) {
+    const pid = text.match(/"(ChIJ[\w-]{10,})"/);
+    if (pid) out.placeId = pid[1];
+  }
+
+  const ogDesc =
+    text.match(/property=["']og:description["']\s+content=["']([^"']+)["']/i) ||
+    text.match(/content=["']([^"']+)["']\s+property=["']og:description["']/i);
+  if (ogDesc && ogDesc[1] && !out.addressHint) {
+    out.addressHint = ogDesc[1].trim();
+  }
+
+  return out;
+}
+
+async function geocodeQueryUkraine(query) {
+  const q = String(query || '').trim();
+  if (q.length < 2) return null;
+
+  const variants = [];
+  const push = (v) => {
+    const s = String(v || '').trim();
+    if (s.length < 2) return;
+    // Skip overly broad admin areas that geocode to a useless region centroid
+    if (/^(київська|львівська|одеська|харківська|дніпровська)\s+область$/i.test(s)) return;
+    if (/^(ukraine|україна)$/i.test(s)) return;
+    if (!variants.includes(s)) variants.push(s);
+  };
+
+  // Prefer known towns early for local Mapfix geography
+  const lower = q.toLowerCase();
+  if (lower.includes('коцюб') || lower.includes('kots')) push('Коцюбинське');
+  if (lower.includes('ірпін') || lower.includes('irpin')) push('Ірпінь');
+  if (lower.includes('буча') || lower.includes('bucha')) push('Буча');
+  if (lower.includes('господар') || lower.includes('hostomel')) push('Гостомель');
+
+  push(q);
+  push(q.replace(/,?\s*Україна\s*$/i, '').trim());
+  // "Name, City, Region" → try city-like segments
+  const parts = q.split(',').map((p) => p.trim()).filter(Boolean);
+  if (parts.length >= 2) {
+    push(parts[parts.length - 2]);
+    push(parts.slice(-2).join(', '));
+    push(parts[parts.length - 1]);
+  }
+  if (lower.includes('київ') || lower.includes('kyiv') || lower.includes('kiev')) push('Київ');
+
+  for (const variant of variants) {
+    const url =
+      'https://nominatim.openstreetmap.org/search?' +
+      new URLSearchParams({
+        q: /україн|ukraine|київ|львів|одес|харків|коцюб|ірпін|буча/i.test(variant)
+          ? variant
+          : `${variant}, Україна`,
+        format: 'json',
+        limit: '1',
+        countrycodes: 'ua',
+        addressdetails: '1',
+      }).toString();
+    try {
+      const res = await fetch(url, {
+        headers: {
+          'User-Agent': 'MapfixImport/1.0 (https://mapfix-wine.vercel.app)',
+          Accept: 'application/json',
+        },
+      });
+      if (!res.ok) continue;
+      const json = await res.json();
+      const hit = Array.isArray(json) ? json[0] : null;
+      if (!hit) continue;
+      const lat = Number(hit.lat);
+      const lng = Number(hit.lon);
+      if (!Number.isFinite(lat) || !Number.isFinite(lng)) continue;
+      if (lat === 0 && lng === 0) continue;
+      return {
+        lat,
+        lng,
+        address: formatNominatimAddress(hit) || hit.display_name || '',
+        displayName: hit.display_name || '',
+        approximate: variant !== q,
+        matchedQuery: variant,
+      };
+    } catch (_) {
+      /* try next */
+    }
+    await sleep(200);
+  }
+  return null;
 }
 
 async function resolveGoogleMapsUrl(rawUrl) {
@@ -976,18 +1149,33 @@ async function resolveGoogleMapsUrl(rawUrl) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 15000);
   try {
-    // Follow redirects; some short links need GET
+    // Follow redirects; some short links need GET + browser-like UA
     const res = await fetch(start.href, {
       method: 'GET',
       redirect: 'follow',
       signal: controller.signal,
       headers: {
-        'User-Agent': 'MapfixImport/1.0 (https://mapfix-wine.vercel.app)',
+        'User-Agent':
+          'Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36',
         Accept: 'text/html,application/xhtml+xml',
+        'Accept-Language': 'uk-UA,uk;q=0.9,en;q=0.8',
       },
     });
     const finalUrl = res.url || start.href;
-    return parseGoogleMapsUrlParts(finalUrl);
+    const html = await res.text().catch(() => '');
+    let parts = parseGoogleMapsUrlParts(finalUrl);
+    // Also parse the original short/share URL (sometimes has q= already)
+    const fromInput = parseGoogleMapsUrlParts(start.href);
+    if (!parts.title && fromInput.title) parts.title = fromInput.title;
+    if (!parts.query && fromInput.query) parts.query = fromInput.query;
+    if (!Number.isFinite(parts.lat) && Number.isFinite(fromInput.lat)) {
+      parts.lat = fromInput.lat;
+      parts.lng = fromInput.lng;
+    }
+    if (!parts.placeId && fromInput.placeId) parts.placeId = fromInput.placeId;
+    parts = enrichResolvedFromHtml(html, parts);
+    parts.htmlLength = html.length;
+    return parts;
   } catch (err) {
     if (err.name === 'AbortError') {
       throw new Error('Таймаут при відкритті посилання Google Maps');
@@ -998,10 +1186,87 @@ async function resolveGoogleMapsUrl(rawUrl) {
   }
 }
 
+async function buildPlaceWithoutPlacesApi(resolved, warning = '') {
+  let title = String(resolved.title || resolved.query || '').trim();
+  const toCoord = (v) => {
+    if (v === null || v === undefined || v === '') return NaN;
+    const n = Number(v);
+    return Number.isFinite(n) ? n : NaN;
+  };
+  let lat = toCoord(resolved.lat);
+  let lng = toCoord(resolved.lng);
+  // 0,0 is never a real Maps pin for our use-case (Number(null)===0 trap)
+  if (lat === 0 && lng === 0) {
+    lat = NaN;
+    lng = NaN;
+  }
+  let address = String(resolved.addressHint || '').trim();
+  const notes = [];
+  if (warning) notes.push(warning);
+
+  // Have name, missing coords → Nominatim forward geocode (no Google key needed)
+  if ((!Number.isFinite(lat) || !Number.isFinite(lng)) && title) {
+    const geo = await geocodeQueryUkraine(title);
+    if (geo) {
+      lat = geo.lat;
+      lng = geo.lng;
+      if (!address) address = geo.address || '';
+      notes.push(
+        geo.approximate
+          ? `Координати приблизні (знайдено «${geo.matchedQuery}» через OpenStreetMap) — перевірте точку на карті`
+          : 'Координати визначено через OpenStreetMap (Nominatim)'
+      );
+    }
+  }
+
+  // Have coords, missing title → reverse geocode for a label
+  if (Number.isFinite(lat) && Number.isFinite(lng) && !title) {
+    try {
+      const rev = await reverseGeocodeLatLng(lat, lng);
+      title = rev.displayName?.split(',')[0]?.trim() || rev.address || `Точка ${lat.toFixed(5)}, ${lng.toFixed(5)}`;
+      if (!address) address = rev.address || '';
+      notes.push('Назву уточнено за координатами (OpenStreetMap)');
+    } catch (_) {
+      title = `Точка ${lat.toFixed(5)}, ${lng.toFixed(5)}`;
+    }
+  }
+
+  if (!title || !Number.isFinite(lat) || !Number.isFinite(lng)) {
+    throw new Error(
+      'Не вдалося витягнути назву й координати з цього посилання. Спробуйте повне посилання з Google Maps (Share → Copy link), або відкрийте місце й скопіюйте URL з рядка браузера.'
+    );
+  }
+
+  return {
+    placeId: resolved.placeId || '',
+    title: title.replace(/[-_]{2,}/g, ' ').replace(/\s+/g, ' ').trim(),
+    address,
+    phone: '',
+    lat,
+    lng,
+    rating: 0,
+    reviewsCount: 0,
+    workingHours: '',
+    schedule: {},
+    website: '',
+    mapsUrl: resolved.finalUrl,
+    types: [],
+    summary: '',
+    reviews: [],
+    text:
+      notes.length > 0
+        ? `Імпортовано з посилання Google Maps. ${notes.join('. ')}`
+        : 'Імпортовано з посилання Google Maps',
+    dataSource: 'google_maps_url',
+    importWarning: notes.join('. ') || warning,
+  };
+}
+
+/** @deprecated use buildPlaceWithoutPlacesApi — kept for callers expecting sync throw shape */
 function googleMapsUrlFallbackPlace(resolved, warning = '') {
   if (!resolved.title || !Number.isFinite(resolved.lat) || !Number.isFinite(resolved.lng)) {
     throw new Error(
-      'Без Google Places API з цього посилання не вдалося отримати назву й координати'
+      'Не вдалося витягнути назву й координати з цього посилання. Спробуйте повне посилання з Google Maps.'
     );
   }
   return {
@@ -1032,7 +1297,7 @@ async function importPlaceFromGoogleMapsUrl({ url, apiKey }) {
   let place = null;
 
   if (!key) {
-    place = googleMapsUrlFallbackPlace(resolved);
+    place = await buildPlaceWithoutPlacesApi(resolved);
   } else {
     try {
       if (resolved.placeId) {
@@ -1088,14 +1353,14 @@ async function importPlaceFromGoogleMapsUrl({ url, apiKey }) {
       }
     } catch (err) {
       console.warn('[google-maps-url] Places API fallback:', err.message);
-      place = googleMapsUrlFallbackPlace(resolved, err.message);
+      place = await buildPlaceWithoutPlacesApi(resolved, err.message);
     }
   }
 
   place.sourceUrl = url;
   place.mapsUrl = place.mapsUrl || resolved.finalUrl;
   place.resolvedTitle = resolved.title;
-  place.dataSource = place.dataSource || 'google_places_api';
+  place.dataSource = place.dataSource || (key ? 'google_places_api' : 'google_maps_url');
   return { place, resolved };
 }
 
