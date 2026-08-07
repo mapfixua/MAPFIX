@@ -384,6 +384,12 @@
       color: #334155;
       border-left: 2px solid #e2e8f0;
       padding-left: 6px;
+      border-radius: 8px;
+      transition: background 0.12s ease, box-shadow 0.12s ease;
+    }
+    .catalog-tree-sub.is-drop-target {
+      background: #ecfdf5;
+      box-shadow: inset 0 0 0 1px #34d399;
     }
     .catalog-tree-sub-title {
       font-weight: 700;
@@ -3214,11 +3220,16 @@
       return String(haystack || '').toLowerCase().includes(String(needle).toLowerCase());
     }
 
+    function activeCatalog() {
+      if (adminCatalog && Object.keys(adminCatalog).length) return adminCatalog;
+      return catalog || {};
+    }
+
     function collectCatalogSuggestions() {
       const cats = [];
       const subs = [];
       const services = [];
-      Object.entries(adminCatalog || catalog || {}).forEach(([catKey, cat]) => {
+      Object.entries(activeCatalog()).forEach(([catKey, cat]) => {
         cats.push({ key: catKey, name: cat.name || catKey });
         Object.entries(cat.subcats || {}).forEach(([subKey, sub]) => {
           subs.push({
@@ -3402,6 +3413,30 @@
         });
       });
 
+      async function handleServiceDrop(toCat, toSub) {
+        if (!catalogDragPayload) return;
+        const { fromCategoryKey, fromSubcategoryKey, serviceName } = catalogDragPayload;
+        if (fromCategoryKey === toCat && fromSubcategoryKey === toSub) return;
+        try {
+          await catalogApi('/api/admin/catalog/service/move', {
+            method: 'POST',
+            body: JSON.stringify({
+              fromCategoryKey,
+              fromSubcategoryKey,
+              toCategoryKey: toCat,
+              toSubcategoryKey: toSub,
+              serviceName,
+            }),
+          });
+          showMessage('Послугу переміщено');
+          await reloadAdminCatalog();
+        } catch (err) {
+          showMessage(err.message || 'Не вдалося перемістити', true);
+        } finally {
+          catalogDragPayload = null;
+        }
+      }
+
       root.querySelectorAll('.catalog-tree-row[data-kind="subcategory"]').forEach((row) => {
         row.addEventListener('dblclick', (e) => {
           if (e.target.closest('button, input')) return;
@@ -3419,39 +3454,25 @@
             })
           );
         });
+      });
 
-        row.addEventListener('dragover', (e) => {
+      root.querySelectorAll('.catalog-tree-sub[data-drop-cat]').forEach((zone) => {
+        zone.addEventListener('dragover', (e) => {
           if (!catalogDragPayload) return;
           e.preventDefault();
-          row.classList.add('is-drop-target');
+          zone.classList.add('is-drop-target');
+          zone.querySelector('.catalog-tree-row[data-kind="subcategory"]')?.classList.add('is-drop-target');
         });
-        row.addEventListener('dragleave', () => row.classList.remove('is-drop-target'));
-        row.addEventListener('drop', async (e) => {
+        zone.addEventListener('dragleave', (e) => {
+          if (zone.contains(e.relatedTarget)) return;
+          zone.classList.remove('is-drop-target');
+          zone.querySelector('.catalog-tree-row[data-kind="subcategory"]')?.classList.remove('is-drop-target');
+        });
+        zone.addEventListener('drop', async (e) => {
           e.preventDefault();
-          row.classList.remove('is-drop-target');
-          if (!catalogDragPayload) return;
-          const toCat = row.dataset.cat;
-          const toSub = row.dataset.sub;
-          const { fromCategoryKey, fromSubcategoryKey, serviceName } = catalogDragPayload;
-          if (fromCategoryKey === toCat && fromSubcategoryKey === toSub) return;
-          try {
-            await catalogApi('/api/admin/catalog/service/move', {
-              method: 'POST',
-              body: JSON.stringify({
-                fromCategoryKey,
-                fromSubcategoryKey,
-                toCategoryKey: toCat,
-                toSubcategoryKey: toSub,
-                serviceName,
-              }),
-            });
-            showMessage('Послугу переміщено');
-            await reloadAdminCatalog();
-          } catch (err) {
-            showMessage(err.message || 'Не вдалося перемістити', true);
-          } finally {
-            catalogDragPayload = null;
-          }
+          zone.classList.remove('is-drop-target');
+          zone.querySelector('.catalog-tree-row[data-kind="subcategory"]')?.classList.remove('is-drop-target');
+          await handleServiceDrop(zone.dataset.dropCat, zone.dataset.dropSub);
         });
       });
 
@@ -3594,7 +3615,7 @@
                         .join('')}</div>`
                     : `<div class="catalog-empty">Послуг ще немає — перетягніть сюди або додайте формою нижче</div>`;
 
-                  return `<div class="catalog-tree-sub">
+                  return `<div class="catalog-tree-sub" data-drop-cat="${esc(catKey)}" data-drop-sub="${esc(subKey)}">
                     <div class="catalog-tree-row" data-kind="subcategory" data-cat="${esc(catKey)}" data-sub="${esc(subKey)}" data-name="${esc(subName)}">
                       <span class="catalog-tree-sub-title" title="Подвійний клік — перейменувати; сюди можна кинути послугу">${esc(subName)} <span class="list-item-meta">(${items.length})</span></span>
                       <span class="catalog-tree-actions">
