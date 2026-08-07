@@ -2590,6 +2590,290 @@ app.post('/api/admin/catalog/service', requireAuth, requireAdmin, async (req, re
   }
 });
 
+function renameServiceInLocations(data, oldName, newName) {
+  if (!oldName || !newName || oldName === newName) return 0;
+  let updated = 0;
+  for (const loc of data.mockLocations || []) {
+    if (!loc?.prices || typeof loc.prices !== 'object') continue;
+    if (!Object.prototype.hasOwnProperty.call(loc.prices, oldName)) continue;
+    if (!Object.prototype.hasOwnProperty.call(loc.prices, newName)) {
+      loc.prices[newName] = loc.prices[oldName];
+    }
+    delete loc.prices[oldName];
+    updated += 1;
+  }
+  for (const loc of data.mockLocations || []) {
+    const customs = Array.isArray(loc.customSubcats) ? loc.customSubcats : [];
+    for (const entry of customs) {
+      if (!Array.isArray(entry?.services)) continue;
+      let changed = false;
+      entry.services = entry.services.map((svc) => {
+        if (String(svc) === oldName) {
+          changed = true;
+          return newName;
+        }
+        return svc;
+      });
+      if (changed) updated += 1;
+    }
+  }
+  return updated;
+}
+
+app.patch('/api/admin/catalog/category', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const categoryKey = String(req.body?.categoryKey || '').trim();
+    const name = String(req.body?.name || '').trim();
+    const iconRaw = req.body?.icon;
+    if (!categoryKey) return res.status(400).json({ error: 'Не вказано категорію' });
+    if (name.length < 2) {
+      return res.status(400).json({ error: 'Назва категорії має містити щонайменше 2 символи' });
+    }
+
+    const data = await readData();
+    const catalog = data.masterCatalog || {};
+    const cat = catalog[categoryKey];
+    if (!cat) return res.status(404).json({ error: 'Категорію не знайдено' });
+
+    const dup = Object.entries(catalog).some(
+      ([key, c]) => key !== categoryKey && String(c?.name || '').toLowerCase() === name.toLowerCase()
+    );
+    if (dup) return res.status(409).json({ error: 'Категорія з такою назвою вже існує' });
+
+    cat.name = name;
+    if (iconRaw !== undefined) {
+      const icon = String(iconRaw || '').trim();
+      if (icon) cat.icon = icon;
+      else delete cat.icon;
+    }
+
+    const writeResult = await writeData(data);
+    const writeErr = catalogWriteError(writeResult);
+    if (writeErr) return res.status(503).json({ error: writeErr });
+    res.json({ ok: true, categoryKey, category: cat });
+  } catch (err) {
+    console.error('[PATCH /api/admin/catalog/category]', err);
+    res.status(500).json({ error: 'Не вдалося перейменувати категорію' });
+  }
+});
+
+app.patch('/api/admin/catalog/subcategory', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const categoryKey = String(req.body?.categoryKey || '').trim();
+    const subcategoryKey = String(req.body?.subcategoryKey || '').trim();
+    const name = String(req.body?.name || '').trim();
+    if (!categoryKey || !subcategoryKey) {
+      return res.status(400).json({ error: 'Не вказано категорію або підкатегорію' });
+    }
+    if (name.length < 2) {
+      return res.status(400).json({ error: 'Назва підкатегорії має містити щонайменше 2 символи' });
+    }
+
+    const data = await readData();
+    const catalog = data.masterCatalog || {};
+    const cat = catalog[categoryKey];
+    const sub = cat?.subcats?.[subcategoryKey];
+    if (!sub) return res.status(404).json({ error: 'Підкатегорію не знайдено' });
+
+    const dup = Object.entries(cat.subcats || {}).some(
+      ([key, s]) => key !== subcategoryKey && String(s?.name || '').toLowerCase() === name.toLowerCase()
+    );
+    if (dup) {
+      return res.status(409).json({ error: 'Підкатегорія з такою назвою вже є в цій категорії' });
+    }
+
+    sub.name = name;
+    if (!Array.isArray(sub.tags)) sub.tags = [];
+    const tag = name.toLowerCase();
+    if (!sub.tags.includes(tag)) sub.tags.push(tag);
+
+    const writeResult = await writeData(data);
+    const writeErr = catalogWriteError(writeResult);
+    if (writeErr) return res.status(503).json({ error: writeErr });
+    res.json({ ok: true, categoryKey, subcategoryKey, subcategory: sub });
+  } catch (err) {
+    console.error('[PATCH /api/admin/catalog/subcategory]', err);
+    res.status(500).json({ error: 'Не вдалося перейменувати підкатегорію' });
+  }
+});
+
+app.delete('/api/admin/catalog/subcategory/:categoryKey/:subcategoryKey', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const categoryKey = String(req.params.categoryKey || '').trim();
+    const subcategoryKey = String(req.params.subcategoryKey || '').trim();
+    if (!categoryKey || !subcategoryKey) {
+      return res.status(400).json({ error: 'Не вказано категорію або підкатегорію' });
+    }
+
+    const data = await readData();
+    const catalog = data.masterCatalog || {};
+    const cat = catalog[categoryKey];
+    if (!cat?.subcats?.[subcategoryKey]) {
+      return res.status(404).json({ error: 'Підкатегорію не знайдено' });
+    }
+
+    delete cat.subcats[subcategoryKey];
+    const writeResult = await writeData(data);
+    const writeErr = catalogWriteError(writeResult);
+    if (writeErr) return res.status(503).json({ error: writeErr });
+    res.json({ ok: true, categoryKey, subcategoryKey });
+  } catch (err) {
+    console.error('[DELETE /api/admin/catalog/subcategory]', err);
+    res.status(500).json({ error: 'Не вдалося видалити підкатегорію' });
+  }
+});
+
+app.patch('/api/admin/catalog/service', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const categoryKey = String(req.body?.categoryKey || '').trim();
+    const subcategoryKey = String(req.body?.subcategoryKey || '').trim();
+    const oldName = String(req.body?.oldName || req.body?.name || '').trim();
+    const newName = String(req.body?.newName || '').trim();
+    const price = req.body?.price !== undefined ? String(req.body.price || '').trim() : undefined;
+
+    if (!categoryKey || !subcategoryKey || !oldName) {
+      return res.status(400).json({ error: 'Не вказано послугу' });
+    }
+    if (newName && newName.length < 2) {
+      return res.status(400).json({ error: 'Назва послуги має містити щонайменше 2 символи' });
+    }
+    if (price && !isValidPrice(price)) {
+      return res.status(400).json({ error: 'Ціна має містити число (наприклад 650 або 650 грн)' });
+    }
+
+    const data = await readData();
+    const catalog = data.masterCatalog || {};
+    const sub = catalog[categoryKey]?.subcats?.[subcategoryKey];
+    if (!sub || !Array.isArray(sub.items)) {
+      return res.status(404).json({ error: 'Підкатегорію не знайдено' });
+    }
+
+    const item = sub.items.find((i) => String(i?.name || '') === oldName);
+    if (!item) return res.status(404).json({ error: 'Послугу не знайдено' });
+
+    const nextName = newName || oldName;
+    if (nextName !== oldName) {
+      const dup = sub.items.some(
+        (i) => i !== item && String(i?.name || '').toLowerCase() === nextName.toLowerCase()
+      );
+      if (dup) {
+        return res.status(409).json({ error: 'Послуга з такою назвою вже є в цій підкатегорії' });
+      }
+      item.name = nextName;
+      renameServiceInLocations(data, oldName, nextName);
+      if (!Array.isArray(sub.tags)) sub.tags = [];
+      const tag = nextName.toLowerCase();
+      if (!sub.tags.includes(tag)) sub.tags.push(tag);
+    }
+
+    if (price !== undefined) {
+      if (price) item.price = formatPrice(price);
+      else delete item.price;
+    }
+
+    const writeResult = await writeData(data);
+    const writeErr = catalogWriteError(writeResult);
+    if (writeErr) return res.status(503).json({ error: writeErr });
+    res.json({ ok: true, categoryKey, subcategoryKey, name: item.name, item });
+  } catch (err) {
+    console.error('[PATCH /api/admin/catalog/service]', err);
+    res.status(500).json({ error: 'Не вдалося оновити послугу' });
+  }
+});
+
+app.delete('/api/admin/catalog/service', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const categoryKey = String(req.body?.categoryKey || req.query?.categoryKey || '').trim();
+    const subcategoryKey = String(req.body?.subcategoryKey || req.query?.subcategoryKey || '').trim();
+    const name = String(req.body?.name || req.query?.name || '').trim();
+    if (!categoryKey || !subcategoryKey || !name) {
+      return res.status(400).json({ error: 'Не вказано послугу' });
+    }
+
+    const data = await readData();
+    const catalog = data.masterCatalog || {};
+    const sub = catalog[categoryKey]?.subcats?.[subcategoryKey];
+    if (!sub || !Array.isArray(sub.items)) {
+      return res.status(404).json({ error: 'Підкатегорію не знайдено' });
+    }
+
+    const before = sub.items.length;
+    sub.items = sub.items.filter((i) => String(i?.name || '') !== name);
+    if (sub.items.length === before) {
+      return res.status(404).json({ error: 'Послугу не знайдено' });
+    }
+
+    const writeResult = await writeData(data);
+    const writeErr = catalogWriteError(writeResult);
+    if (writeErr) return res.status(503).json({ error: writeErr });
+    res.json({ ok: true, categoryKey, subcategoryKey, name });
+  } catch (err) {
+    console.error('[DELETE /api/admin/catalog/service]', err);
+    res.status(500).json({ error: 'Не вдалося видалити послугу' });
+  }
+});
+
+app.post('/api/admin/catalog/service/move', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const fromCategoryKey = String(req.body?.fromCategoryKey || '').trim();
+    const fromSubcategoryKey = String(req.body?.fromSubcategoryKey || '').trim();
+    const toCategoryKey = String(req.body?.toCategoryKey || '').trim();
+    const toSubcategoryKey = String(req.body?.toSubcategoryKey || '').trim();
+    const serviceName = String(req.body?.serviceName || req.body?.name || '').trim();
+
+    if (!fromCategoryKey || !fromSubcategoryKey || !toCategoryKey || !toSubcategoryKey || !serviceName) {
+      return res.status(400).json({ error: 'Недостатньо даних для переміщення' });
+    }
+    if (fromCategoryKey === toCategoryKey && fromSubcategoryKey === toSubcategoryKey) {
+      return res.json({ ok: true, moved: false });
+    }
+
+    const data = await readData();
+    const catalog = data.masterCatalog || {};
+    const fromSub = catalog[fromCategoryKey]?.subcats?.[fromSubcategoryKey];
+    const toSub = catalog[toCategoryKey]?.subcats?.[toSubcategoryKey];
+    if (!fromSub || !Array.isArray(fromSub.items)) {
+      return res.status(404).json({ error: 'Вихідну підкатегорію не знайдено' });
+    }
+    if (!toSub) {
+      return res.status(404).json({ error: 'Цільову підкатегорію не знайдено' });
+    }
+    if (!Array.isArray(toSub.items)) toSub.items = [];
+
+    const idx = fromSub.items.findIndex((i) => String(i?.name || '') === serviceName);
+    if (idx < 0) return res.status(404).json({ error: 'Послугу не знайдено' });
+
+    const dup = toSub.items.some(
+      (i) => String(i?.name || '').toLowerCase() === serviceName.toLowerCase()
+    );
+    if (dup) {
+      return res.status(409).json({ error: 'У цільовій підкатегорії вже є послуга з такою назвою' });
+    }
+
+    const [item] = fromSub.items.splice(idx, 1);
+    toSub.items.push(item);
+    if (!Array.isArray(toSub.tags)) toSub.tags = [];
+    const tag = serviceName.toLowerCase();
+    if (!toSub.tags.includes(tag)) toSub.tags.push(tag);
+
+    const writeResult = await writeData(data);
+    const writeErr = catalogWriteError(writeResult);
+    if (writeErr) return res.status(503).json({ error: writeErr });
+    res.json({
+      ok: true,
+      moved: true,
+      fromCategoryKey,
+      fromSubcategoryKey,
+      toCategoryKey,
+      toSubcategoryKey,
+      serviceName,
+    });
+  } catch (err) {
+    console.error('[POST /api/admin/catalog/service/move]', err);
+    res.status(500).json({ error: 'Не вдалося перемістити послугу' });
+  }
+});
+
 app.post('/api/admin/clear-example-prices', requireAuth, requireAdmin, async (req, res) => {
   try {
     const data = await readData();
