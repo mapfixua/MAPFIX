@@ -3264,17 +3264,26 @@
 
     function refreshCatalogSuggestionLists() {
       const { cats, subs, services } = collectCatalogSuggestions();
+      const subCatKey = document.getElementById('newSubCat')?.value || '';
+      const svcCatKey = document.getElementById('adminCat')?.value || '';
+      const svcSubKey = document.getElementById('adminSub')?.value || '';
       fillDatalist(
         'catalogCatSuggestions',
         cats.map((c) => c.name)
       );
       fillDatalist(
         'catalogSubSuggestions',
-        subs.map((s) => s.name)
+        subs.filter((s) => !subCatKey || s.catKey === subCatKey).map((s) => s.name)
       );
       fillDatalist(
         'catalogServiceSuggestions',
-        services.map((s) => s.name)
+        services
+          .filter((s) => {
+            if (svcCatKey && s.catKey !== svcCatKey) return false;
+            if (svcSubKey && s.subKey !== svcSubKey) return false;
+            return true;
+          })
+          .map((s) => s.name)
       );
       refreshLocSuggestionLists();
     }
