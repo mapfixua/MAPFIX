@@ -319,7 +319,7 @@
       }
     }
     .catalog-tree {
-      max-height: 320px;
+      max-height: min(70vh, 640px);
       overflow: auto;
       border: 1px solid #e2e8f0;
       border-radius: 10px;
@@ -327,18 +327,121 @@
       padding: 10px;
       margin-bottom: 16px;
     }
+    .catalog-tree-toolbar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      align-items: center;
+      margin-bottom: 10px;
+    }
+    .catalog-tree-toolbar input[type="search"] {
+      flex: 1;
+      min-width: 180px;
+      margin: 0;
+    }
+    .catalog-tree-hint {
+      font-size: 0.8rem;
+      color: #64748b;
+      margin: 0 0 10px;
+      line-height: 1.45;
+    }
     .catalog-tree-cat {
       margin-bottom: 10px;
       background: #fff;
       border: 1px solid #e2e8f0;
       border-radius: 10px;
-      padding: 10px 12px;
+      padding: 8px 10px;
     }
     .catalog-tree-cat:last-child { margin-bottom: 0; }
-    .catalog-tree-cat-title { font-weight: 800; font-size: 0.92rem; margin: 0 0 6px; }
-    .catalog-tree-sub { margin: 0 0 6px 8px; font-size: 0.86rem; color: #334155; }
-    .catalog-tree-sub strong { font-weight: 700; }
-    .catalog-tree-items { margin: 2px 0 0 14px; color: #64748b; font-size: 0.8rem; line-height: 1.4; }
+    .catalog-tree-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      min-height: 32px;
+      padding: 4px 6px;
+      border-radius: 8px;
+      border: 1px solid transparent;
+    }
+    .catalog-tree-row:hover { background: #f1f5f9; }
+    .catalog-tree-row.is-editing { background: #eff6ff; border-color: #bfdbfe; }
+    .catalog-tree-row.is-drop-target {
+      background: #ecfdf5;
+      border-color: #6ee7b7;
+      box-shadow: inset 0 0 0 1px #34d399;
+    }
+    .catalog-tree-row.is-dragging { opacity: 0.45; }
+    .catalog-tree-cat-title {
+      font-weight: 800;
+      font-size: 0.92rem;
+      margin: 0;
+      flex: 1;
+      min-width: 0;
+      cursor: text;
+    }
+    .catalog-tree-sub {
+      margin: 2px 0 2px 6px;
+      font-size: 0.86rem;
+      color: #334155;
+      border-left: 2px solid #e2e8f0;
+      padding-left: 6px;
+    }
+    .catalog-tree-sub-title {
+      font-weight: 700;
+      flex: 1;
+      min-width: 0;
+      cursor: text;
+    }
+    .catalog-tree-items { margin: 2px 0 0 10px; }
+    .catalog-tree-item {
+      color: #475569;
+      font-size: 0.82rem;
+      line-height: 1.35;
+      margin: 2px 0;
+      cursor: grab;
+    }
+    .catalog-tree-item:active { cursor: grabbing; }
+    .catalog-tree-item-name {
+      flex: 1;
+      min-width: 0;
+      cursor: text;
+    }
+    .catalog-tree-item-price {
+      color: #94a3b8;
+      font-size: 0.78rem;
+      white-space: nowrap;
+    }
+    .catalog-tree-actions {
+      display: flex;
+      gap: 4px;
+      flex-shrink: 0;
+      opacity: 0.35;
+      transition: opacity 0.15s ease;
+    }
+    .catalog-tree-row:hover .catalog-tree-actions,
+    .catalog-tree-row:focus-within .catalog-tree-actions,
+    .catalog-tree-row.is-editing .catalog-tree-actions { opacity: 1; }
+    .catalog-tree-actions button {
+      width: auto;
+      margin: 0;
+      padding: 4px 8px;
+      font-size: 0.72rem;
+      line-height: 1.2;
+      border-radius: 6px;
+    }
+    .catalog-tree-actions .btn-rename {
+      background: #e2e8f0;
+      color: #0f172a;
+    }
+    .catalog-tree-actions .btn-rename:hover { background: #cbd5e1; }
+    .catalog-tree-edit-input {
+      flex: 1;
+      min-width: 0;
+      margin: 0 !important;
+      padding: 6px 8px !important;
+      font-size: inherit;
+      font-weight: inherit;
+    }
+    .catalog-empty { color: #94a3b8; font-size: 0.82rem; margin: 4px 0 4px 12px; }
     .catalog-forms-grid {
       display: grid;
       gap: 14px;
@@ -356,6 +459,43 @@
     .catalog-form-card h3 {
       margin: 0 0 10px;
       font-size: 0.95rem;
+    }
+    .suggest-wrap { position: relative; }
+    .catalog-suggest-list {
+      position: absolute;
+      left: 0;
+      right: 0;
+      top: calc(100% - 4px);
+      z-index: 20;
+      max-height: 180px;
+      overflow: auto;
+      background: #fff;
+      border: 1px solid #cbd5e1;
+      border-radius: 8px;
+      box-shadow: 0 8px 20px rgba(15, 23, 42, 0.12);
+      display: none;
+    }
+    .catalog-suggest-list.open { display: block; }
+    .catalog-suggest-item {
+      display: block;
+      width: 100%;
+      text-align: left;
+      margin: 0;
+      padding: 8px 10px;
+      border: 0;
+      border-radius: 0;
+      background: transparent;
+      color: #0f172a;
+      font-size: 0.86rem;
+      cursor: pointer;
+    }
+    .catalog-suggest-item:hover,
+    .catalog-suggest-item.active { background: #f1f5f9; }
+    .catalog-suggest-item small {
+      display: block;
+      color: #64748b;
+      font-size: 0.72rem;
+      margin-top: 2px;
     }
     .loading { color: #64748b; }
     .links { margin-top: 20px; text-align: center; }
@@ -799,19 +939,26 @@
 
           <div id="adminPaneCatalog" class="admin-pane card">
             <h2>Глобальний каталог</h2>
-            <p class="field-hint">Додайте нову категорію, підкатегорію або послугу. Зміни одразу з’являться на карті та в реєстрації майстрів.</p>
+            <p class="field-hint">Редагуйте дерево нижче: подвійний клік — перейменувати, перетягніть послугу на іншу підкатегорію, кнопки — видалити. Форми справа лише для швидкого додавання. Зміни одразу на карті й у реєстрації майстрів.</p>
 
             <h3 style="font-size:0.95rem;margin:0 0 8px">Поточний каталог</h3>
+            <p class="catalog-tree-hint">Подвійний клік по назві змінює її. Послугу можна перетягнути в іншу підкатегорію. Підказки при введенні пропонують уже наявні назви з каталогу.</p>
+            <div class="catalog-tree-toolbar">
+              <input type="search" id="adminCatalogFilter" placeholder="Пошук у каталозі…" autocomplete="off">
+            </div>
             <div id="adminCatalogTree" class="catalog-tree">
               <p class="list-item-meta">Завантаження…</p>
             </div>
+            <datalist id="catalogCatSuggestions"></datalist>
+            <datalist id="catalogSubSuggestions"></datalist>
+            <datalist id="catalogServiceSuggestions"></datalist>
 
             <div class="catalog-forms-grid">
               <div class="catalog-form-card">
                 <h3>Нова категорія</h3>
                 <form id="adminNewCategoryForm">
                   <label>Назва</label>
-                  <input type="text" id="newCatName" required minlength="2" placeholder="напр. Краса">
+                  <input type="text" id="newCatName" required minlength="2" placeholder="напр. Краса" list="catalogCatSuggestions" autocomplete="off">
                   <label>Іконка (емодзі, необовʼязково)</label>
                   <input type="text" id="newCatIcon" maxlength="4" placeholder="✂️">
                   <button type="submit">Додати категорію</button>
@@ -824,7 +971,7 @@
                   <label>Категорія</label>
                   <select id="newSubCat" required></select>
                   <label>Назва підкатегорії</label>
-                  <input type="text" id="newSubName" required minlength="2" placeholder="напр. Нігтьовий сервіс">
+                  <input type="text" id="newSubName" required minlength="2" placeholder="Почніть вводити — з’являться підказки" list="catalogSubSuggestions" autocomplete="off">
                   <button type="submit">Додати підкатегорію</button>
                 </form>
               </div>
@@ -844,7 +991,7 @@
                   </div>
                   <div class="field-block">
                     <label>Послуга</label>
-                    <input type="text" id="adminService" required minlength="2" placeholder="напр. Манікюр + гель-лак">
+                    <input type="text" id="adminService" required minlength="2" placeholder="Почніть вводити — з’являться підказки" list="catalogServiceSuggestions" autocomplete="off">
                   </div>
                   <div class="field-block">
                     <label>Орієнтовна ціна (необовʼязково)</label>
@@ -1022,16 +1169,21 @@
               <label>Категорія на карті</label>
               <select id="locCat"></select>
               <label>Підкатегорії та послуги</label>
-              <p class="field-hint">Оберіть галочками підкатегорії. Можна додати свою підкатегорію або послугу. «Вибрати все» відзначає всі підкатегорії й послуги.</p>
+              <p class="field-hint">1) Оберіть категорію. 2) Поставте галочки на потрібні підкатегорії. 3) Позначте послуги для прайсу або додайте свою нижче. Почніть вводити назву — з’являться підказки з каталогу.</p>
               <div id="locSubcatsPicker" class="subcat-picker">
                 <p class="list-item-meta">Спочатку оберіть категорію</p>
               </div>
               <div class="field-block" style="margin-top:10px">
-                <label>Додати свою підкатегорію</label>
-                <div style="display:flex;gap:8px;flex-wrap:wrap">
-                  <input type="text" id="locCustomSubcatName" placeholder="напр. Мій манікюр" style="flex:1;min-width:160px">
-                  <button type="button" id="locAddCustomSubcatBtn" class="btn-secondary" style="width:auto">Додати</button>
+                <label>Знайти або додати підкатегорію</label>
+                <p class="field-hint" style="margin-top:0">Введіть кілька літер. Якщо підкатегорія вже є в каталозі — оберіть її з підказок. Якщо немає — натисніть «Додати свою».</p>
+                <div class="suggest-wrap">
+                  <div style="display:flex;gap:8px;flex-wrap:wrap">
+                    <input type="text" id="locCustomSubcatName" placeholder="напр. Нігтьовий сервіс" list="locSubcatSuggestions" autocomplete="off" style="flex:1;min-width:160px">
+                    <button type="button" id="locAddCustomSubcatBtn" class="btn-secondary" style="width:auto">Додати свою</button>
+                  </div>
+                  <div id="locSubcatSuggestBox" class="catalog-suggest-list" role="listbox"></div>
                 </div>
+                <datalist id="locSubcatSuggestions"></datalist>
               </div>
               <div id="priceServicesBlock" style="margin-top:12px">
                 <label>Послуги для прайсу</label>
@@ -1039,12 +1191,17 @@
                   <p class="list-item-meta">Спочатку оберіть підкатегорії</p>
                 </div>
                 <div class="field-block" style="margin-top:10px">
-                  <label>Додати свою послугу</label>
-                  <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end">
-                    <input type="text" id="priceServiceCustom" placeholder="Назва послуги" style="flex:1;min-width:140px">
-                    <input type="text" id="priceValue" placeholder="Ціна" style="width:120px">
-                    <button type="button" id="locAddCustomServiceBtn" class="btn-secondary" style="width:auto">Додати</button>
+                  <label>Знайти або додати послугу</label>
+                  <p class="field-hint" style="margin-top:0">Почніть вводити назву — підставимо існуючу з каталогу. Нову послугу можна додати зі своєю ціною.</p>
+                  <div class="suggest-wrap">
+                    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end">
+                      <input type="text" id="priceServiceCustom" placeholder="Назва послуги" list="locServiceSuggestions" autocomplete="off" style="flex:1;min-width:140px">
+                      <input type="text" id="priceValue" placeholder="Ціна" style="width:120px">
+                      <button type="button" id="locAddCustomServiceBtn" class="btn-secondary" style="width:auto">Додати</button>
+                    </div>
+                    <div id="locServiceSuggestBox" class="catalog-suggest-list" role="listbox"></div>
                   </div>
+                  <datalist id="locServiceSuggestions"></datalist>
                 </div>
               </div>
               <label>Статус</label>
@@ -3049,6 +3206,86 @@
       document.getElementById('locationEditor').scrollIntoView({ behavior: 'smooth' });
     }
 
+    let adminCatalogFilter = '';
+    let catalogDragPayload = null;
+
+    function catalogNameMatches(haystack, needle) {
+      if (!needle) return true;
+      return String(haystack || '').toLowerCase().includes(String(needle).toLowerCase());
+    }
+
+    function collectCatalogSuggestions() {
+      const cats = [];
+      const subs = [];
+      const services = [];
+      Object.entries(adminCatalog || catalog || {}).forEach(([catKey, cat]) => {
+        cats.push({ key: catKey, name: cat.name || catKey });
+        Object.entries(cat.subcats || {}).forEach(([subKey, sub]) => {
+          subs.push({
+            key: subKey,
+            name: sub.name || subKey,
+            catKey,
+            catName: cat.name || catKey,
+          });
+          (sub.items || []).forEach((item) => {
+            if (!item?.name) return;
+            services.push({
+              name: item.name,
+              price: item.price || '',
+              catKey,
+              subKey,
+              catName: cat.name || catKey,
+              subName: sub.name || subKey,
+            });
+          });
+        });
+      });
+      return { cats, subs, services };
+    }
+
+    function fillDatalist(id, values) {
+      const list = document.getElementById(id);
+      if (!list) return;
+      const unique = [...new Set(values.filter(Boolean))];
+      unique.sort((a, b) => a.localeCompare(b, 'uk'));
+      list.innerHTML = unique.map((v) => `<option value="${esc(v)}"></option>`).join('');
+    }
+
+    function refreshCatalogSuggestionLists() {
+      const { cats, subs, services } = collectCatalogSuggestions();
+      fillDatalist(
+        'catalogCatSuggestions',
+        cats.map((c) => c.name)
+      );
+      fillDatalist(
+        'catalogSubSuggestions',
+        subs.map((s) => s.name)
+      );
+      fillDatalist(
+        'catalogServiceSuggestions',
+        services.map((s) => s.name)
+      );
+      refreshLocSuggestionLists();
+    }
+
+    function refreshLocSuggestionLists() {
+      const catKey = document.getElementById('locCat')?.value || '';
+      const { subs, services } = collectCatalogSuggestions();
+      const subNames = subs
+        .filter((s) => !catKey || s.catKey === catKey)
+        .map((s) => s.name);
+      const selectedSubs = typeof getSelectedLocSubcats === 'function' ? getSelectedLocSubcats() : [];
+      const serviceNames = services
+        .filter((s) => {
+          if (catKey && s.catKey !== catKey) return false;
+          if (selectedSubs.length && !selectedSubs.includes(s.subKey)) return false;
+          return true;
+        })
+        .map((s) => s.name);
+      fillDatalist('locSubcatSuggestions', subNames);
+      fillDatalist('locServiceSuggestions', serviceNames);
+    }
+
     function fillAdminCatalogSelects() {
       const catSel = document.getElementById('adminCat');
       const newSubCat = document.getElementById('newSubCat');
@@ -3070,49 +3307,324 @@
         const cat = adminCatalog[catSel.value];
         if (!cat) {
           subSel.disabled = true;
+          refreshCatalogSuggestionLists();
           return;
         }
         subSel.disabled = false;
         Object.entries(cat.subcats || {}).forEach(([k, s]) => {
           subSel.innerHTML += `<option value="${k}">${esc(s.name)}</option>`;
         });
+        refreshCatalogSuggestionLists();
       };
 
+      newSubCat.onchange = () => refreshCatalogSuggestionLists();
+      subSel.onchange = () => refreshCatalogSuggestionLists();
+
+      refreshCatalogSuggestionLists();
       renderAdminCatalogTree();
+    }
+
+    async function catalogApi(url, options = {}) {
+      const r = await fetch(url, {
+        headers: { 'Content-Type': 'application/json', ...(options.headers || {}) },
+        ...options,
+      });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(j.error || 'Помилка каталогу');
+      return j;
+    }
+
+    function startInlineRename(row, currentName, onSave) {
+      if (!row || row.classList.contains('is-editing')) return;
+      const label =
+        row.querySelector('.catalog-tree-cat-title, .catalog-tree-sub-title, .catalog-tree-item-name');
+      if (!label) return;
+      row.classList.add('is-editing');
+      const input = document.createElement('input');
+      input.type = 'text';
+      input.className = 'catalog-tree-edit-input';
+      input.value = currentName;
+      label.replaceWith(input);
+      input.focus();
+      input.select();
+
+      let finished = false;
+      const finish = async (save) => {
+        if (finished) return;
+        finished = true;
+        const next = input.value.trim();
+        if (!save || !next || next === currentName) {
+          await reloadAdminCatalog();
+          return;
+        }
+        try {
+          await onSave(next);
+          showMessage('Збережено');
+          await reloadAdminCatalog();
+        } catch (err) {
+          showMessage(err.message || 'Помилка', true);
+          await reloadAdminCatalog();
+        }
+      };
+
+      input.addEventListener('keydown', (ev) => {
+        if (ev.key === 'Enter') {
+          ev.preventDefault();
+          finish(true);
+        } else if (ev.key === 'Escape') {
+          ev.preventDefault();
+          finish(false);
+        }
+      });
+      input.addEventListener('blur', () => finish(true));
+    }
+
+    function bindCatalogTreeInteractions(root) {
+      root.querySelectorAll('[data-action="rename"]').forEach((btn) => {
+        btn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          const row = btn.closest('.catalog-tree-row');
+          row?.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
+        });
+      });
+
+      root.querySelectorAll('.catalog-tree-row[data-kind="category"]').forEach((row) => {
+        row.addEventListener('dblclick', (e) => {
+          if (e.target.closest('button, input')) return;
+          const catKey = row.dataset.cat;
+          const name = row.dataset.name || '';
+          startInlineRename(row, name, (next) =>
+            catalogApi('/api/admin/catalog/category', {
+              method: 'PATCH',
+              body: JSON.stringify({ categoryKey: catKey, name: next }),
+            })
+          );
+        });
+      });
+
+      root.querySelectorAll('.catalog-tree-row[data-kind="subcategory"]').forEach((row) => {
+        row.addEventListener('dblclick', (e) => {
+          if (e.target.closest('button, input')) return;
+          const catKey = row.dataset.cat;
+          const subKey = row.dataset.sub;
+          const name = row.dataset.name || '';
+          startInlineRename(row, name, (next) =>
+            catalogApi('/api/admin/catalog/subcategory', {
+              method: 'PATCH',
+              body: JSON.stringify({
+                categoryKey: catKey,
+                subcategoryKey: subKey,
+                name: next,
+              }),
+            })
+          );
+        });
+
+        row.addEventListener('dragover', (e) => {
+          if (!catalogDragPayload) return;
+          e.preventDefault();
+          row.classList.add('is-drop-target');
+        });
+        row.addEventListener('dragleave', () => row.classList.remove('is-drop-target'));
+        row.addEventListener('drop', async (e) => {
+          e.preventDefault();
+          row.classList.remove('is-drop-target');
+          if (!catalogDragPayload) return;
+          const toCat = row.dataset.cat;
+          const toSub = row.dataset.sub;
+          const { fromCategoryKey, fromSubcategoryKey, serviceName } = catalogDragPayload;
+          if (fromCategoryKey === toCat && fromSubcategoryKey === toSub) return;
+          try {
+            await catalogApi('/api/admin/catalog/service/move', {
+              method: 'POST',
+              body: JSON.stringify({
+                fromCategoryKey,
+                fromSubcategoryKey,
+                toCategoryKey: toCat,
+                toSubcategoryKey: toSub,
+                serviceName,
+              }),
+            });
+            showMessage('Послугу переміщено');
+            await reloadAdminCatalog();
+          } catch (err) {
+            showMessage(err.message || 'Не вдалося перемістити', true);
+          } finally {
+            catalogDragPayload = null;
+          }
+        });
+      });
+
+      root.querySelectorAll('.catalog-tree-row[data-kind="service"]').forEach((row) => {
+        row.addEventListener('dblclick', (e) => {
+          if (e.target.closest('button, input')) return;
+          const catKey = row.dataset.cat;
+          const subKey = row.dataset.sub;
+          const name = row.dataset.name || '';
+          startInlineRename(row, name, (next) =>
+            catalogApi('/api/admin/catalog/service', {
+              method: 'PATCH',
+              body: JSON.stringify({
+                categoryKey: catKey,
+                subcategoryKey: subKey,
+                oldName: name,
+                newName: next,
+              }),
+            })
+          );
+        });
+
+        row.addEventListener('dragstart', (e) => {
+          catalogDragPayload = {
+            fromCategoryKey: row.dataset.cat,
+            fromSubcategoryKey: row.dataset.sub,
+            serviceName: row.dataset.name,
+          };
+          row.classList.add('is-dragging');
+          e.dataTransfer.effectAllowed = 'move';
+          e.dataTransfer.setData('text/plain', row.dataset.name || '');
+        });
+        row.addEventListener('dragend', () => {
+          row.classList.remove('is-dragging');
+          catalogDragPayload = null;
+          root.querySelectorAll('.is-drop-target').forEach((el) => el.classList.remove('is-drop-target'));
+        });
+      });
+
+      root.querySelectorAll('[data-action="delete"]').forEach((btn) => {
+        btn.addEventListener('click', async (e) => {
+          e.stopPropagation();
+          const kind = btn.dataset.kind;
+          const catKey = btn.dataset.cat;
+          const subKey = btn.dataset.sub;
+          const name = btn.dataset.name || '';
+          try {
+            if (kind === 'category') {
+              if (!confirm(`Видалити категорію «${name}» разом із підкатегоріями та послугами?`)) return;
+              await catalogApi(`/api/admin/catalog/category/${encodeURIComponent(catKey)}`, {
+                method: 'DELETE',
+              });
+              showMessage('Категорію видалено');
+            } else if (kind === 'subcategory') {
+              if (!confirm(`Видалити підкатегорію «${name}» і всі її послуги?`)) return;
+              await catalogApi(
+                `/api/admin/catalog/subcategory/${encodeURIComponent(catKey)}/${encodeURIComponent(subKey)}`,
+                { method: 'DELETE' }
+              );
+              showMessage('Підкатегорію видалено');
+            } else if (kind === 'service') {
+              if (!confirm(`Видалити послугу «${name}» з каталогу?`)) return;
+              await catalogApi('/api/admin/catalog/service', {
+                method: 'DELETE',
+                body: JSON.stringify({
+                  categoryKey: catKey,
+                  subcategoryKey: subKey,
+                  name,
+                }),
+              });
+              showMessage('Послугу видалено');
+            }
+            await reloadAdminCatalog();
+          } catch (err) {
+            showMessage(err.message || 'Помилка видалення', true);
+          }
+        });
+      });
     }
 
     function renderAdminCatalogTree() {
       const el = document.getElementById('adminCatalogTree');
       if (!el) return;
+      const filter = adminCatalogFilter.trim().toLowerCase();
       const entries = Object.entries(adminCatalog || {});
       if (!entries.length) {
         el.innerHTML = '<p class="list-item-meta">Каталог порожній — додайте першу категорію</p>';
         return;
       }
 
-      el.innerHTML = entries
+      const html = entries
         .map(([catKey, cat]) => {
+          const catName = cat.name || catKey;
           const subs = Object.entries(cat.subcats || {});
-          const subsHtml = subs.length
-            ? subs
-                .map(([subKey, sub]) => {
-                  const items = Array.isArray(sub.items) ? sub.items : [];
-                  const itemsHtml = items.length
-                    ? `<div class="catalog-tree-items">${items
-                        .map((i) => `${esc(i.name)} — ${esc(i.price || '—')}`)
-                        .join('<br>')}</div>`
-                    : `<div class="catalog-tree-items">Послуг ще немає</div>`;
-                  return `<div class="catalog-tree-sub"><strong>${esc(sub.name)}</strong> <span class="list-item-meta">(${items.length})</span>${itemsHtml}</div>`;
+          const filteredSubs = subs
+            .map(([subKey, sub]) => {
+              const subName = sub.name || subKey;
+              const items = Array.isArray(sub.items) ? sub.items : [];
+              const matchedItems = items.filter((i) => {
+                if (!filter) return true;
+                return (
+                  catalogNameMatches(i.name, filter) ||
+                  catalogNameMatches(subName, filter) ||
+                  catalogNameMatches(catName, filter)
+                );
+              });
+              const subMatches =
+                !filter ||
+                catalogNameMatches(subName, filter) ||
+                catalogNameMatches(catName, filter) ||
+                matchedItems.length > 0;
+              if (!subMatches) return null;
+              const showItems = filter ? matchedItems : items;
+              return { subKey, sub, subName, items, showItems };
+            })
+            .filter(Boolean);
+
+          const catMatches =
+            !filter ||
+            catalogNameMatches(catName, filter) ||
+            filteredSubs.length > 0;
+          if (!catMatches) return '';
+
+          const subsHtml = filteredSubs.length
+            ? filteredSubs
+                .map(({ subKey, subName, items, showItems }) => {
+                  const itemsHtml = showItems.length
+                    ? `<div class="catalog-tree-items">${showItems
+                        .map(
+                          (i) => `<div class="catalog-tree-row catalog-tree-item" draggable="true"
+                            data-kind="service" data-cat="${esc(catKey)}" data-sub="${esc(subKey)}" data-name="${esc(i.name)}">
+                            <span class="catalog-tree-item-name" title="Подвійний клік — перейменувати">— ${esc(i.name)}</span>
+                            <span class="catalog-tree-item-price">${esc(i.price || '—')}</span>
+                            <span class="catalog-tree-actions">
+                              <button type="button" class="btn-rename" data-action="rename">Змінити</button>
+                              <button type="button" class="btn-danger" data-action="delete" data-kind="service" data-cat="${esc(catKey)}" data-sub="${esc(subKey)}" data-name="${esc(i.name)}">✕</button>
+                            </span>
+                          </div>`
+                        )
+                        .join('')}</div>`
+                    : `<div class="catalog-empty">Послуг ще немає — перетягніть сюди або додайте формою нижче</div>`;
+
+                  return `<div class="catalog-tree-sub">
+                    <div class="catalog-tree-row" data-kind="subcategory" data-cat="${esc(catKey)}" data-sub="${esc(subKey)}" data-name="${esc(subName)}">
+                      <span class="catalog-tree-sub-title" title="Подвійний клік — перейменувати; сюди можна кинути послугу">${esc(subName)} <span class="list-item-meta">(${items.length})</span></span>
+                      <span class="catalog-tree-actions">
+                        <button type="button" class="btn-rename" data-action="rename">Змінити</button>
+                        <button type="button" class="btn-danger" data-action="delete" data-kind="subcategory" data-cat="${esc(catKey)}" data-sub="${esc(subKey)}" data-name="${esc(subName)}">✕</button>
+                      </span>
+                    </div>
+                    ${itemsHtml}
+                  </div>`;
                 })
                 .join('')
-            : `<div class="catalog-tree-sub list-item-meta">Підкатегорій ще немає</div>`;
+            : `<div class="catalog-empty">Підкатегорій ще немає</div>`;
 
+          const icon = cat.icon ? `${esc(cat.icon)} ` : '';
           return `<div class="catalog-tree-cat" data-cat="${esc(catKey)}">
-            <div class="catalog-tree-cat-title">${esc(cat.name)} <span class="list-item-meta">· ${subs.length} підкат.</span></div>
+            <div class="catalog-tree-row" data-kind="category" data-cat="${esc(catKey)}" data-name="${esc(catName)}">
+              <div class="catalog-tree-cat-title" title="Подвійний клік — перейменувати">${icon}${esc(catName)} <span class="list-item-meta">· ${subs.length} підкат.</span></div>
+              <span class="catalog-tree-actions">
+                <button type="button" class="btn-rename" data-action="rename">Змінити</button>
+                <button type="button" class="btn-danger" data-action="delete" data-kind="category" data-cat="${esc(catKey)}" data-name="${esc(catName)}">✕</button>
+              </span>
+            </div>
             ${subsHtml}
           </div>`;
         })
+        .filter(Boolean)
         .join('');
+
+      el.innerHTML = html || '<p class="list-item-meta">Нічого не знайдено за цим пошуком</p>';
+      bindCatalogTreeInteractions(el);
     }
 
     async function reloadAdminCatalog() {
@@ -3122,40 +3634,47 @@
       fillAdminCatalogSelects();
     }
 
+    document.getElementById('adminCatalogFilter')?.addEventListener('input', (e) => {
+      adminCatalogFilter = e.target.value || '';
+      renderAdminCatalogTree();
+    });
+
     document.getElementById('adminNewCategoryForm').onsubmit = async (e) => {
       e.preventDefault();
       const name = document.getElementById('newCatName').value.trim();
       const icon = document.getElementById('newCatIcon').value.trim();
-      const r = await fetch('/api/admin/catalog/category', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, icon }),
-      });
-      const j = await r.json();
-      if (!r.ok) return showMessage(j.error || 'Помилка', true);
-      showMessage('Категорію додано');
-      e.target.reset();
-      await reloadAdminCatalog();
+      try {
+        await catalogApi('/api/admin/catalog/category', {
+          method: 'POST',
+          body: JSON.stringify({ name, icon }),
+        });
+        showMessage('Категорію додано');
+        e.target.reset();
+        await reloadAdminCatalog();
+      } catch (err) {
+        showMessage(err.message || 'Помилка', true);
+      }
     };
 
     document.getElementById('adminNewSubcategoryForm').onsubmit = async (e) => {
       e.preventDefault();
       const categoryKey = document.getElementById('newSubCat').value;
       const name = document.getElementById('newSubName').value.trim();
-      const r = await fetch('/api/admin/catalog/subcategory', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ categoryKey, name }),
-      });
-      const j = await r.json();
-      if (!r.ok) return showMessage(j.error || 'Помилка', true);
-      showMessage('Підкатегорію додано');
-      document.getElementById('newSubName').value = '';
-      await reloadAdminCatalog();
-      document.getElementById('newSubCat').value = categoryKey;
-      document.getElementById('adminCat').value = categoryKey;
-      document.getElementById('adminCat').dispatchEvent(new Event('change'));
-      if (j.subcategoryKey) document.getElementById('adminSub').value = j.subcategoryKey;
+      try {
+        const j = await catalogApi('/api/admin/catalog/subcategory', {
+          method: 'POST',
+          body: JSON.stringify({ categoryKey, name }),
+        });
+        showMessage('Підкатегорію додано');
+        document.getElementById('newSubName').value = '';
+        await reloadAdminCatalog();
+        document.getElementById('newSubCat').value = categoryKey;
+        document.getElementById('adminCat').value = categoryKey;
+        document.getElementById('adminCat').dispatchEvent(new Event('change'));
+        if (j.subcategoryKey) document.getElementById('adminSub').value = j.subcategoryKey;
+      } catch (err) {
+        showMessage(err.message || 'Помилка', true);
+      }
     };
 
     document.getElementById('adminCatalogForm').onsubmit = async (e) => {
@@ -3172,20 +3691,21 @@
         name: document.getElementById('adminService').value.trim(),
         price: document.getElementById('adminPrice').value.trim(),
       };
-      const r = await fetch('/api/admin/catalog/service', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-      });
-      const j = await r.json();
-      if (!r.ok) return showMessage(j.error || 'Помилка', true);
-      showMessage(j.updated ? 'Ціну послуги оновлено' : 'Послугу додано в каталог');
-      document.getElementById('adminService').value = '';
-      document.getElementById('adminPrice').value = '';
-      await reloadAdminCatalog();
-      document.getElementById('adminCat').value = categoryKey;
-      document.getElementById('adminCat').dispatchEvent(new Event('change'));
-      document.getElementById('adminSub').value = subcategoryKey;
+      try {
+        const j = await catalogApi('/api/admin/catalog/service', {
+          method: 'POST',
+          body: JSON.stringify(body),
+        });
+        showMessage(j.updated ? 'Ціну послуги оновлено' : 'Послугу додано в каталог');
+        document.getElementById('adminService').value = '';
+        document.getElementById('adminPrice').value = '';
+        await reloadAdminCatalog();
+        document.getElementById('adminCat').value = categoryKey;
+        document.getElementById('adminCat').dispatchEvent(new Event('change'));
+        document.getElementById('adminSub').value = subcategoryKey;
+      } catch (err) {
+        showMessage(err.message || 'Помилка', true);
+      }
     };
 
     /* ---- Provider ---- */
@@ -3238,6 +3758,7 @@
     function onLocSubcatsChanged() {
       syncLocSubcatsSelectAll();
       renderPriceServicesPicker(document.getElementById('locCat').value);
+      refreshLocSuggestionLists();
     }
 
     function renderLocSubcatsPicker(catKey, selectedKeys) {
@@ -3346,6 +3867,8 @@
       sel.onchange = () => {
         renderLocSubcatsPicker(sel.value, []);
         renderPriceServicesPicker(sel.value);
+        refreshLocSuggestionLists();
+        closeSuggestBoxes();
       };
       if (selectedKey && catalog[selectedKey]) {
         sel.value = selectedKey;
@@ -3355,6 +3878,7 @@
         renderLocSubcatsPicker('', []);
         renderPriceServicesPicker('');
       }
+      refreshLocSuggestionLists();
     }
 
     function clearLocationFormFields() {
@@ -4579,18 +5103,166 @@
       await deleteMyLocation(id);
     };
 
+    function findCatalogSubcatByName(catKey, name) {
+      const cat = catalog?.[catKey];
+      if (!cat || !name) return null;
+      const needle = name.toLowerCase();
+      return (
+        Object.entries(cat.subcats || {}).find(
+          ([, sub]) => String(sub?.name || '').toLowerCase() === needle
+        ) || null
+      );
+    }
+
+    function findCatalogServiceByName(catKey, name) {
+      const needle = String(name || '').toLowerCase();
+      if (!needle) return null;
+      const { services } = collectCatalogSuggestions();
+      return (
+        services.find(
+          (s) =>
+            String(s.name).toLowerCase() === needle && (!catKey || s.catKey === catKey)
+        ) || null
+      );
+    }
+
+    function renderTextSuggestions(boxId, items, onPick) {
+      const box = document.getElementById(boxId);
+      if (!box) return;
+      if (!items.length) {
+        box.classList.remove('open');
+        box.innerHTML = '';
+        return;
+      }
+      box.innerHTML = items
+        .slice(0, 8)
+        .map(
+          (item, idx) =>
+            `<button type="button" class="catalog-suggest-item" data-idx="${idx}">${esc(item.label)}${
+              item.hint ? `<small>${esc(item.hint)}</small>` : ''
+            }</button>`
+        )
+        .join('');
+      box.classList.add('open');
+      box.querySelectorAll('.catalog-suggest-item').forEach((btn) => {
+        btn.addEventListener('mousedown', (e) => {
+          e.preventDefault();
+          const item = items[Number(btn.dataset.idx)];
+          if (item) onPick(item);
+          box.classList.remove('open');
+          box.innerHTML = '';
+        });
+      });
+    }
+
+    function closeSuggestBoxes() {
+      ['locSubcatSuggestBox', 'locServiceSuggestBox'].forEach((id) => {
+        const box = document.getElementById(id);
+        if (!box) return;
+        box.classList.remove('open');
+        box.innerHTML = '';
+      });
+    }
+
+    document.getElementById('locCustomSubcatName')?.addEventListener('input', () => {
+      const cat = document.getElementById('locCat').value;
+      const q = document.getElementById('locCustomSubcatName').value.trim().toLowerCase();
+      refreshLocSuggestionLists();
+      if (!cat || q.length < 1) return closeSuggestBoxes();
+      const { subs } = collectCatalogSuggestions();
+      const items = subs
+        .filter((s) => s.catKey === cat && s.name.toLowerCase().includes(q))
+        .map((s) => ({
+          label: s.name,
+          hint: 'з каталогу — оберіть галочкою',
+          key: s.key,
+          name: s.name,
+          fromCatalog: true,
+        }));
+      renderTextSuggestions('locSubcatSuggestBox', items, (item) => {
+        document.getElementById('locCustomSubcatName').value = item.name;
+        const selected = new Set(getSelectedLocSubcats());
+        selected.add(item.key);
+        renderLocSubcatsPicker(cat, [...selected]);
+        renderPriceServicesPicker(cat);
+        showMessage(`Підкатегорію «${item.name}» позначено з каталогу`);
+      });
+    });
+
+    document.getElementById('priceServiceCustom')?.addEventListener('input', () => {
+      const cat = document.getElementById('locCat').value;
+      const q = document.getElementById('priceServiceCustom').value.trim().toLowerCase();
+      refreshLocSuggestionLists();
+      if (!cat || q.length < 1) {
+        document.getElementById('locServiceSuggestBox')?.classList.remove('open');
+        return;
+      }
+      const selectedSubs = getSelectedLocSubcats();
+      const { services } = collectCatalogSuggestions();
+      const items = services
+        .filter((s) => {
+          if (s.catKey !== cat) return false;
+          if (!s.name.toLowerCase().includes(q)) return false;
+          if (selectedSubs.length && !selectedSubs.includes(s.subKey)) return false;
+          return true;
+        })
+        .map((s) => ({
+          label: s.name,
+          hint: `${s.subName}${s.price ? ' · ' + s.price : ''}`,
+          name: s.name,
+          price: s.price || '',
+          subKey: s.subKey,
+        }));
+      renderTextSuggestions('locServiceSuggestBox', items, (item) => {
+        document.getElementById('priceServiceCustom').value = item.name;
+        if (item.price && !document.getElementById('priceValue').value.trim()) {
+          document.getElementById('priceValue').value = item.price;
+        }
+        const selected = new Set(getSelectedLocSubcats());
+        if (item.subKey) selected.add(item.subKey);
+        renderLocSubcatsPicker(cat, [...selected]);
+        renderPriceServicesPicker(cat);
+        const cb = [...document.querySelectorAll('.price-service-cb')].find(
+          (el) => el.value === item.name
+        );
+        if (cb) {
+          cb.checked = true;
+          cb.dispatchEvent(new Event('change'));
+        }
+        showMessage(`Послугу «${item.name}» підставлено з каталогу`);
+      });
+    });
+
+    document.addEventListener('click', (e) => {
+      if (!e.target.closest('.suggest-wrap')) closeSuggestBoxes();
+    });
+
     document.getElementById('locAddCustomSubcatBtn')?.addEventListener('click', () => {
       const cat = document.getElementById('locCat').value;
       const name = document.getElementById('locCustomSubcatName').value.trim();
       if (!cat) return showMessage('Спочатку оберіть категорію', true);
-      if (name.length < 2) return showMessage('Вкажіть назву своєї підкатегорії', true);
+      if (name.length < 2) return showMessage('Вкажіть назву підкатегорії', true);
+
+      const existing = findCatalogSubcatByName(cat, name);
+      if (existing) {
+        const [key, sub] = existing;
+        const selected = new Set(getSelectedLocSubcats());
+        selected.add(key);
+        document.getElementById('locCustomSubcatName').value = '';
+        closeSuggestBoxes();
+        renderLocSubcatsPicker(cat, [...selected]);
+        renderPriceServicesPicker(cat);
+        return showMessage(`«${sub.name}» вже є в каталозі — позначено галочкою`);
+      }
+
       const key = slugifyCustomKey(name);
       locCustomSubcats[key] = { category: cat, name, services: locCustomSubcats[key]?.services || [] };
       document.getElementById('locCustomSubcatName').value = '';
+      closeSuggestBoxes();
       const selected = [...getSelectedLocSubcats(), key];
       renderLocSubcatsPicker(cat, selected);
       renderPriceServicesPicker(cat);
-      showMessage('Підкатегорію додано. Збережіть локацію, щоб застосувати.');
+      showMessage('Свою підкатегорію додано. Збережіть локацію, щоб застосувати.');
     });
 
     document.getElementById('locAddCustomServiceBtn')?.addEventListener('click', () => {
@@ -4598,6 +5270,25 @@
       const price = document.getElementById('priceValue').value.trim() || 'за домовленістю';
       const cat = document.getElementById('locCat').value;
       if (!name) return showMessage('Вкажіть назву послуги', true);
+
+      const existing = findCatalogServiceByName(cat, name);
+      if (existing) {
+        const selected = new Set(getSelectedLocSubcats());
+        selected.add(existing.subKey);
+        renderLocSubcatsPicker(cat, [...selected]);
+        locDraftPrices[existing.name] = price;
+        document.getElementById('priceServiceCustom').value = '';
+        document.getElementById('priceValue').value = '';
+        closeSuggestBoxes();
+        renderPriceServicesPicker(cat);
+        const cb = [...document.querySelectorAll('.price-service-cb')].find(
+          (el) => el.value === existing.name
+        );
+        if (cb) cb.checked = true;
+        syncPriceServicesSelectAll();
+        return showMessage(`«${existing.name}» з каталогу додано до прайсу. Збережіть локацію.`);
+      }
+
       locDraftPrices[name] = price;
       const selectedSubs = getSelectedLocSubcats();
       if (selectedSubs.length) {
@@ -4610,6 +5301,7 @@
       }
       document.getElementById('priceServiceCustom').value = '';
       document.getElementById('priceValue').value = '';
+      closeSuggestBoxes();
       renderPriceServicesPicker(cat);
       showMessage('Послугу додано до прайсу. Збережіть локацію.');
     });
