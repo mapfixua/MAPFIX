@@ -123,6 +123,15 @@ const CATEGORY_OSM_FILTERS = {
     'shop=deli',
     'cuisine=cake',
   ],
+  furniture: [
+    'shop=furniture',
+    'craft=carpenter',
+    'craft=cabinet_maker',
+    'shop=kitchen',
+    'shop=bed',
+    'shop=interior_decoration',
+    'craft=joiner',
+  ],
 };
 
 const CATEGORY_SUBCAT_HINTS = {
@@ -136,6 +145,7 @@ const CATEGORY_SUBCAT_HINTS = {
   rental: ['housing', 'tools', 'vehicles', 'equipment', 'spaces'],
   medical: ['dentistry', 'therapy', 'diagnostics', 'physiotherapy'],
   food: ['cakes', 'bakery', 'lunch_delivery', 'catering', 'chocolate'],
+  furniture: ['custom_furniture', 'assembly', 'kitchen', 'wardrobes', 'upholstery'],
 };
 
 function makeLocationId(seed) {
@@ -426,6 +436,7 @@ async function fetchGooglePlaces({ city, category, apiKey }) {
     rental: 'оренда житла квартира будинок подобово прокат інструментів авто обладнання',
     medical: 'стоматологія клініка терапевт аналізи фізіотерапія психолог',
     food: 'торт кондитерська випічка пекарня кейтеринг зефір домашні напівфабрикати доставка обідів',
+    furniture: 'меблі на замовлення шафа-купе кухня збирання меблів столяр перетяжка диванів',
   };
 
   const textQuery = `${catNames[cat] || cat} ${preset.name}`;
