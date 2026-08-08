@@ -112,6 +112,17 @@ const CATEGORY_OSM_FILTERS = {
     'amenity=pharmacy',
     'leisure=spa',
   ],
+  food: [
+    'shop=bakery',
+    'shop=confectionery',
+    'shop=pastry',
+    'craft=confectionery',
+    'amenity=cafe',
+    'amenity=fast_food',
+    'shop=chocolate',
+    'shop=deli',
+    'cuisine=cake',
+  ],
 };
 
 const CATEGORY_SUBCAT_HINTS = {
@@ -124,6 +135,7 @@ const CATEGORY_SUBCAT_HINTS = {
   sport: ['fitness', 'swimming', 'martial'],
   rental: ['housing', 'tools', 'vehicles', 'equipment', 'spaces'],
   medical: ['dentistry', 'therapy', 'diagnostics', 'physiotherapy'],
+  food: ['cakes', 'bakery', 'lunch_delivery', 'catering', 'chocolate'],
 };
 
 function makeLocationId(seed) {
@@ -413,6 +425,7 @@ async function fetchGooglePlaces({ city, category, apiKey }) {
     sport: 'спортзал фітнес басейн єдиноборства',
     rental: 'оренда житла квартира будинок подобово прокат інструментів авто обладнання',
     medical: 'стоматологія клініка терапевт аналізи фізіотерапія психолог',
+    food: 'торт кондитерська випічка пекарня кейтеринг зефір домашні напівфабрикати доставка обідів',
   };
 
   const textQuery = `${catNames[cat] || cat} ${preset.name}`;
