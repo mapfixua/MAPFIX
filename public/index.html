@@ -11,9 +11,14 @@
     <meta property="og:type" content="website">
     <meta property="og:url" content="https://mapfix-wine.vercel.app/">
     <meta name="theme-color" content="#12c4b5">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    <meta name="apple-mobile-web-app-title" content="Mapfix">
     <link rel="manifest" href="/manifest.json">
     <link rel="icon" href="/favicon.svg" type="image/svg+xml">
-    <link rel="apple-touch-icon" href="/favicon.svg">
+    <link rel="icon" href="/icon-192.png" type="image/png" sizes="192x192">
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" sizes="180x180">
 
     <link rel="preconnect" href="https://unpkg.com" crossorigin>
     <link rel="preconnect" href="https://cdnjs.cloudflare.com" crossorigin>
@@ -564,6 +569,12 @@
         }
         .add-business-btn:hover { filter: brightness(0.96); }
         .add-business-btn .btn-label { margin-right: 0; }
+        .install-app-btn {
+            padding: 0 14px; color: var(--ink); background: #fff; white-space: nowrap; gap: 6px;
+            border: 1.5px solid #d7dde7;
+        }
+        .install-app-btn:hover { background: #f8fafc; }
+        .install-app-btn.hidden { display: none !important; }
         .user-menu {
             display: none;
             position: absolute;
@@ -603,6 +614,66 @@
         }
         .user-menu-item:hover { background: var(--bg); }
         .user-menu-item.danger { color: var(--danger); }
+        .pwa-install-banner {
+            display: none;
+            position: absolute;
+            left: 12px;
+            right: 12px;
+            bottom: 18px;
+            z-index: 12;
+            pointer-events: auto;
+            background: #fff;
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            box-shadow: 0 12px 36px rgba(11,13,16,0.16);
+            padding: 12px 14px;
+            gap: 10px;
+            align-items: center;
+        }
+        .pwa-install-banner.show { display: flex; }
+        .pwa-install-banner-icon {
+            width: 44px; height: 44px; border-radius: 12px; flex-shrink: 0;
+            background: #12c4b5 url('/icon-192.png') center/cover no-repeat;
+        }
+        .pwa-install-banner-text { flex: 1; min-width: 0; }
+        .pwa-install-banner-text strong {
+            display: block; font-size: 14px; font-weight: 800; margin-bottom: 2px;
+        }
+        .pwa-install-banner-text span {
+            display: block; font-size: 12px; color: var(--muted); font-weight: 600; line-height: 1.35;
+        }
+        .pwa-install-banner-actions { display: flex; gap: 6px; flex-shrink: 0; }
+        .pwa-install-banner button {
+            border: none; border-radius: 10px; height: 36px; padding: 0 12px;
+            font-family: inherit; font-weight: 800; font-size: 12px; cursor: pointer;
+        }
+        .pwa-install-banner .pwa-install-cta { background: var(--dark); color: #fff; }
+        .pwa-install-banner .pwa-install-dismiss { background: #f1f5f9; color: #334155; }
+        .pwa-install-modal {
+            display: none; position: fixed; inset: 0; z-index: 1200;
+            background: rgba(11,13,16,0.45); align-items: flex-end; justify-content: center;
+            padding: 16px;
+        }
+        .pwa-install-modal.show { display: flex; }
+        .pwa-install-sheet {
+            width: min(440px, 100%); background: #fff; border-radius: 18px;
+            padding: 18px 18px 16px; box-shadow: 0 20px 50px rgba(0,0,0,0.22);
+        }
+        .pwa-install-sheet h3 { margin: 0 0 8px; font-size: 1.05rem; }
+        .pwa-install-sheet p { margin: 0 0 12px; color: #475569; font-size: 0.9rem; line-height: 1.45; }
+        .pwa-install-sheet ol { margin: 0 0 14px; padding-left: 18px; color: #0f172a; font-size: 0.9rem; line-height: 1.55; }
+        .pwa-install-sheet ol li { margin-bottom: 6px; }
+        .pwa-install-sheet .pwa-modal-actions { display: flex; gap: 8px; }
+        .pwa-install-sheet .pwa-modal-actions button {
+            flex: 1; height: 42px; border: none; border-radius: 12px;
+            font-family: inherit; font-weight: 800; cursor: pointer;
+        }
+        .pwa-install-sheet .pwa-modal-primary { background: var(--dark); color: #fff; }
+        .pwa-install-sheet .pwa-modal-secondary { background: #f1f5f9; color: #334155; }
+        @media (min-width: 901px) {
+            .pwa-install-banner { left: auto; right: 18px; bottom: 24px; width: min(380px, calc(100% - 36px)); }
+            .pwa-install-modal { align-items: center; }
+        }
         .import-modal {
             position: fixed; inset: 0; z-index: 3000; padding: 18px;
             background: rgba(15, 23, 42, 0.55); display: flex; align-items: center; justify-content: center;
@@ -902,6 +973,12 @@
             }
             .add-business-btn .btn-label { font-size: 12px; }
             .add-business-btn i { font-size: 12px; }
+            .install-app-btn {
+                padding: 0 10px;
+                min-width: 44px;
+                font-size: 12px;
+            }
+            .install-app-btn .btn-label { display: none; }
 
             .login-btn span { display: inline; }
             .login-btn {
@@ -1089,6 +1166,7 @@
                 </div>
                 <div class="top-header-end">
                     <button type="button" class="header-btn add-business-btn" id="addBusinessBtn" title="Додати заклад"><span class="btn-label">Додати</span><i class="fa-solid fa-plus" aria-hidden="true"></i></button>
+                    <button type="button" class="header-btn install-app-btn" id="installAppHeaderBtn" title="Встановити додаток Mapfix" aria-label="Встановити додаток"><i class="fa-solid fa-download" aria-hidden="true"></i><span class="btn-label">Додаток</span></button>
                     <a class="header-btn login-btn" id="loginHeaderBtn" href="/login.html"><i class="fa-solid fa-right-to-bracket" aria-hidden="true"></i><span>Вхід</span></a>
                     <div class="profile-wrap">
                         <button type="button" class="header-btn profile-btn hidden" id="profileBtn" title="Профіль" aria-haspopup="true" aria-expanded="false">👤</button>
@@ -1100,6 +1178,30 @@
 
         <button id="geo-btn" type="button" aria-label="Моє місцезнаходження"><i class="fa-solid fa-location-crosshairs"></i></button>
         <div id="map"></div>
+
+        <div class="pwa-install-banner" id="pwaInstallBanner" role="dialog" aria-label="Встановити Mapfix">
+            <div class="pwa-install-banner-icon" aria-hidden="true"></div>
+            <div class="pwa-install-banner-text">
+                <strong>Mapfix як додаток</strong>
+                <span>Додайте на головний екран — швидший доступ без рядка браузера</span>
+            </div>
+            <div class="pwa-install-banner-actions">
+                <button type="button" class="pwa-install-dismiss" id="pwaInstallDismiss">Пізніше</button>
+                <button type="button" class="pwa-install-cta" id="pwaInstallBannerBtn">Додати</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="pwa-install-modal" id="pwaInstallModal" aria-hidden="true">
+        <div class="pwa-install-sheet" role="dialog" aria-labelledby="pwaInstallTitle">
+            <h3 id="pwaInstallTitle">Встановити Mapfix</h3>
+            <p id="pwaInstallLead">Додайте іконку на головний екран телефону — Mapfix відкриватиметься як додаток.</p>
+            <ol id="pwaInstallSteps"></ol>
+            <div class="pwa-modal-actions">
+                <button type="button" class="pwa-modal-secondary" id="pwaInstallClose">Зрозуміло</button>
+                <button type="button" class="pwa-modal-primary" id="pwaInstallConfirm">Встановити</button>
+            </div>
+        </div>
     </div>
 
     <div id="sidebar" class="bottom-sheet">
@@ -1524,6 +1626,20 @@
                 profileBtn.setAttribute('aria-expanded', 'true');
             }
 
+            function pwaInstallMenuItemHtml() {
+                if (window.MapfixPwa?.isStandalone?.()) return '';
+                return `<button type="button" class="user-menu-item" id="installAppMenuBtn">📲 Встановити додаток</button>`;
+            }
+
+            function bindInstallAppMenuBtn() {
+                const btn = document.getElementById('installAppMenuBtn');
+                if (!btn) return;
+                btn.onclick = () => {
+                    closeUserMenu();
+                    window.MapfixPwa?.promptInstall?.();
+                };
+            }
+
             function updateHeaderAuthUI() {
                 const u = State.currentUser;
                 const loginBtn = document.getElementById('loginHeaderBtn');
@@ -1537,7 +1653,9 @@
                         <div class="user-menu-header">Гість</div>
                         <a class="user-menu-item" href="/login.html">Увійти</a>
                         <a class="user-menu-item" href="/register.html">Реєстрація</a>
-                        <a class="user-menu-item" href="/register.html?role=provider">Реєстрація провайдера</a>`;
+                        <a class="user-menu-item" href="/register.html?role=provider">Реєстрація провайдера</a>
+                        ${pwaInstallMenuItemHtml()}`;
+                    bindInstallAppMenuBtn();
                     return;
                 }
 
@@ -1558,9 +1676,11 @@
                     </div>
                     <a class="user-menu-item" href="${cabinetHref}">${cabinetLabel}</a>
                     <button type="button" class="user-menu-item" id="importGoogleMenuBtn">Додати з Google Maps</button>
+                    ${pwaInstallMenuItemHtml()}
                     <button type="button" class="user-menu-item danger" id="logoutMenuBtn">Вийти</button>`;
 
                 document.getElementById('importGoogleMenuBtn').onclick = openGoogleImport;
+                bindInstallAppMenuBtn();
                 document.getElementById('logoutMenuBtn').onclick = async () => {
                     await fetch('/api/logout', { method: 'POST' }).catch(() => {});
                     State.currentUser = null;
@@ -3068,6 +3188,162 @@
             if ('serviceWorker' in navigator) {
                 navigator.serviceWorker.register('/sw.js').catch(() => {});
             }
+
+            (function initPwaInstall() {
+                const DISMISS_KEY = 'mapfix_pwa_banner_dismissed_v1';
+                const banner = document.getElementById('pwaInstallBanner');
+                const modal = document.getElementById('pwaInstallModal');
+                const stepsEl = document.getElementById('pwaInstallSteps');
+                const leadEl = document.getElementById('pwaInstallLead');
+                const confirmBtn = document.getElementById('pwaInstallConfirm');
+                let deferredPrompt = null;
+
+                function isStandalone() {
+                    return (
+                        window.matchMedia('(display-mode: standalone)').matches ||
+                        window.navigator.standalone === true
+                    );
+                }
+
+                function isIos() {
+                    return /iphone|ipad|ipod/i.test(navigator.userAgent) ||
+                        (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+                }
+
+                function isAndroid() {
+                    return /android/i.test(navigator.userAgent);
+                }
+
+                function canShowBanner() {
+                    if (isStandalone()) return false;
+                    try {
+                        if (localStorage.getItem(DISMISS_KEY) === '1') return false;
+                    } catch (_) {}
+                    return true;
+                }
+
+                function hideBanner() {
+                    banner?.classList.remove('show');
+                }
+
+                function showBanner() {
+                    if (!canShowBanner() || !banner) return;
+                    banner.classList.add('show');
+                }
+
+                function closeModal() {
+                    if (!modal) return;
+                    modal.classList.remove('show');
+                    modal.setAttribute('aria-hidden', 'true');
+                }
+
+                function openModal(mode) {
+                    if (!modal || !stepsEl || !leadEl || !confirmBtn) return;
+                    if (mode === 'native' && deferredPrompt) {
+                        leadEl.textContent = 'Натисніть «Встановити» — з’явиться системне вікно Android/Chrome.';
+                        stepsEl.innerHTML = '<li>Підтвердіть встановлення Mapfix на телефон</li><li>Іконка з’явиться на головному екрані</li>';
+                        confirmBtn.style.display = '';
+                        confirmBtn.textContent = 'Встановити';
+                    } else if (isIos()) {
+                        leadEl.textContent = 'На iPhone Safari сам не пропонує встановлення. Зробіть так:';
+                        stepsEl.innerHTML = [
+                            '<li>Натисніть кнопку <strong>Поділитися</strong> (□↑) внизу Safari</li>',
+                            '<li>Прокрутіть меню й оберіть <strong>«На екран «Додому»»</strong></li>',
+                            '<li>Натисніть <strong>Додати</strong> — з’явиться іконка Mapfix</li>',
+                        ].join('');
+                        confirmBtn.style.display = 'none';
+                    } else if (isAndroid()) {
+                        leadEl.textContent = 'Якщо системне вікно не з’явилось, додайте вручну в Chrome:';
+                        stepsEl.innerHTML = [
+                            '<li>Відкрийте меню Chrome <strong>⋮</strong> праворуч угорі</li>',
+                            '<li>Оберіть <strong>«Встановити додаток»</strong> або <strong>«Додати на головний екран»</strong></li>',
+                            '<li>Підтвердіть — іконка Mapfix з’явиться на екрані</li>',
+                        ].join('');
+                        confirmBtn.style.display = 'none';
+                    } else {
+                        leadEl.textContent = 'У браузері відкрийте меню і додайте Mapfix на головний екран / як додаток.';
+                        stepsEl.innerHTML = '<li>Chrome / Edge: меню → «Встановити Mapfix» або «Додати на головний екран»</li>';
+                        confirmBtn.style.display = 'none';
+                    }
+                    modal.classList.add('show');
+                    modal.setAttribute('aria-hidden', 'false');
+                }
+
+                async function promptInstall() {
+                    if (isStandalone()) return;
+                    if (deferredPrompt) {
+                        openModal('native');
+                        return;
+                    }
+                    openModal('manual');
+                }
+
+                function syncInstallUi() {
+                    const headerBtn = document.getElementById('installAppHeaderBtn');
+                    if (headerBtn) headerBtn.classList.toggle('hidden', isStandalone());
+                    if (typeof updateHeaderAuthUI === 'function') updateHeaderAuthUI();
+                }
+
+                window.MapfixPwa = {
+                    isStandalone,
+                    promptInstall,
+                    refreshMenu: syncInstallUi,
+                };
+
+                window.addEventListener('beforeinstallprompt', (e) => {
+                    e.preventDefault();
+                    deferredPrompt = e;
+                    showBanner();
+                    syncInstallUi();
+                });
+
+                window.addEventListener('appinstalled', () => {
+                    deferredPrompt = null;
+                    hideBanner();
+                    closeModal();
+                    try { localStorage.setItem(DISMISS_KEY, '1'); } catch (_) {}
+                    syncInstallUi();
+                });
+
+                document.getElementById('pwaInstallDismiss')?.addEventListener('click', () => {
+                    try { localStorage.setItem(DISMISS_KEY, '1'); } catch (_) {}
+                    hideBanner();
+                });
+
+                document.getElementById('pwaInstallBannerBtn')?.addEventListener('click', () => {
+                    promptInstall();
+                });
+                document.getElementById('installAppHeaderBtn')?.addEventListener('click', () => {
+                    promptInstall();
+                });
+
+                document.getElementById('pwaInstallClose')?.addEventListener('click', closeModal);
+                modal?.addEventListener('click', (e) => {
+                    if (e.target === modal) closeModal();
+                });
+
+                confirmBtn?.addEventListener('click', async () => {
+                    if (!deferredPrompt) {
+                        closeModal();
+                        return;
+                    }
+                    deferredPrompt.prompt();
+                    try { await deferredPrompt.userChoice; } catch (_) {}
+                    deferredPrompt = null;
+                    hideBanner();
+                    closeModal();
+                    syncInstallUi();
+                });
+
+                syncInstallUi();
+
+                // iOS / browsers without beforeinstallprompt: soft hint after short use
+                if (!isStandalone() && canShowBanner() && (isIos() || isAndroid())) {
+                    setTimeout(() => {
+                        if (!deferredPrompt) showBanner();
+                    }, 8000);
+                }
+            })();
         });
     </script>
 

@@ -1,6 +1,15 @@
 /* Mapfix offline shell */
-const CACHE = 'mapfix-shell-v1';
-const ASSETS = ['/', '/manifest.json', '/favicon.svg', '/login.html', '/register.html'];
+const CACHE = 'mapfix-shell-v2';
+const ASSETS = [
+  '/',
+  '/manifest.json',
+  '/favicon.svg',
+  '/icon-192.png',
+  '/icon-512.png',
+  '/apple-touch-icon.png',
+  '/login.html',
+  '/register.html',
+];
 
 self.addEventListener('install', (event) => {
   event.waitUntil(caches.open(CACHE).then((c) => c.addAll(ASSETS)).then(() => self.skipWaiting()));
