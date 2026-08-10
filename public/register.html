@@ -108,10 +108,19 @@
     document.getElementById('roleClientBtn').onclick = () => setRole('client');
     document.getElementById('roleProviderBtn').onclick = () => setRole('provider');
     const registerParams = new URLSearchParams(location.search);
+    const nextRaw = registerParams.get('next') || '';
+    const phonePrefill = (registerParams.get('phone') || '').trim();
+    if (phonePrefill) {
+      document.getElementById('phone').value = phonePrefill;
+    }
     if (registerParams.get('role') === 'provider') {
       setRole('provider');
       const sub = document.getElementById('registerSub');
-      if (sub) sub.textContent = 'Створіть акаунт майстра — потім зможете додати свій заклад на карту.';
+      if (sub) {
+        sub.textContent = nextRaw.includes('claim=1')
+          ? 'Створіть акаунт майстра. Важливо: телефон має збігатися з телефоном на картці закладу.'
+          : 'Створіть акаунт майстра — потім зможете додати свій заклад на карту.';
+      }
     } else {
       setRole('client');
     }
@@ -126,6 +135,28 @@
         return '';
       }
     }
+
+    function authLink(path, extraParams) {
+      const u = new URL(path, location.origin);
+      const next = safeNextPath();
+      if (next) u.searchParams.set('next', next);
+      if (extraParams) {
+        Object.entries(extraParams).forEach(([k, v]) => {
+          if (v) u.searchParams.set(k, v);
+        });
+      }
+      return u.pathname + u.search;
+    }
+
+    document.querySelectorAll('a[href="/login.html"]').forEach((a) => {
+      a.href = authLink('/login.html');
+    });
+    document.querySelectorAll('a[href="/register.html"]').forEach((a) => {
+      a.href = authLink('/register.html', {
+        role: registerParams.get('role') || '',
+        phone: phonePrefill || '',
+      });
+    });
 
     function redirectByRole(role) {
       const next = safeNextPath();

@@ -1857,7 +1857,8 @@
                 setTimeout(() => {
                     const u = State.currentUser;
                     if (u && u.role === 'provider') {
-                        claimLocationFromMap(urlLoc);
+                        const loc = (window.mockLocations || []).find((l) => l.id === urlLoc);
+                        if (loc && !loc.providerId) claimLocationFromMap(urlLoc);
                     }
                 }, 900);
             }
@@ -2512,12 +2513,22 @@
                     ? `<button type="button" class="action-btn btn-dive" onclick="event.stopPropagation(); diveIntoSelectedDetail()">Детальніше</button>
                        <p class="detail-preview-hint">Ще раз по маркеру або «Детальніше» — повна картка</p>`
                     : '';
-                const canOfferClaim = !loc.providerId;
+                const canOfferClaim =
+                    !loc.providerId &&
+                    !(State.currentUser && State.currentUser.role === 'admin');
+                const locPhoneDigits = String(loc.phone || '').replace(/\D/g, '');
+                const locHasClaimPhone = locPhoneDigits.length >= 10;
                 const claimBannerHtml = canOfferClaim
                     ? `<div class="claim-owner-banner" id="claimOwnerBanner">
                         <strong>Це ваш заклад? Заберіть за 2 хв</strong>
-                        <p>Підтвердіть телефон — і точка стане вашою: прайс, фото, замовлення.</p>
-                        <button type="button" class="action-btn btn-claim" id="claimLocBtn" onclick="event.stopPropagation(); claimLocationFromMap('${escapeHtml(loc.id)}')">Забрати заклад</button>
+                        <p>${
+                          locHasClaimPhone
+                            ? 'Зареєструйтесь як майстер із телефоном закладу — підтвердите код у Telegram і точка стане вашою.'
+                            : 'У точки немає телефону для автопідтвердження. Напишіть нам через «Повідомити про помилку» — призначимо вручну.'
+                        }</p>
+                        <button type="button" class="action-btn btn-claim" id="claimLocBtn" onclick="event.stopPropagation(); claimLocationFromMap('${escapeHtml(loc.id)}')">${
+                          locHasClaimPhone ? 'Забрати заклад' : 'Повідомити, що це мій заклад'
+                        }</button>
                        </div>`
                     : '';
                 const headerBox = document.getElementById('detailHeaderContent');
@@ -2592,23 +2603,49 @@
                 return '/?loc=' + encodeURIComponent(locationId) + '&claim=1';
             }
 
+            function claimRegisterUrl(locationId) {
+                const loc = (window.mockLocations || []).find((l) => l.id === locationId);
+                const back = claimReturnUrl(locationId);
+                let url =
+                    '/register.html?role=provider&next=' + encodeURIComponent(back);
+                const phone = String(loc?.phone || '').trim();
+                if (phone) url += '&phone=' + encodeURIComponent(phone);
+                return url;
+            }
+
+            function claimLoginUrl(locationId) {
+                return '/login.html?next=' + encodeURIComponent(claimReturnUrl(locationId));
+            }
+
+            function locationHasClaimPhone(locationId) {
+                const loc = (window.mockLocations || []).find((l) => l.id === locationId);
+                return String(loc?.phone || '').replace(/\D/g, '').length >= 10;
+            }
+
             window.claimLocationFromMap = async function(locationId) {
                 const u = State.currentUser;
-                const back = claimReturnUrl(locationId);
+                if (!locationHasClaimPhone(locationId)) {
+                    if (confirm('У цього закладу немає телефону для автопідтвердження.\n\nВідкрити форму «Повідомити про помилку», щоб ми призначили вас власником?')) {
+                        openSiteFeedbackModal();
+                    }
+                    return;
+                }
                 if (!u) {
-                    if (confirm('Це ваш заклад? Заберіть за ~2 хв.\n\nСпочатку зареєструйтесь як майстер (безкоштовно). Перейти?')) {
-                        location.href = '/register.html?role=provider&next=' + encodeURIComponent(back);
+                    if (confirm('Це ваш заклад? Заберіть за ~2 хв.\n\nOK — реєстрація майстра (безкоштовно)\nСкасувати — увійти, якщо акаунт уже є')) {
+                        location.href = claimRegisterUrl(locationId);
+                    } else if (confirm('Увійти в акаунт майстра?')) {
+                        location.href = claimLoginUrl(locationId);
                     }
                     return;
                 }
                 if (u.role === 'client') {
                     if (confirm('Забирати заклад можуть майстри. Зареєструватись як майстер?')) {
-                        location.href = '/register.html?role=provider&next=' + encodeURIComponent(back);
+                        location.href = claimRegisterUrl(locationId);
                     }
                     return;
                 }
                 if (u.role !== 'provider') {
-                    alert('Потрібен акаунт майстра, щоб забрати заклад.');
+                    alert('Потрібен акаунт майстра, щоб забрати заклад. Вийдіть з адмінки й увійдіть як майстер, або призначте власника в адмінці.');
                     return;
                 }
                 try {

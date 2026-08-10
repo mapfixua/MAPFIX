@@ -1,5 +1,5 @@
 /* Mapfix offline shell */
-const CACHE = 'mapfix-shell-v2';
+const CACHE = 'mapfix-shell-v3';
 const ASSETS = [
   '/',
   '/manifest.json',

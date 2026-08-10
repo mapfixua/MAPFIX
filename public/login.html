@@ -22,8 +22,8 @@
       <p class="mf-sub" id="loginSub">Увійдіть логіном і паролем. Якщо акаунта ще немає — зареєструйтесь.</p>
 
       <nav class="mf-seg" aria-label="Вхід або реєстрація">
-        <a class="active" href="/login.html">Вхід</a>
-        <a href="/register.html">Реєстрація</a>
+        <a class="active" href="/login.html" id="navLogin">Вхід</a>
+        <a href="/register.html" id="navRegister">Реєстрація</a>
       </nav>
 
       <div id="oauthBlock" class="mf-oauth mf-hidden">
@@ -72,9 +72,9 @@
     </div>
 
     <p class="mf-foot">
-      Немає акаунта? <a href="/register.html">Зареєструйтесь</a>.
+      Немає акаунта? <a href="/register.html" id="footRegister">Зареєструйтесь</a>.
     </p>
-    <p class="mf-links"><a href="/forgot-password.html">Забули пароль?</a></p>
+    <p class="mf-links"><a href="/forgot-password.html">Забули пароль?</a> · <a href="/?feedback=1">Повідомити про помилку</a></p>
   </div>
 
   <script>
@@ -90,20 +90,44 @@
     function safeNextPath() {
       try {
         const next = new URLSearchParams(location.search).get('next') || '';
-        if (next.startsWith('/') && !next.startsWith('//') && !next.includes('\\')) return next;
+        if (!next.startsWith('/') || next.startsWith('//') || next.includes('\\')) return '';
+        if (next.includes('://')) return '';
+        return next.slice(0, 300);
       } catch (_) {}
       return '';
     }
 
+    (function preserveAuthLinks() {
+      const next = safeNextPath();
+      const regQs = new URLSearchParams();
+      if (next) regQs.set('next', next);
+      if (next.includes('claim=1') || next.includes('add=1')) regQs.set('role', 'provider');
+      const regHref = '/register.html' + (regQs.toString() ? '?' + regQs.toString() : '');
+      const loginHref = '/login.html' + (next ? '?next=' + encodeURIComponent(next) : '');
+      const navLogin = document.getElementById('navLogin');
+      const navRegister = document.getElementById('navRegister');
+      const footRegister = document.getElementById('footRegister');
+      if (navLogin) navLogin.href = loginHref;
+      if (navRegister) navRegister.href = regHref;
+      if (footRegister) footRegister.href = regHref;
+    })();
+
     function redirectByRole(role) {
       const next = safeNextPath();
-      if (next === '/admin' && (role === 'admin' || role === 'provider')) {
-        location.href = '/admin';
-        return;
-      }
-      if (next === '/client' && role === 'client') {
-        location.href = '/client';
-        return;
+      if (next) {
+        const pathOnly = next.split('?')[0] || '/';
+        if ((pathOnly === '/admin' || pathOnly.startsWith('/admin')) && (role === 'admin' || role === 'provider')) {
+          location.href = next;
+          return;
+        }
+        if ((pathOnly === '/client' || pathOnly.startsWith('/client')) && role === 'client') {
+          location.href = next;
+          return;
+        }
+        if (pathOnly === '/' || pathOnly === '/index.html' || pathOnly === '') {
+          location.href = next.startsWith('/') ? next : '/';
+          return;
+        }
       }
       if (role === 'admin' || role === 'provider') location.href = '/admin';
       else if (role === 'client') location.href = '/client';
