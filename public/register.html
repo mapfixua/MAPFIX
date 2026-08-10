@@ -17,7 +17,7 @@
         <span class="mf-brand-name">Mapfix</span>
       </div>
       <h1 class="mf-title">Реєстрація</h1>
-      <p class="mf-sub" id="registerSub">Створіть акаунт логіном і паролем. Google / Apple з’являться після налаштування.</p>
+      <p class="mf-sub" id="registerSub">Створіть акаунт логіном і паролем.</p>
 
       <nav class="mf-seg" aria-label="Вхід або реєстрація">
         <a href="/login.html">Вхід</a>
@@ -80,6 +80,7 @@
 
       <div id="message" class="msg" role="alert"></div>
     </div>
+    <p class="mf-links" style="text-align:center;margin-top:14px"><a href="/?feedback=1">Повідомити про помилку</a></p>
   </div>
 
   <script>
@@ -106,10 +107,32 @@
 
     document.getElementById('roleClientBtn').onclick = () => setRole('client');
     document.getElementById('roleProviderBtn').onclick = () => setRole('provider');
-    if (new URLSearchParams(location.search).get('role') === 'provider') setRole('provider');
-    else setRole('client');
+    const registerParams = new URLSearchParams(location.search);
+    if (registerParams.get('role') === 'provider') {
+      setRole('provider');
+      const sub = document.getElementById('registerSub');
+      if (sub) sub.textContent = 'Створіть акаунт майстра — потім зможете додати свій заклад на карту.';
+    } else {
+      setRole('client');
+    }
+
+    function safeNextPath() {
+      try {
+        const next = registerParams.get('next') || '';
+        if (!next.startsWith('/') || next.startsWith('//') || next.includes('\\')) return '';
+        if (next.includes('://')) return '';
+        return next.slice(0, 300);
+      } catch (_) {
+        return '';
+      }
+    }
 
     function redirectByRole(role) {
+      const next = safeNextPath();
+      if (next) {
+        location.href = next;
+        return;
+      }
       if (role === 'admin' || role === 'provider') location.href = '/admin';
       else if (role === 'client') location.href = '/client';
       else location.href = '/';
@@ -202,7 +225,7 @@
       }
 
       document.getElementById('googleBtn').onclick = () => {
-        if (!oauthConfig.googleEnabled) return showMsg('Додайте GOOGLE_CLIENT_ID у Vercel', false);
+        if (!oauthConfig.googleEnabled) return showMsg('Вхід через Google тимчасово недоступний. Зареєструйтесь логіном і паролем.', false);
         if (window.google?.accounts?.id) {
           google.accounts.id.prompt();
         } else {
@@ -211,7 +234,7 @@
       };
 
       document.getElementById('appleBtn').onclick = async () => {
-        if (!oauthConfig.appleEnabled) return showMsg('Додайте APPLE_CLIENT_ID у Vercel', false);
+        if (!oauthConfig.appleEnabled) return showMsg('Вхід через Apple тимчасово недоступний. Зареєструйтесь логіном і паролем.', false);
         if (!window.AppleID) return showMsg('Apple SDK ще завантажується', false);
         try {
           const rawNonce = makeNonce();
