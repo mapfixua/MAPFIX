@@ -33,6 +33,16 @@ const EXPECTED = {
     'telegram_id',
     'created_at',
   ],
+  provider_profiles: [
+    'user_id',
+    'company_name',
+    'phone',
+    'service_categories',
+    'service_subcategories',
+    'custom_subcategories',
+    'created_at',
+    'updated_at',
+  ],
 };
 
 /** Maps DB snake_case columns to JS property names used in app code */

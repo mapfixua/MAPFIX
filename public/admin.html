@@ -5034,22 +5034,41 @@
 
     document.getElementById('profileForm').onsubmit = async (e) => {
       e.preventDefault();
+      const name = document.getElementById('companyName').value.trim();
+      if (name.length < 2) return showMessage('Вкажіть назву компанії (мін. 2 символи)', true);
+      const submitBtn = e.target.querySelector('button[type="submit"]');
+      if (submitBtn) submitBtn.disabled = true;
       try {
         const j = await apiFetch('/api/provider/profile', {
           method: 'PUT',
           body: JSON.stringify({
-            companyName: document.getElementById('companyName').value.trim(),
+            companyName: name,
             phone: document.getElementById('companyPhone').value.trim(),
           }),
         });
         if (j.profile) providerData.profile = j.profile;
         if (j.account) providerData.account = j.account;
+        document.getElementById('companyName').value = j.profile?.companyName || name;
         document.getElementById('companyPhone').value =
           j.account?.phone || j.profile?.phone || document.getElementById('companyPhone').value;
+        if (currentUser) currentUser.companyName = j.profile?.companyName || name;
+        const userInfo = document.getElementById('userInfo');
+        if (userInfo && currentUser) {
+          const roleLabel =
+            currentUser.role === 'admin'
+              ? '<span class="badge badge-admin">Суперадмін</span>'
+              : '<span class="badge badge-provider">Провайдер</span>';
+          userInfo.innerHTML =
+            `${esc(currentUser.login)} ${roleLabel}` +
+            (currentUser.companyName ? ` · ${esc(currentUser.companyName)}` : '');
+        }
         renderTelegramStatus();
-        showMessage('Профіль збережено');
+        if (j.warning) showMessage(j.warning, true);
+        else showMessage('Профіль збережено');
       } catch (err) {
         showMessage(err.message, true);
+      } finally {
+        if (submitBtn) submitBtn.disabled = false;
       }
     };
 

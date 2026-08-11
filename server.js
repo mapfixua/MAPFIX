@@ -4036,7 +4036,17 @@ app.put('/api/provider/profile', requireAuth, requireProvider, async (req, res) 
       req.body.serviceCategories === undefined &&
       req.body.serviceSubcategories === undefined &&
       req.body.customSubcategories === undefined;
-    if (req.body.companyName?.trim()) profile.companyName = req.body.companyName.trim();
+
+    const companyNameRaw =
+      req.body.companyName !== undefined ? String(req.body.companyName || '').trim() : undefined;
+    if (companyNameRaw !== undefined) {
+      if (companyNameRaw.length < 2) {
+        return res.status(400).json({ error: 'Назва компанії має містити щонайменше 2 символи' });
+      }
+      profile.companyName = companyNameRaw;
+    }
+
+    let phoneWarning = null;
     if (req.body.phone !== undefined) {
       const phoneRaw = String(req.body.phone || '').trim();
       if (!phoneRaw) {
@@ -4044,24 +4054,29 @@ app.put('/api/provider/profile', requireAuth, requireProvider, async (req, res) 
         const clearErr = await updateUserPhone(user.id, null);
         if (clearErr && clearErr.code !== '23502') {
           console.warn('[profile] clear users.phone:', clearErr.message);
+          phoneWarning = 'Назву збережено, але телефон очистити не вдалося';
         }
       } else {
         const normalizedPhone = normalizePhone(phoneRaw);
         if (!normalizedPhone || normalizedPhone.replace(/\D/g, '').length < 10) {
-          return res.status(400).json({ error: 'Невірний формат телефону' });
-        }
-        const phoneError = await updateUserPhone(user.id, normalizedPhone);
-        if (phoneError) {
-          if (phoneError.code === '23505') {
-            return res.status(409).json({
-              error: 'Цей телефон уже зайнятий іншим акаунтом',
-            });
+          // Do not block company rename when phone field is invalid.
+          phoneWarning = 'Назву збережено. Телефон не оновлено: невірний формат';
+        } else {
+          const phoneError = await updateUserPhone(user.id, normalizedPhone);
+          if (phoneError) {
+            if (phoneError.code === '23505') {
+              phoneWarning = 'Назву збережено. Цей телефон уже зайнятий іншим акаунтом';
+            } else {
+              console.warn('[profile] update users.phone:', phoneError.message);
+              phoneWarning = 'Назву збережено, але телефон оновити не вдалося';
+            }
+          } else {
+            profile.phone = normalizedPhone;
           }
-          return res.status(500).json({ error: 'Не вдалося зберегти телефон' });
         }
-        profile.phone = normalizedPhone;
       }
     }
+
     if (req.body.serviceSubcategories !== undefined) {
       profile.serviceSubcategories = normalizeServiceSubcategories(
         req.body.serviceSubcategories,
@@ -4104,17 +4119,40 @@ app.put('/api/provider/profile', requireAuth, requireProvider, async (req, res) 
           'Оберіть категорію, підкатегорію з каталогу або додайте свою підкатегорію',
       });
     }
+
+    if (!profile.createdAt) profile.createdAt = new Date().toISOString();
+
+    let remoteOk = false;
+    let remoteMissing = false;
     try {
-      await upsertProviderProfile(user.id, profile);
-      invalidateReadDataCache();
+      const saved = await upsertProviderProfile(user.id, profile);
+      remoteOk = Boolean(saved?.ok);
+      remoteMissing = Boolean(saved?.missing);
+      if (!saved?.ok && saved?.error) {
+        console.warn('[profile] supabase profile:', saved.error.message || saved.error);
+      }
     } catch (e) {
       console.warn('[profile] supabase profile:', e.message);
     }
+
+    let localOk = false;
     try {
       await fsPromises.writeFile(DATA_FILE, JSON.stringify(ensureDataShape(data), null, 2), 'utf8');
+      localOk = true;
     } catch (e) {
       console.warn('[profile] local skip:', e.message);
     }
+
+    invalidateReadDataCache();
+
+    if (!remoteOk && !localOk) {
+      return res.status(503).json({
+        error: remoteMissing
+          ? 'Немає таблиці provider_profiles у Supabase. Виконайте міграцію 010/013.'
+          : 'Не вдалося зберегти профіль. Перевірте доступ Supabase до provider_profiles (RLS).',
+      });
+    }
+
     const fullUser = (await readUsers()).find((u) => u.id === user.id) || user;
     let telegramId = fullUser.telegramId || null;
     if (fullUser.phone && !telegramId) {
@@ -4123,6 +4161,7 @@ app.put('/api/provider/profile', requireAuth, requireProvider, async (req, res) 
     res.json({
       ok: true,
       profile,
+      warning: phoneWarning || undefined,
       account: {
         phone: fullUser.phone || profile.phone || '',
         telegramLinked: Boolean(telegramId),
