@@ -203,6 +203,52 @@ CREATE POLICY "locations_delete_all"
   ON locations FOR DELETE
   USING (true);
 
+-- ---------------------------------------------------------------------------
+-- 4b. PROVIDER PROFILES — company name / phone / catalog prefs (Vercel-safe)
+-- ---------------------------------------------------------------------------
+
+CREATE TABLE IF NOT EXISTS provider_profiles (
+  user_id uuid PRIMARY KEY REFERENCES public.users (id) ON DELETE CASCADE,
+  company_name text NOT NULL DEFAULT '',
+  phone text NOT NULL DEFAULT '',
+  service_categories jsonb NOT NULL DEFAULT '[]'::jsonb,
+  service_subcategories jsonb NOT NULL DEFAULT '[]'::jsonb,
+  custom_subcategories jsonb NOT NULL DEFAULT '[]'::jsonb,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+
+ALTER TABLE provider_profiles ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "provider_profiles_select_all" ON provider_profiles;
+DROP POLICY IF EXISTS "provider_profiles_insert_all" ON provider_profiles;
+DROP POLICY IF EXISTS "provider_profiles_update_all" ON provider_profiles;
+DROP POLICY IF EXISTS "provider_profiles_delete_all" ON provider_profiles;
+DROP POLICY IF EXISTS "provider_profiles_service_all" ON provider_profiles;
+
+CREATE POLICY "provider_profiles_select_all"
+  ON provider_profiles FOR SELECT
+  USING (true);
+
+CREATE POLICY "provider_profiles_insert_all"
+  ON provider_profiles FOR INSERT
+  WITH CHECK (true);
+
+CREATE POLICY "provider_profiles_update_all"
+  ON provider_profiles FOR UPDATE
+  USING (true)
+  WITH CHECK (true);
+
+CREATE POLICY "provider_profiles_delete_all"
+  ON provider_profiles FOR DELETE
+  USING (true);
+
+CREATE POLICY "provider_profiles_service_all"
+  ON provider_profiles FOR ALL
+  TO service_role
+  USING (true)
+  WITH CHECK (true);
+
 COMMIT;
 
 -- ---------------------------------------------------------------------------
@@ -244,4 +290,13 @@ SELECT
 FROM information_schema.columns
 WHERE table_schema = 'public'
   AND table_name = 'locations'
+ORDER BY ordinal_position;
+
+SELECT
+  'provider_profiles' AS table_name,
+  column_name,
+  data_type
+FROM information_schema.columns
+WHERE table_schema = 'public'
+  AND table_name = 'provider_profiles'
 ORDER BY ordinal_position;

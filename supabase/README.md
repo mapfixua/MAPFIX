@@ -32,6 +32,9 @@ npm run db:sync
 npm run db:verify
 ```
 
+If providers cannot save **company name**, also run migration  
+`supabase/migrations/013_provider_profiles_rls.sql` in the SQL Editor (adds RLS policies for `provider_profiles`).
+
 ### Option 2 — Supabase CLI
 
 ```bash
