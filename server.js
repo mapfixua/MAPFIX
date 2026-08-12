@@ -121,6 +121,7 @@ const {
 } = require('./kv-store.js');
 const supportTickets = require('./support-tickets.js');
 const reportsMod = require('./reports.js');
+const opsMonitor = require('./ops-monitor.js');
 const {
   notifyNewOrder,
   notifyOrderStatus,
@@ -1526,6 +1527,19 @@ app.get('/api/admin/users/:userId', requireAuth, requireAdmin, async (req, res) 
     const userOrders = orders.filter(
       (o) => o.clientId === userId || o.providerId === userId || o.userId === userId
     );
+    const locations = (data.mockLocations || [])
+      .filter((l) => l.providerId === userId && !isLocationTrashed(l))
+      .map((l) => ({
+        id: l.id,
+        title: l.title || '',
+        address: l.address || '',
+        cat: l.cat || '',
+        phone: l.phone || '',
+        views: Number(l.views) || 0,
+        servicesCount: Object.keys(l.prices || {}).length,
+        rating: Number(l.rating) || 0,
+        imported: Boolean(l.importMeta || l.imported),
+      }));
 
     res.json({
       id: user.id,
@@ -1539,11 +1553,65 @@ app.get('/api/admin/users/:userId', requireAuth, requireAdmin, async (req, res) 
       profile,
       ordersCount: userOrders.length,
       recentOrders: userOrders.slice(-20).reverse(),
-      locationsCount: data.mockLocations.filter((l) => l.providerId === userId).length,
+      locationsCount: locations.length,
+      locations,
     });
   } catch (err) {
     console.error('[GET /api/admin/users/:userId]', err);
     res.status(500).json({ error: 'Не вдалося завантажити користувача' });
+  }
+});
+
+app.delete('/api/admin/users/:userId', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const session = getSessionUser(req);
+    const userId = String(req.params.userId || '').trim();
+    if (!userId) return res.status(400).json({ error: 'Невірний id' });
+    if (session?.id === userId) {
+      return res.status(400).json({ error: 'Не можна видалити власний акаунт' });
+    }
+
+    const users = await readUsers();
+    const target = users.find((u) => u.id === userId);
+    if (!target) return res.status(404).json({ error: 'Користувача не знайдено' });
+
+    if (target.role === 'admin') {
+      const adminsLeft = users.filter((u) => u.role === 'admin' && u.id !== userId).length;
+      if (adminsLeft < 1) {
+        return res.status(400).json({ error: 'Не можна видалити останнього суперадміна' });
+      }
+    }
+
+    const removeLocations = req.body?.removeLocations !== false;
+    const data = await readData();
+    let removedLocations = 0;
+    if (removeLocations) {
+      const before = (data.mockLocations || []).length;
+      data.mockLocations = (data.mockLocations || []).filter((l) => l.providerId !== userId);
+      removedLocations = before - data.mockLocations.length;
+    } else {
+      for (const loc of data.mockLocations || []) {
+        if (loc.providerId === userId) loc.providerId = null;
+      }
+    }
+    if (data.providerProfiles?.[userId]) delete data.providerProfiles[userId];
+
+    const { error: deleteError } = await supabaseClient.from(USERS_TABLE).delete().eq('id', userId);
+    if (deleteError) {
+      console.error('[admin delete user]', deleteError);
+      return res.status(500).json({ error: 'Помилка видалення користувача' });
+    }
+
+    await writeData(data);
+    res.json({
+      ok: true,
+      removedLocations,
+      login: target.login,
+      role: target.role,
+    });
+  } catch (err) {
+    console.error('[DELETE /api/admin/users/:userId]', err);
+    res.status(500).json({ error: 'Помилка видалення користувача' });
   }
 });
 
@@ -1681,10 +1749,71 @@ app.post('/api/reports', requireAuth, supportRateLimit, async (req, res) => {
       locationTitle,
       reason: req.body?.reason,
       message: req.body?.message,
+      contact: req.body?.contact,
+      page: req.body?.page,
     });
+    opsMonitor.notifyAdminNewReport(report).catch((err) => console.warn('[ops] report email', err.message));
     res.status(201).json({ ok: true, report });
   } catch (err) {
     res.status(400).json({ error: err.message || 'Не вдалося надіслати скаргу' });
+  }
+});
+
+/** Public site bug / feedback — login not required */
+app.post('/api/feedback', supportRateLimit, async (req, res) => {
+  try {
+    const user = getSessionUser(req);
+    const message = String(req.body?.message || '').trim();
+    if (message.length < 5) {
+      return res.status(400).json({ error: 'Опишіть проблему детальніше (мін. 5 символів)' });
+    }
+    const report = await reportsMod.createReport({
+      user: user || null,
+      locationId: '',
+      locationTitle: 'Помилка сайту',
+      reason: 'site_bug',
+      message,
+      contact: req.body?.contact,
+      page: req.body?.page || req.headers.referer || '',
+    });
+    try {
+      await analytics.bumpTotal('supportTickets');
+    } catch (_) {}
+    opsMonitor.notifyAdminNewReport(report).catch((err) => console.warn('[ops] feedback email', err.message));
+    res.status(201).json({ ok: true, report });
+  } catch (err) {
+    res.status(400).json({ error: err.message || 'Не вдалося надіслати повідомлення' });
+  }
+});
+
+/** Vercel Cron / manual: hourly health + open tickets digest */
+app.get('/api/ops/hourly', async (req, res) => {
+  try {
+    const secret = String(process.env.CRON_SECRET || process.env.OPS_CRON_SECRET || '').trim();
+    const auth = String(req.headers.authorization || '');
+    const q = String(req.query?.secret || '');
+    const isVercelCron = String(req.headers['x-vercel-cron'] || '') === '1';
+    const okAuth =
+      isVercelCron ||
+      (secret && (auth === `Bearer ${secret}` || q === secret)) ||
+      (!IS_VERCEL && process.env.NODE_ENV !== 'production');
+    if (!okAuth) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+    const result = await opsMonitor.runHourlyDigest();
+    res.json({ ok: true, ...result });
+  } catch (err) {
+    console.error('[ops hourly]', err);
+    res.status(500).json({ error: err.message || 'ops failed' });
+  }
+});
+
+app.get('/api/ops/health', async (req, res) => {
+  try {
+    const health = await opsMonitor.runHealthChecks();
+    res.json({ ok: true, ...health });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
   }
 });
 
@@ -2924,6 +3053,7 @@ app.post('/api/support/tickets', requireAuth, supportRateLimit, async (req, res)
       message: req.body?.message,
       photoDataUrls: req.body?.photos || req.body?.photoDataUrls,
     });
+    opsMonitor.notifyAdminNewTicket(ticket).catch((err) => console.warn('[ops] ticket email', err.message));
     res.status(201).json({ ok: true, ticket });
   } catch (err) {
     console.error('[support create]', err);
@@ -3593,7 +3723,14 @@ app.put('/api/provider/locations/:id', requireAuth, requireProviderOrAdmin, asyn
     }
     if (req.body.schedule) loc.schedule = req.body.schedule;
 
-    await persistLocationsPatch(data, [loc]);
+    const persisted = await persistLocationsPatch(data, [loc]);
+    if (!persisted?.ok) {
+      return res.status(500).json({
+        error:
+          persisted?.error?.message ||
+          'Не вдалося зберегти локацію в базу. Назву/дані не записано.',
+      });
+    }
     res.json({ ok: true, location: loc });
   } catch (err) {
     console.error(err);
@@ -4024,7 +4161,7 @@ app.post('/api/provider/locations/:id/prices/import', requireAuth, requireProvid
   }
 });
 
-app.put('/api/provider/profile', requireAuth, requireProvider, async (req, res) => {
+app.put('/api/provider/profile', requireAuth, requireProviderOrAdmin, async (req, res) => {
   try {
     const user = getSessionUser(req);
     const data = await readData();
@@ -4133,6 +4270,7 @@ app.put('/api/provider/profile', requireAuth, requireProvider, async (req, res) 
       }
     } catch (e) {
       console.warn('[profile] supabase profile:', e.message);
+      return res.status(500).json({ error: 'Не вдалося зберегти профіль' });
     }
 
     let localOk = false;
@@ -4145,11 +4283,12 @@ app.put('/api/provider/profile', requireAuth, requireProvider, async (req, res) 
 
     invalidateReadDataCache();
 
-    if (!remoteOk && !localOk) {
+    // On Vercel local disk is ephemeral — Supabase must succeed for the rename to stick.
+    if (!remoteOk && (process.env.VERCEL || !localOk)) {
       return res.status(503).json({
         error: remoteMissing
           ? 'Немає таблиці provider_profiles у Supabase. Виконайте міграцію 010/013.'
-          : 'Не вдалося зберегти профіль. Перевірте доступ Supabase до provider_profiles (RLS).',
+          : 'Не вдалося зберегти профіль. Перевірте доступ Supabase до provider_profiles (RLS / SERVICE_ROLE_KEY).',
       });
     }
 

@@ -14,7 +14,39 @@ const MAX_PAGE_KEYS = 80;
 const MAX_DAILY = 60;
 
 function todayKey(d = new Date()) {
-  return d.toISOString().slice(0, 10);
+  try {
+    return new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'Europe/Kyiv',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    }).format(d);
+  } catch {
+    return d.toISOString().slice(0, 10);
+  }
+}
+
+function dayOffsetKey(offsetDays = 0) {
+  const [y, m, d] = todayKey()
+    .split('-')
+    .map(Number);
+  const mid = new Date(Date.UTC(y, m - 1, d + offsetDays, 12, 0, 0));
+  return todayKey(mid);
+}
+
+function summarizeDay(dayBucket) {
+  const d = dayBucket || {};
+  return {
+    pageViews: d.pageViews || 0,
+    searches: d.searches || 0,
+    mapLoads: d.mapLoads || 0,
+    locationOpens: d.locationOpens || 0,
+    orders: d.orders || 0,
+    favorites: d.favorites || 0,
+    logins: d.logins || 0,
+    registers: d.registers || 0,
+    uniqueVisits: d.uniqueSessions ? Object.keys(d.uniqueSessions).length : 0,
+  };
 }
 
 function emptyState() {
@@ -86,6 +118,22 @@ function bumpDaily(state, field, n = 1) {
     };
   }
   const day = state.daily[key];
+  if (!day.uniqueSessions || typeof day.uniqueSessions !== 'object') {
+    day.uniqueSessions = {};
+  }
+  // Backfill missing counters on legacy day buckets
+  for (const f of [
+    'pageViews',
+    'searches',
+    'mapLoads',
+    'locationOpens',
+    'orders',
+    'favorites',
+    'logins',
+    'registers',
+  ]) {
+    if (day[f] == null) day[f] = 0;
+  }
   day[field] = (Number(day[field]) || 0) + n;
   // prune old days
   const keys = Object.keys(state.daily).sort();
@@ -302,19 +350,19 @@ async function buildAdminReport({
     .sort()
     .slice(-14)
     .map((day) => {
-      const d = state.daily[day] || {};
+      const summary = summarizeDay(state.daily[day]);
       return {
         day,
-        pageViews: d.pageViews || 0,
-        searches: d.searches || 0,
-        mapLoads: d.mapLoads || 0,
-        locationOpens: d.locationOpens || 0,
-        orders: d.orders || 0,
-        favorites: d.favorites || 0,
-        logins: d.logins || 0,
-        uniqueSessions: d.uniqueSessions ? Object.keys(d.uniqueSessions).length : 0,
+        ...summary,
+        uniqueSessions: summary.uniqueVisits,
       };
     });
+
+  const todayId = todayKey();
+  const yesterdayId = dayOffsetKey(-1);
+  const today = { day: todayId, ...summarizeDay(state.daily?.[todayId]) };
+  const yesterday = { day: yesterdayId, ...summarizeDay(state.daily?.[yesterdayId]) };
+  const uniqueVisits14d = dailySeries.reduce((s, d) => s + (d.uniqueVisits || 0), 0);
 
   return {
     generatedAt: new Date().toISOString(),
@@ -327,6 +375,8 @@ async function buildAdminReport({
         at: s.at,
       })),
     },
+    today,
+    yesterday,
     kpis: {
       usersTotal,
       providersCount,
@@ -347,6 +397,17 @@ async function buildAdminReport({
       donateClicks: billingStats?.donateClicks ?? state.totals.donateClicks ?? 0,
       subscribeClicks: billingStats?.subscribeClicks ?? state.totals.subscribeClicks ?? 0,
       activePaid: billingStats?.activePaid ?? 0,
+      uniqueVisitsToday: today.uniqueVisits,
+      uniqueVisitsYesterday: yesterday.uniqueVisits,
+      uniqueVisits14d,
+      pageViewsToday: today.pageViews,
+      mapLoadsToday: today.mapLoads,
+      locationOpensToday: today.locationOpens,
+      searchesToday: today.searches,
+      ordersToday: today.orders,
+      favoritesToday: today.favorites,
+      loginsToday: today.logins,
+      registersToday: today.registers,
     },
     pages: topEntries(state.pageViews, 30),
     searchesTop: topEntries(state.searchCounts, 40),

@@ -218,6 +218,194 @@
     }
     .stat-card .stat-label { font-size: 0.75rem; font-weight: 700; color: #6b7280; }
     .stat-card .stat-value { font-size: 1.4rem; font-weight: 800; margin-top: 4px; letter-spacing: -0.03em; }
+    .stat-card.stat-highlight {
+      border-color: #12c4b5;
+      background: linear-gradient(160deg, #e6faf8 0%, #fff 70%);
+      box-shadow: 0 0 0 1px rgba(18, 196, 181, 0.25);
+    }
+    .stat-card.stat-highlight .stat-label { color: #0f766e; }
+    .stat-card.stat-highlight .stat-value { color: #0f766e; font-size: 1.75rem; }
+    .metric-charts-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 12px;
+      margin-bottom: 16px;
+    }
+    .metric-chart-card {
+      background: #fff;
+      border: 1px solid #e4e6eb;
+      border-radius: 14px;
+      padding: 14px 14px 10px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      min-height: 220px;
+    }
+    .metric-chart-card.metric-highlight {
+      border-color: #12c4b5;
+      background: linear-gradient(160deg, #e6faf8 0%, #fff 72%);
+    }
+    .metric-chart-head {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 6px 12px;
+    }
+    .metric-chart-title {
+      font-size: 0.78rem;
+      font-weight: 800;
+      color: #64748b;
+      text-transform: uppercase;
+      letter-spacing: 0.02em;
+    }
+    .metric-chart-card.metric-highlight .metric-chart-title { color: #0f766e; }
+    .metric-chart-today {
+      font-size: 1.35rem;
+      font-weight: 800;
+      letter-spacing: -0.03em;
+      color: #0b0d10;
+    }
+    .metric-chart-card.metric-highlight .metric-chart-today { color: #0f766e; }
+    .metric-chart-today span {
+      font-size: 0.72rem;
+      font-weight: 700;
+      color: #94a3b8;
+      margin-left: 4px;
+    }
+    .metric-chart-median {
+      width: 100%;
+      font-size: 0.72rem;
+      font-weight: 700;
+      color: #64748b;
+    }
+    .metric-chart-plot {
+      position: relative;
+      flex: 1;
+      min-height: 150px;
+      padding-top: 4px;
+      border-top: 1px solid #f1f5f9;
+    }
+    .metric-bars {
+      display: flex;
+      align-items: stretch;
+      justify-content: space-between;
+      gap: 3px;
+      height: 132px;
+      position: relative;
+      z-index: 1;
+      padding-top: 16px;
+    }
+    .metric-bar-col {
+      flex: 1;
+      min-width: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      height: 100%;
+      gap: 4px;
+    }
+    .metric-bar-track {
+      position: relative;
+      flex: 1;
+      width: 100%;
+      display: flex;
+      align-items: flex-end;
+      justify-content: center;
+      min-height: 0;
+    }
+    .metric-bar-val {
+      position: absolute;
+      left: 50%;
+      transform: translateX(-50%);
+      bottom: calc(100% + 2px);
+      font-size: 0.62rem;
+      font-weight: 800;
+      color: #475569;
+      line-height: 1;
+      white-space: nowrap;
+    }
+    .metric-bar {
+      width: 100%;
+      max-width: 22px;
+      border-radius: 5px 5px 2px 2px;
+      background: #94a3b8;
+      min-height: 2px;
+      transition: height 0.25s ease;
+    }
+    .metric-bar-col.is-today .metric-bar {
+      background: #12c4b5;
+    }
+    .metric-bar-col.is-today .metric-bar-val,
+    .metric-bar-col.is-today .metric-bar-day {
+      color: #0f766e;
+      font-weight: 800;
+    }
+    .metric-bar-day {
+      font-size: 0.58rem;
+      font-weight: 700;
+      color: #94a3b8;
+      white-space: nowrap;
+      line-height: 1.1;
+      text-align: center;
+      flex-shrink: 0;
+      min-height: 1.4em;
+    }
+    .metric-median-overlay {
+      position: absolute;
+      left: 0;
+      right: 0;
+      top: 16px;
+      bottom: 22px;
+      z-index: 2;
+      pointer-events: none;
+    }
+    .metric-median-line {
+      position: absolute;
+      left: 0;
+      right: 0;
+      height: 0;
+      border-top: 2px dashed #f59e0b;
+    }
+    .metric-median-line::after {
+      content: attr(data-label);
+      position: absolute;
+      right: 0;
+      top: -14px;
+      font-size: 0.62rem;
+      font-weight: 800;
+      color: #b45309;
+      background: rgba(255,255,255,0.9);
+      padding: 0 4px;
+      border-radius: 4px;
+    }
+    .schedule-loc-card {
+      border: 1px solid #e5e7eb;
+      border-radius: 12px;
+      padding: 14px;
+      margin-bottom: 14px;
+      background: #fff;
+    }
+    .schedule-day-row {
+      display: grid;
+      grid-template-columns: 22px 36px minmax(90px, 1fr) minmax(90px, 1fr);
+      gap: 8px;
+      align-items: center;
+      margin-bottom: 6px;
+    }
+    .schedule-day-row input[type="time"] {
+      width: 100%;
+      padding: 8px 10px;
+      border: 1px solid #e2e8f0;
+      border-radius: 8px;
+      font: inherit;
+    }
+    .schedule-day-row input[type="time"]:disabled {
+      opacity: 0.45;
+      background: #f8fafc;
+    }
+    .schedule-day-row .day-label { font-weight: 700; font-size: 0.9rem; }
+    .schedule-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
     .click-row {
       display: flex;
       align-items: center;
@@ -235,6 +423,11 @@
       font-weight: 600;
     }
     .click-row:hover { border-color: #12c4b5; background: #e6faf8; }
+    .analytics-jump:hover {
+      background: #f0fdfa;
+      border-radius: 8px;
+      outline: 1px dashed #99f6e4;
+    }
     .click-row .row-main { min-width: 0; flex: 1; }
     .click-row .row-title { font-weight: 800; font-size: 0.95rem; }
     .click-row .row-meta { font-size: 0.8rem; color: #6b7280; margin-top: 3px; font-weight: 500; }
@@ -658,19 +851,29 @@
             <div class="stat-grid" id="analyticsLiveStats" style="margin-bottom:14px"></div>
             <div id="analyticsLivePaths" class="field-hint" style="margin-bottom:16px"></div>
 
-            <h3 style="font-size:1rem;margin:0 0 8px">Ключові метрики</h3>
-            <div class="stat-grid" id="analyticsKpis" style="margin-bottom:16px"></div>
+            <h3 style="font-size:1rem;margin:0 0 8px">Ключові метрики по днях</h3>
+            <p class="field-hint" style="margin-top:0">
+              Стовпчики: справа — сьогодні, лівіше — попередні дні. Пунктирна лінія — медіана за період.
+              Унікальні заходи — різні відвідувачі (сесії) за київським часом.
+            </p>
+            <div class="metric-charts-grid" id="analyticsKpis" style="margin-bottom:16px"></div>
+
+            <h3 style="font-size:1rem;margin:0 0 8px">Стан платформи (загалом)</h3>
+            <div class="stat-grid" id="analyticsPlatformStats" style="margin-bottom:16px"></div>
 
             <h3 style="font-size:1rem;margin:0 0 8px">Куди заходять (сторінки)</h3>
             <div id="analyticsPages"><p class="list-item-meta">Завантаження…</p></div>
 
             <h3 style="font-size:1rem;margin:16px 0 8px">Категорії (кліки)</h3>
+            <p class="field-hint" style="margin:0 0 6px">Подвійний клік — відкрити в каталозі</p>
             <div id="analyticsCats"><p class="list-item-meta">—</p></div>
 
             <h3 style="font-size:1rem;margin:16px 0 8px">Підкатегорії (кліки)</h3>
+            <p class="field-hint" style="margin:0 0 6px">Подвійний клік — відкрити в каталозі</p>
             <div id="analyticsSubs"><p class="list-item-meta">—</p></div>
 
             <h3 style="font-size:1rem;margin:16px 0 8px">Послуги (кліки)</h3>
+            <p class="field-hint" style="margin:0 0 6px">Подвійний клік — відкрити в каталозі</p>
             <div id="analyticsSvcs"><p class="list-item-meta">—</p></div>
 
             <h3 style="font-size:1rem;margin:16px 0 8px">Що шукають</h3>
@@ -680,9 +883,10 @@
             <div id="analyticsRecentSearches"><p class="list-item-meta">—</p></div>
 
             <h3 style="font-size:1rem;margin:16px 0 8px">Топ локацій за переглядами картки</h3>
+            <p class="field-hint" style="margin:0 0 6px">Подвійний клік — відкрити локацію</p>
             <div id="analyticsTopLocs"><p class="list-item-meta">—</p></div>
 
-            <h3 style="font-size:1rem;margin:16px 0 8px">Останні 14 днів</h3>
+            <h3 style="font-size:1rem;margin:16px 0 8px">Останні 14 днів (по днях)</h3>
             <div id="analyticsDaily"><p class="list-item-meta">—</p></div>
           </div>
 
@@ -704,8 +908,8 @@
           </div>
 
           <div id="adminPaneReports" class="admin-pane card">
-            <h2>Скарги на заклади</h2>
-            <p class="field-hint">Скарги з карти. Змініть статус після перевірки.</p>
+            <h2>Скарги та помилки сайту</h2>
+            <p class="field-hint">Скарги на заклади з карти та повідомлення «Повідомити про помилку» з головної.</p>
             <div id="adminReportsList"><p class="list-item-meta">Завантаження…</p></div>
           </div>
 
@@ -1022,6 +1226,7 @@
           <a class="nav-home-link" href="/" id="providerNavHomeLink">← На головну карту</a>
           <button type="button" class="active" data-provider-nav="profile">Профіль</button>
           <button type="button" data-provider-nav="locations">Мої локації <span class="nav-count" id="navCountMyLocs">0</span></button>
+          <button type="button" data-provider-nav="schedule">Графік роботи</button>
           <button type="button" data-provider-nav="claim">Забрати з карти</button>
           <button type="button" data-provider-nav="orders">Замовлення</button>
           <button type="button" data-provider-nav="support">Підтримка</button>
@@ -1082,20 +1287,13 @@
 
           <div id="providerPaneBilling" class="admin-pane card">
             <h2>Підписка Mapfix Pro</h2>
-            <div id="providerBillingBanner" class="billing-banner">Завантаження…</div>
-            <p class="field-hint">
-              Перші <strong>3 місяці безкоштовно</strong>. Далі — <strong>99 грн/міс</strong>.
-              Pro: фото локацій, необмежений прайс, пріоритет у видачі.
-              На безкоштовному тарифі після пробного періоду — до 3 послуг із ціною, без фото.
-            </p>
+            <div id="providerBillingBanner" class="billing-banner">
+              Початковий період роботи платформи абсолютно безкоштовний, головна мета полегшення та зручність споживачам знаходити виконавців послуг, а надавачам послуг підвищити кількість клієнтів!
+            </div>
             <div style="display:flex;flex-wrap:wrap;gap:10px;margin:14px 0">
-              <button type="button" class="btn-pro" id="providerSubscribeBtn" style="width:auto">Оплатити 99 грн / міс</button>
+              <button type="button" class="btn-pro" id="providerSubscribeBtn" style="width:auto">Розширена підписка Mapfix Pro 99 грн/міс</button>
               <button type="button" class="btn-donate" id="providerDonateBtn" style="width:auto">На розвиток проєкту</button>
             </div>
-            <p class="field-hint">
-              Після оплати в банці в коментарі вкажіть свій логін Mapfix. Підтвердження зараз ручне в адмінці
-              (банка Monobank не надсилає автоматично, хто саме заплатив).
-            </p>
             <div id="providerBillingMsg" class="msg" style="display:none"></div>
           </div>
 
@@ -1103,6 +1301,14 @@
             <h2>Мої локації</h2>
             <div id="myLocationsList"></div>
             <button type="button" id="showNewLocBtn" class="btn-secondary" style="margin-top:12px;width:100%">+ Нова локація вручну</button>
+          </div>
+
+          <div id="providerPaneSchedule" class="admin-pane card">
+            <h2>Графік роботи</h2>
+            <p class="field-hint">
+              Для кожної точки оберіть робочі дні та години. Імпортовані з Google/CSV графіки вже підставляються сюди — їх можна уточнити й зберегти.
+            </p>
+            <div id="providerScheduleList"><p class="list-item-meta">Завантаження…</p></div>
           </div>
 
           <div id="providerPaneClaim" class="admin-pane card">
@@ -1476,29 +1682,143 @@
       if (name === 'analytics') loadAdminAnalytics();
     }
 
-    function rankingListHtml(items, emptyText, lineFn) {
+    function rankingListHtml(items, emptyText, lineFn, navAttrFn) {
       if (!items || !items.length) return `<p class="list-item-meta">${esc(emptyText)}</p>`;
       return items
-        .map(
-          (item, i) =>
-            `<div class="list-item" style="margin-bottom:6px;display:flex;justify-content:space-between;gap:12px">
+        .map((item, i) => {
+          const nav = typeof navAttrFn === 'function' ? navAttrFn(item) || '' : '';
+          const clickable = Boolean(nav);
+          return `<div class="list-item${clickable ? ' analytics-jump' : ''}" style="margin-bottom:6px;display:flex;justify-content:space-between;gap:12px;${
+            clickable ? 'cursor:pointer;' : ''
+          }" ${nav} title="${clickable ? 'Подвійний клік — відкрити' : ''}">
               <div>${i + 1}. ${lineFn(item)}</div>
               <strong>${esc(String(item.count ?? item.views ?? 0))}</strong>
-            </div>`
-        )
+            </div>`;
+        })
         .join('');
+    }
+
+    function bindAnalyticsJumps(root) {
+      if (!root) return;
+      root.querySelectorAll('.analytics-jump').forEach((el) => {
+        el.addEventListener('dblclick', () => {
+          const locId = el.dataset.jumpLoc;
+          const filter = el.dataset.jumpCatalogFilter;
+          if (locId) {
+            showAdminPane('locations', { keepDetail: true });
+            openLocationDetail(locId);
+            return;
+          }
+          if (filter != null) {
+            showAdminPane('catalog');
+            adminCatalogFilter = filter;
+            const input = document.getElementById('adminCatalogFilter');
+            if (input) input.value = filter;
+            reloadAdminCatalog().then(() => {
+              const tree = document.getElementById('adminCatalogTree');
+              tree?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            });
+          }
+        });
+      });
+    }
+
+    function analyticsMedian(values) {
+      const nums = values.map((v) => Number(v) || 0).sort((a, b) => a - b);
+      if (!nums.length) return 0;
+      const mid = Math.floor(nums.length / 2);
+      return nums.length % 2 ? nums[mid] : (nums[mid - 1] + nums[mid]) / 2;
+    }
+
+    function analyticsDayLabel(isoDay, todayIso) {
+      if (!isoDay) return '—';
+      if (isoDay === todayIso) return 'сьогодні';
+      const parts = String(isoDay).split('-');
+      if (parts.length === 3) return `${parts[2]}.${parts[1]}`;
+      return isoDay;
+    }
+
+    function padAnalyticsDaily(daily, todayIso, days = 14) {
+      const byDay = {};
+      (daily || []).forEach((d) => {
+        if (d?.day) byDay[d.day] = d;
+      });
+      const end = todayIso || (daily && daily.length ? daily[daily.length - 1].day : null);
+      if (!end) return [];
+      const [y, m, d] = end.split('-').map(Number);
+      const out = [];
+      for (let i = days - 1; i >= 0; i--) {
+        const dt = new Date(Date.UTC(y, m - 1, d - i, 12, 0, 0));
+        const key = dt.toISOString().slice(0, 10);
+        const row = byDay[key] || {};
+        out.push({
+          day: key,
+          uniqueVisits: row.uniqueVisits ?? row.uniqueSessions ?? 0,
+          pageViews: row.pageViews || 0,
+          mapLoads: row.mapLoads || 0,
+          locationOpens: row.locationOpens || 0,
+          searches: row.searches || 0,
+          orders: row.orders || 0,
+          favorites: row.favorites || 0,
+          logins: row.logins || 0,
+          registers: row.registers || 0,
+        });
+      }
+      return out;
+    }
+
+    function renderMetricBarChart({ title, values, days, todayIso, highlight }) {
+      const max = Math.max(1, ...values);
+      const med = analyticsMedian(values);
+      const medPct = Math.max(0, Math.min(100, (med / max) * 100));
+      const todayVal = values[values.length - 1] ?? 0;
+      const bars = values
+        .map((val, i) => {
+          const day = days[i];
+          const isToday = day === todayIso;
+          const h = Math.max(val > 0 ? 6 : 2, Math.round((val / max) * 100));
+          return `<div class="metric-bar-col${isToday ? ' is-today' : ''}" title="${esc(day)}: ${esc(String(val))}">
+            <div class="metric-bar-track">
+              <span class="metric-bar-val">${esc(String(val))}</span>
+              <div class="metric-bar" style="height:${h}%"></div>
+            </div>
+            <span class="metric-bar-day">${esc(analyticsDayLabel(day, todayIso))}</span>
+          </div>`;
+        })
+        .join('');
+      const medLabel = Number.isInteger(med) ? String(med) : med.toFixed(1);
+      return `<div class="metric-chart-card${highlight ? ' metric-highlight' : ''}">
+        <div class="metric-chart-head">
+          <div class="metric-chart-title">${esc(title)}</div>
+          <div class="metric-chart-today">${esc(String(todayVal))}<span>сьогодні</span></div>
+        </div>
+        <div class="metric-chart-median">медіана: ${esc(medLabel)}</div>
+        <div class="metric-chart-plot">
+          <div class="metric-bars">
+            <div class="metric-median-overlay">
+              <div class="metric-median-line" style="bottom:${medPct.toFixed(1)}%" data-label="медіана ${esc(medLabel)}"></div>
+            </div>
+            ${bars}
+          </div>
+        </div>
+      </div>`;
     }
 
     async function loadAdminAnalytics() {
       const liveEl = document.getElementById('analyticsLiveStats');
       const kpisEl = document.getElementById('analyticsKpis');
+      const platformEl = document.getElementById('analyticsPlatformStats');
       if (!liveEl || !kpisEl) return;
       liveEl.innerHTML = '';
       kpisEl.innerHTML = '<p class="list-item-meta">Завантаження…</p>';
+      if (platformEl) platformEl.innerHTML = '';
+      const card = (label, value, highlight) =>
+        `<div class="stat-card${highlight ? ' stat-highlight' : ''}"><div class="stat-label">${esc(label)}</div><div class="stat-value">${esc(String(value ?? 0))}</div></div>`;
       try {
         const data = await apiFetch('/api/admin/analytics');
         const live = data.live || {};
         const kpis = data.kpis || {};
+        const todayIso = data.today?.day || null;
         const onlineEl = document.getElementById('navCountOnline');
         if (onlineEl) onlineEl.textContent = String(live.onlineNow || 0);
         const updated = document.getElementById('analyticsUpdatedAt');
@@ -1508,10 +1828,7 @@
           ['Онлайн зараз', live.onlineNow || 0],
           ['Сесії (heartbeat)', (live.sessions || []).length],
         ]
-          .map(
-            ([label, value]) =>
-              `<div class="stat-card"><div class="stat-label">${esc(label)}</div><div class="stat-value">${esc(String(value))}</div></div>`
-          )
+          .map(([label, value]) => card(label, value, false))
           .join('');
 
         const paths = live.byPath || {};
@@ -1523,31 +1840,69 @@
             : 'Ніхто не на звʼязку (відкрийте карту в іншій вкладці для перевірки).';
         }
 
-        kpisEl.innerHTML = [
-          ['Перегляди сторінок', kpis.pageViewsTotal],
-          ['Завантаження карти', kpis.mapLoadsTotal],
-          ['Відкриття карток', kpis.locationCardViews],
-          ['Пошукові запити', kpis.searchesTotal],
-          ['Замовлення', kpis.ordersTotal],
-          ['Обране', kpis.favoritesTotal],
-          ['Входи', kpis.loginsTotal],
-          ['Реєстрації', kpis.registersTotal],
-          ['Користувачі', kpis.usersTotal],
-          ['Провайдери', kpis.providersCount],
-          ['Клієнти', kpis.clientsCount],
-          ['Локації', kpis.locationsTotal],
-          ['З власником', kpis.locationsClaimed],
-          ['З фото', kpis.locationsWithPhotos],
-          ['З прайсом', kpis.locationsWithPrices],
-          ['Кліки донат', kpis.donateClicks],
-          ['Кліки Pro', kpis.subscribeClicks],
-          ['Активні Pro', kpis.activePaid],
-        ]
-          .map(
-            ([label, value]) =>
-              `<div class="stat-card"><div class="stat-label">${esc(label)}</div><div class="stat-value">${esc(String(value ?? 0))}</div></div>`
-          )
-          .join('');
+        const series = padAnalyticsDaily(data.daily || [], todayIso, 14);
+        if (data.today?.day && series.length) {
+          const last = series[series.length - 1];
+          if (last.day === data.today.day) {
+            series[series.length - 1] = {
+              ...last,
+              uniqueVisits: data.today.uniqueVisits ?? last.uniqueVisits,
+              pageViews: data.today.pageViews ?? last.pageViews,
+              mapLoads: data.today.mapLoads ?? last.mapLoads,
+              locationOpens: data.today.locationOpens ?? last.locationOpens,
+              searches: data.today.searches ?? last.searches,
+              orders: data.today.orders ?? last.orders,
+              favorites: data.today.favorites ?? last.favorites,
+              logins: data.today.logins ?? last.logins,
+              registers: data.today.registers ?? last.registers,
+            };
+          }
+        }
+        const dayKeys = series.map((d) => d.day);
+        if (!series.length) {
+          kpisEl.innerHTML = '<p class="list-item-meta">Дані зʼявляться після трафіку</p>';
+        } else {
+          const charts = [
+            ['Унікальні заходи', 'uniqueVisits', true],
+            ['Перегляди сторінок', 'pageViews', false],
+            ['Завантаження карти', 'mapLoads', false],
+            ['Відкриття карток', 'locationOpens', false],
+            ['Пошукові запити', 'searches', false],
+            ['Замовлення', 'orders', false],
+            ['Обране', 'favorites', false],
+            ['Входи', 'logins', false],
+            ['Реєстрації', 'registers', false],
+          ];
+          kpisEl.innerHTML = charts
+            .map(([title, field, highlight]) =>
+              renderMetricBarChart({
+                title,
+                values: series.map((d) => Number(d[field]) || 0),
+                days: dayKeys,
+                todayIso: todayIso || dayKeys[dayKeys.length - 1],
+                highlight,
+              })
+            )
+            .join('');
+        }
+
+        if (platformEl) {
+          platformEl.innerHTML = [
+            ['Користувачі', kpis.usersTotal],
+            ['Провайдери', kpis.providersCount],
+            ['Клієнти', kpis.clientsCount],
+            ['Локації', kpis.locationsTotal],
+            ['З власником', kpis.locationsClaimed],
+            ['З фото', kpis.locationsWithPhotos],
+            ['З прайсом', kpis.locationsWithPrices],
+            ['Перегляди карток (усього)', kpis.locationCardViews],
+            ['Кліки донат', kpis.donateClicks],
+            ['Кліки Pro', kpis.subscribeClicks],
+            ['Активні Pro', kpis.activePaid],
+          ]
+            .map(([label, value]) => card(label, value, false))
+            .join('');
+        }
 
         const funnel = data.catalogFunnel || {};
         document.getElementById('analyticsPages').innerHTML = rankingListHtml(
@@ -1560,29 +1915,34 @@
           data.catalogClicksMissing
             ? 'Таблиця catalog_clicks відсутня — виконайте міграції 011/015'
             : 'Кліків по категоріях ще немає',
-          (x) => esc(x.name || x.key)
+          (x) => esc(x.name || x.key),
+          (x) => `data-jump-catalog-filter="${esc(x.name || x.key || '')}"`
         );
         document.getElementById('analyticsSubs').innerHTML = rankingListHtml(
           funnel.subcategories,
           'Кліків по підкатегоріях ще немає',
-          (x) => `${esc(x.catName)} → ${esc(x.name)}`
+          (x) => `${esc(x.catName)} → ${esc(x.name)}`,
+          (x) => `data-jump-catalog-filter="${esc([x.catName, x.name].filter(Boolean).join(' '))}"`
         );
         document.getElementById('analyticsSvcs').innerHTML = rankingListHtml(
           funnel.services,
           'Кліків по послугах ще немає',
-          (x) => `${esc(x.catName)} / ${esc(x.subName)} → ${esc(x.name)}`
+          (x) => `${esc(x.catName)} / ${esc(x.subName)} → ${esc(x.name)}`,
+          (x) =>
+            `data-jump-catalog-filter="${esc([x.catName, x.subName, x.name].filter(Boolean).join(' '))}"`
         );
         document.getElementById('analyticsSearches').innerHTML = rankingListHtml(
           data.searchesTop,
           'Пошукових запитів ще немає',
-          (x) => `«${esc(x.key)}»`
+          (x) => `«${esc(x.key)}»`,
+          (x) => `data-jump-catalog-filter="${esc(x.key || '')}"`
         );
         const recent = data.recentSearches || [];
         document.getElementById('analyticsRecentSearches').innerHTML = recent.length
           ? recent
               .map(
                 (s) =>
-                  `<div class="list-item" style="margin-bottom:6px">
+                  `<div class="list-item analytics-jump" style="margin-bottom:6px;cursor:pointer" data-jump-catalog-filter="${esc(s.q || '')}" title="Подвійний клік — шукати в каталозі">
                     <div class="list-item-title">«${esc(s.q)}»</div>
                     <div class="list-item-meta">${esc(formatBillingDate(s.at))} · ${esc(s.source || '')}${s.matched ? ' · matched' : ''}</div>
                   </div>`
@@ -1593,32 +1953,44 @@
         document.getElementById('analyticsTopLocs').innerHTML = rankingListHtml(
           (data.topLocations || []).map((l) => ({ ...l, count: l.views })),
           'Переглядів карток ще немає',
-          (x) => esc(x.title || x.id)
+          (x) => esc(x.title || x.id),
+          (x) => (x.id ? `data-jump-loc="${esc(x.id)}"` : '')
         );
+
+        bindAnalyticsJumps(document.getElementById('analyticsCats'));
+        bindAnalyticsJumps(document.getElementById('analyticsSubs'));
+        bindAnalyticsJumps(document.getElementById('analyticsSvcs'));
+        bindAnalyticsJumps(document.getElementById('analyticsSearches'));
+        bindAnalyticsJumps(document.getElementById('analyticsRecentSearches'));
+        bindAnalyticsJumps(document.getElementById('analyticsTopLocs'));
 
         const daily = data.daily || [];
         document.getElementById('analyticsDaily').innerHTML = daily.length
           ? `<div style="overflow:auto"><table style="width:100%;border-collapse:collapse;font-size:0.85rem">
               <thead><tr>
                 <th style="text-align:left;padding:6px;border-bottom:1px solid #e5e7eb">День</th>
-                <th style="padding:6px;border-bottom:1px solid #e5e7eb">Сесії</th>
+                <th style="padding:6px;border-bottom:1px solid #e5e7eb">Унікальні</th>
                 <th style="padding:6px;border-bottom:1px solid #e5e7eb">Стор.</th>
                 <th style="padding:6px;border-bottom:1px solid #e5e7eb">Карта</th>
                 <th style="padding:6px;border-bottom:1px solid #e5e7eb">Пошук</th>
                 <th style="padding:6px;border-bottom:1px solid #e5e7eb">Картки</th>
                 <th style="padding:6px;border-bottom:1px solid #e5e7eb">Зам.</th>
+                <th style="padding:6px;border-bottom:1px solid #e5e7eb">Входи</th>
               </tr></thead>
               <tbody>
                 ${daily
+                  .slice()
+                  .reverse()
                   .map(
                     (d) => `<tr>
                       <td style="padding:6px;border-bottom:1px solid #f1f5f9">${esc(d.day)}</td>
-                      <td style="text-align:center;padding:6px;border-bottom:1px solid #f1f5f9">${esc(String(d.uniqueSessions || 0))}</td>
+                      <td style="text-align:center;padding:6px;border-bottom:1px solid #f1f5f9;font-weight:800;color:#0f766e">${esc(String(d.uniqueVisits ?? d.uniqueSessions ?? 0))}</td>
                       <td style="text-align:center;padding:6px;border-bottom:1px solid #f1f5f9">${esc(String(d.pageViews || 0))}</td>
                       <td style="text-align:center;padding:6px;border-bottom:1px solid #f1f5f9">${esc(String(d.mapLoads || 0))}</td>
                       <td style="text-align:center;padding:6px;border-bottom:1px solid #f1f5f9">${esc(String(d.searches || 0))}</td>
                       <td style="text-align:center;padding:6px;border-bottom:1px solid #f1f5f9">${esc(String(d.locationOpens || 0))}</td>
                       <td style="text-align:center;padding:6px;border-bottom:1px solid #f1f5f9">${esc(String(d.orders || 0))}</td>
+                      <td style="text-align:center;padding:6px;border-bottom:1px solid #f1f5f9">${esc(String(d.logins || 0))}</td>
                     </tr>`
                   )
                   .join('')}
@@ -1794,11 +2166,20 @@
           return;
         }
         listEl.innerHTML = reports
-          .map(
-            (r) => `
+          .map((r) => {
+            const isSiteBug = r.reason === 'site_bug';
+            const title = isSiteBug
+              ? '🐞 Помилка сайту'
+              : r.locationTitle || r.locationId || 'Без точки';
+            const who = r.reporterLogin
+              ? `@${r.reporterLogin}`
+              : 'гість';
+            const contact = r.contact ? ` · контакт: ${r.contact}` : '';
+            const page = r.page ? ` · сторінка: ${r.page}` : '';
+            return `
           <div class="list-item" style="margin-bottom:10px">
-            <div class="list-item-title">${esc(r.locationTitle || r.locationId || 'Без точки')} · ${esc(r.status)}</div>
-            <div class="list-item-meta">@${esc(r.reporterLogin)} · ${esc(formatSupportDate(r.createdAt))}</div>
+            <div class="list-item-title">${esc(title)} · ${esc(r.status)}</div>
+            <div class="list-item-meta">${esc(who)}${esc(contact)}${esc(page)} · ${esc(formatSupportDate(r.createdAt))}</div>
             <div class="list-item-meta" style="white-space:pre-wrap;margin-top:6px">${esc(r.message)}</div>
             <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">
               <select data-report-status="${esc(r.id)}">
@@ -1810,8 +2191,8 @@
               <button type="button" class="btn-secondary" style="width:auto" data-report-save="${esc(r.id)}">Зберегти</button>
               ${r.locationId ? `<a class="btn-secondary" style="width:auto;text-decoration:none;padding:8px 12px" href="/?loc=${encodeURIComponent(r.locationId)}" target="_blank">На карті</a>` : ''}
             </div>
-          </div>`
-          )
+          </div>`;
+          })
           .join('');
         listEl.querySelectorAll('[data-report-save]').forEach((btn) => {
           btn.onclick = async () => {
@@ -2237,9 +2618,27 @@
       detail.innerHTML = '<p class="list-item-meta">Завантаження…</p>';
       try {
         const u = await apiFetch('/api/admin/users/' + encodeURIComponent(userId));
+        const locsHtml = (u.locations || []).length
+          ? u.locations
+              .map(
+                (l) => `
+              <button type="button" class="click-row" data-open-loc="${esc(l.id)}">
+                <div class="row-main">
+                  <div class="row-title">${esc(l.title || 'Без назви')}</div>
+                  <div class="row-meta">${esc(l.address || '—')} · ${esc(String(l.servicesCount || 0))} послуг · ${esc(String(l.views || 0))} переглядів${l.imported ? ' · імпорт' : ''}</div>
+                </div>
+                <span class="row-chevron">›</span>
+              </button>`
+              )
+              .join('')
+          : '<p class="list-item-meta">Локацій немає (користувач ще нічого не додав / не забрав)</p>';
+        const company =
+          u.profile?.companyName && u.profile.companyName !== 'Моя компанія'
+            ? u.profile.companyName
+            : '';
         detail.innerHTML = `
           <button type="button" class="detail-back" id="usersBackBtn">← До списку</button>
-          <h2>${esc(u.login)}</h2>
+          <h2>${esc(u.login)}${company ? ' · ' + esc(company) : ''}</h2>
           <div class="kv-grid">
             <div class="kv"><div class="k">Роль</div><div class="v">${esc(roleLabel(u.role))}</div></div>
             <div class="kv"><div class="k">Телефон</div><div class="v">${esc(u.phone || '—')}</div></div>
@@ -2249,11 +2648,26 @@
             <div class="kv"><div class="k">Локації</div><div class="v">${u.locationsCount}</div></div>
           </div>
           ${passwordBlock(u.id, u.hasPassword)}
-          ${u.role === 'provider' ? `<div class="inline-actions"><button type="button" class="btn-secondary" style="width:auto" id="goProviderFromUser">Відкрити картку провайдера</button></div>` : ''}
+          <div class="inline-actions" style="display:flex;flex-wrap:wrap;gap:8px;margin:12px 0">
+            ${u.role === 'provider' ? `<button type="button" class="btn-secondary" style="width:auto" id="goProviderFromUser">Картка провайдера</button>` : ''}
+            <button type="button" class="btn-danger" style="width:auto" id="delUserBtn">Видалити користувача</button>
+          </div>
+          <div class="detail-section">
+            <h3>Локації користувача</h3>
+            <p class="field-hint" style="margin-top:0">Клік — відкрити локацію в адмінці. На карті: посилання з картки локації.</p>
+            ${locsHtml}
+          </div>
           <div class="detail-section">
             <h3>Останні замовлення</h3>
             ${(u.recentOrders || []).length
-              ? u.recentOrders.map((o) => `<div class="list-item"><div class="list-item-title">${esc(o.serviceName || o.service || 'Замовлення')}</div><div class="list-item-meta">${esc(o.status || '')} · ${esc(o.locationId || '')}</div></div>`).join('')
+              ? u.recentOrders
+                  .map((o) => {
+                    const locLink = o.locationId
+                      ? ` · <button type="button" class="btn-small" data-order-loc="${esc(o.locationId)}" style="width:auto;display:inline;padding:2px 8px">локація</button>`
+                      : '';
+                    return `<div class="list-item"><div class="list-item-title">${esc(o.serviceName || o.service || 'Замовлення')}</div><div class="list-item-meta">${esc(o.status || '')}${locLink}</div></div>`;
+                  })
+                  .join('')
               : '<p class="list-item-meta">Замовлень ще немає</p>'}
           </div>`;
         document.getElementById('usersBackBtn').onclick = showUsersList;
@@ -2264,6 +2678,37 @@
             openProviderDetail(u.id);
           };
         }
+        document.getElementById('delUserBtn').onclick = async () => {
+          const n = u.locationsCount || 0;
+          const msg =
+            n > 0
+              ? `Видалити користувача @${u.login} і ${n} локацій(ї)? Це незворотно.`
+              : `Видалити користувача @${u.login}? Це незворотно.`;
+          if (!confirm(msg)) return;
+          try {
+            await apiFetch('/api/admin/users/' + encodeURIComponent(u.id), {
+              method: 'DELETE',
+              body: JSON.stringify({ removeLocations: true }),
+            });
+            showMessage('Користувача видалено');
+            showUsersList();
+            initAdmin();
+          } catch (err) {
+            showMessage(err.message, true);
+          }
+        };
+        detail.querySelectorAll('[data-open-loc]').forEach((btn) => {
+          btn.onclick = () => {
+            showAdminPane('locations', { keepDetail: true });
+            openLocationDetail(btn.dataset.openLoc);
+          };
+        });
+        detail.querySelectorAll('[data-order-loc]').forEach((btn) => {
+          btn.onclick = () => {
+            showAdminPane('locations', { keepDetail: true });
+            openLocationDetail(btn.dataset.orderLoc);
+          };
+        });
         bindPasswordForms(detail);
       } catch (err) {
         detail.innerHTML = `<button type="button" class="detail-back" id="usersBackBtn">← Назад</button><p class="list-item-meta">${esc(err.message)}</p>`;
@@ -2340,7 +2785,7 @@
         };
         detail.querySelectorAll('[data-open-loc]').forEach((btn) => {
           btn.onclick = () => {
-            showAdminPane('locations');
+            showAdminPane('locations', { keepDetail: true });
             openLocationDetail(btn.dataset.openLoc);
           };
         });
@@ -3972,6 +4417,7 @@
                 .slice(0, 4)
                 .join(', ');
               const more = (l.subcats || []).length > 4 ? '…' : '';
+              const sch = scheduleSummaryText(l);
               return `
         <div class="list-item">
           <div class="list-item-head">
@@ -3980,8 +4426,10 @@
           </div>
           <div class="list-item-meta">${esc(l.address || '—')}</div>
           <div class="list-item-meta">${esc(l.phone || 'без телефону')} · ${Object.keys(l.prices || {}).length} послуг${subLabels ? ' · ' + esc(subLabels + more) : ''}</div>
+          <div class="list-item-meta">${esc(sch)}</div>
           <div class="list-item-actions">
             <button type="button" class="btn-small" data-edit-loc="${l.id}">Змінити</button>
+            <button type="button" class="btn-small" data-edit-sch="${l.id}">Графік</button>
             <button type="button" class="btn-small btn-danger" data-del-loc="${l.id}">Видалити</button>
           </div>
         </div>`;
@@ -3991,6 +4439,16 @@
 
       el.querySelectorAll('[data-edit-loc]').forEach((btn) => {
         btn.onclick = () => openLocationEditor(btn.dataset.editLoc);
+      });
+      el.querySelectorAll('[data-edit-sch]').forEach((btn) => {
+        btn.onclick = () => {
+          showProviderPane('schedule');
+          requestAnimationFrame(() => {
+            document
+              .querySelector(`.schedule-loc-card[data-schedule-loc="${CSS.escape(btn.dataset.editSch)}"]`)
+              ?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          });
+        };
       });
       el.querySelectorAll('[data-del-loc]').forEach((btn) => {
         btn.onclick = () => deleteMyLocation(btn.dataset.delLoc);
@@ -4504,29 +4962,9 @@
     function renderProviderBilling() {
       const banner = document.getElementById('providerBillingBanner');
       if (!banner) return;
-      const b = providerData?.billing || {};
-      const planLabels = {
-        trial: 'Пробний період (Pro)',
-        pro: 'Mapfix Pro',
-        free: 'Безкоштовний тариф',
-        admin: 'Адмін',
-        open: 'Відкритий доступ (ліміти вимкнено)',
-      };
-      banner.className =
-        'billing-banner ' + (b.paid || b.inTrial ? 'pro' : b.plan === 'free' ? 'free' : '');
-      const endLabel = b.paid
-        ? `Оплачено до ${formatBillingDate(b.paidUntil)}`
-        : b.inTrial
-          ? `Пробний до ${formatBillingDate(b.trialEndsAt)}`
-          : 'Пробний період закінчився';
-      const limits = b.active
-        ? `Фото: до ${b.maxPhotos ?? 6}, прайс без ліміту, пріоритет у видачі.`
-        : `Фото недоступні, прайс — до ${b.maxPrices ?? 3} послуг.`;
-      banner.innerHTML = `<strong>${esc(planLabels[b.plan] || b.plan || '—')}</strong><br>
-        <span class="field-hint" style="margin:0">${esc(endLabel)}${
-          b.daysLeft != null ? ` · залишилось ~${esc(String(b.daysLeft))} дн.` : ''
-        }</span><br>
-        <span class="field-hint" style="margin:0">${esc(limits)}</span>`;
+      banner.className = 'billing-banner pro';
+      banner.innerHTML =
+        'Початковий період роботи платформи абсолютно безкоштовний, головна мета полегшення та зручність споживачам знаходити виконавців послуг, а надавачам послуг підвищити кількість клієнтів!';
     }
 
     function renderProviderChecklist() {
@@ -4671,6 +5109,7 @@
       const map = {
         profile: 'providerPaneProfile',
         locations: 'providerPaneLocations',
+        schedule: 'providerPaneSchedule',
         claim: 'providerPaneClaim',
         orders: 'providerPaneOrders',
         support: 'providerPaneSupport',
@@ -4687,6 +5126,290 @@
       if (name === 'support') loadProviderSupport();
       if (name === 'claim') loadProviderClaim();
       if (name === 'billing') renderProviderBilling();
+      if (name === 'schedule') renderProviderSchedule();
+    }
+
+    const SCHEDULE_DAYS = [
+      { key: 'Пн', label: 'Пн' },
+      { key: 'Вт', label: 'Вт' },
+      { key: 'Ср', label: 'Ср' },
+      { key: 'Чт', label: 'Чт' },
+      { key: 'Пт', label: 'Пт' },
+      { key: 'Сб', label: 'Сб' },
+      { key: 'Нд', label: 'Нд' },
+    ];
+    const SCHEDULE_DAY_ALIASES = {
+      пн: 'Пн',
+      понеділок: 'Пн',
+      monday: 'Пн',
+      вт: 'Вт',
+      вівторок: 'Вт',
+      tuesday: 'Вт',
+      ср: 'Ср',
+      середа: 'Ср',
+      wednesday: 'Ср',
+      чт: 'Чт',
+      четвер: 'Чт',
+      thursday: 'Чт',
+      пт: 'Пт',
+      "п'ятниця": 'Пт',
+      пятниця: 'Пт',
+      friday: 'Пт',
+      сб: 'Сб',
+      субота: 'Сб',
+      saturday: 'Сб',
+      нд: 'Нд',
+      неділя: 'Нд',
+      sunday: 'Нд',
+    };
+    const SCHEDULE_RANGE_ORDER = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Нд'];
+
+    function normalizeScheduleDayKey(raw) {
+      const key = String(raw || '')
+        .trim()
+        .toLowerCase()
+        .replace(/\.$/, '');
+      return SCHEDULE_DAY_ALIASES[key] || null;
+    }
+
+    function expandScheduleDayRange(rawKey) {
+      const text = String(rawKey || '').trim();
+      if (!text) return [];
+      const single = normalizeScheduleDayKey(text);
+      if (single) return [single];
+      const m = text.match(/^(.+?)\s*[-–—]\s*(.+)$/);
+      if (!m) return [];
+      const from = normalizeScheduleDayKey(m[1]);
+      const to = normalizeScheduleDayKey(m[2]);
+      if (!from || !to) return [];
+      const i0 = SCHEDULE_RANGE_ORDER.indexOf(from);
+      const i1 = SCHEDULE_RANGE_ORDER.indexOf(to);
+      if (i0 < 0 || i1 < 0 || i0 > i1) return [];
+      return SCHEDULE_RANGE_ORDER.slice(i0, i1 + 1);
+    }
+
+    function parseScheduleHours(raw) {
+      const text = String(raw || '').trim();
+      if (!text || /вихідн|closed|зачинен|off/i.test(text)) {
+        return { closed: true, open: '09:00', close: '18:00' };
+      }
+      const m = text.match(/(\d{1,2}):(\d{2})\s*[-–—]\s*(\d{1,2}):(\d{2})/);
+      if (!m) return { closed: false, open: '09:00', close: '18:00' };
+      const pad = (n) => String(n).padStart(2, '0');
+      return {
+        closed: false,
+        open: `${pad(m[1])}:${m[2]}`,
+        close: `${pad(m[3])}:${m[4]}`,
+      };
+    }
+
+    function defaultDaySchedule() {
+      const out = {};
+      SCHEDULE_DAYS.forEach(({ key }, idx) => {
+        out[key] = idx < 5 ? { closed: false, open: '09:00', close: '18:00' } : { closed: true, open: '09:00', close: '18:00' };
+      });
+      return out;
+    }
+
+    function normalizeLocationSchedule(loc) {
+      const days = defaultDaySchedule();
+      const schedule = loc?.schedule && typeof loc.schedule === 'object' ? loc.schedule : {};
+      const entries = Object.entries(schedule);
+      if (entries.length) {
+        for (const [rawKey, rawHours] of entries) {
+          if (/графік/i.test(rawKey)) {
+            const parsed = parseScheduleHours(rawHours);
+            SCHEDULE_DAYS.forEach(({ key }) => {
+              days[key] = { ...parsed };
+            });
+            continue;
+          }
+          const expanded = expandScheduleDayRange(rawKey);
+          const targets = expanded.length ? expanded : normalizeScheduleDayKey(rawKey) ? [normalizeScheduleDayKey(rawKey)] : [];
+          if (!targets.length) continue;
+          const parsed = parseScheduleHours(rawHours);
+          targets.forEach((day) => {
+            days[day] = { ...parsed };
+          });
+        }
+      } else if (loc?.workingHours) {
+        const parsed = parseScheduleHours(loc.workingHours);
+        if (!parsed.closed || !/вихідн|closed/i.test(String(loc.workingHours))) {
+          // workingHours may be a long Google string with many days — try split
+          const parts = String(loc.workingHours).split(/;|\n/).map((s) => s.trim()).filter(Boolean);
+          let applied = false;
+          for (const part of parts) {
+            const sep = part.indexOf(':');
+            if (sep > 0) {
+              const dayPart = part.slice(0, sep).trim();
+              const hoursPart = part.slice(sep + 1).trim();
+              const dayKey = normalizeScheduleDayKey(dayPart);
+              if (dayKey) {
+                days[dayKey] = parseScheduleHours(hoursPart);
+                applied = true;
+              }
+            }
+          }
+          if (!applied) {
+            SCHEDULE_DAYS.forEach(({ key }, idx) => {
+              days[key] = idx < 5 ? { ...parsed, closed: false } : { closed: true, open: parsed.open, close: parsed.close };
+            });
+          }
+        }
+      }
+      return days;
+    }
+
+    function scheduleDaysToPayload(daysMap) {
+      const schedule = {};
+      const openBits = [];
+      SCHEDULE_DAYS.forEach(({ key }) => {
+        const row = daysMap[key] || { closed: true, open: '09:00', close: '18:00' };
+        if (row.closed) {
+          schedule[key] = 'Вихідний';
+        } else {
+          const open = row.open || '09:00';
+          const close = row.close || '18:00';
+          schedule[key] = `${open} - ${close}`;
+          openBits.push(`${key} ${open}-${close}`);
+        }
+      });
+      const workingHours = openBits.length ? openBits.join('; ') : 'Вихідний';
+      return { schedule, workingHours };
+    }
+
+    function scheduleSummaryText(loc) {
+      const days = normalizeLocationSchedule(loc);
+      const bits = SCHEDULE_DAYS.map(({ key }) => {
+        const row = days[key];
+        if (!row || row.closed) return `${key}: вих.`;
+        return `${key}: ${row.open}-${row.close}`;
+      });
+      return bits.join(' · ');
+    }
+
+    function renderProviderSchedule() {
+      const el = document.getElementById('providerScheduleList');
+      if (!el) return;
+      const locs = providerData?.locations || [];
+      if (!locs.length) {
+        el.innerHTML =
+          '<p class="list-item-meta">Немає точок. Спочатку додайте локацію або заберіть заклад з карти — графік зʼявиться тут.</p>';
+        return;
+      }
+      el.innerHTML = locs
+        .map((loc) => {
+          const days = normalizeLocationSchedule(loc);
+          const rows = SCHEDULE_DAYS.map(({ key, label }) => {
+            const row = days[key];
+            const closed = Boolean(row.closed);
+            return `<div class="schedule-day-row" data-day="${esc(key)}">
+              <input type="checkbox" class="sch-open" ${closed ? '' : 'checked'} title="Робочий день" aria-label="Робочий ${esc(label)}">
+              <span class="day-label">${esc(label)}</span>
+              <input type="time" class="sch-open-time" value="${esc(row.open || '09:00')}" ${closed ? 'disabled' : ''} aria-label="Початок ${esc(label)}">
+              <input type="time" class="sch-close-time" value="${esc(row.close || '18:00')}" ${closed ? 'disabled' : ''} aria-label="Кінець ${esc(label)}">
+            </div>`;
+          }).join('');
+          return `<div class="schedule-loc-card" data-schedule-loc="${esc(loc.id)}">
+            <div class="list-item-head" style="margin-bottom:8px">
+              <div class="list-item-title">${esc(loc.title || 'Без назви')}</div>
+              <span class="badge badge-provider">${esc(catalogCatName(loc.cat))}</span>
+            </div>
+            <div class="list-item-meta" style="margin-bottom:10px">${esc(loc.address || '')}</div>
+            <div class="list-item-meta" style="margin-bottom:8px">Галочка = робочий день · зліва початок, справа кінець</div>
+            ${rows}
+            <div class="schedule-actions">
+              <button type="button" class="btn-secondary" data-sch-weekdays style="width:auto">Пн–Пт як у Пн</button>
+              <button type="button" class="btn-secondary" data-sch-weekend-off style="width:auto">Сб–Нд вихідні</button>
+              <button type="button" data-sch-save style="width:auto">Зберегти графік</button>
+            </div>
+            <div class="msg" data-sch-msg style="display:none;margin-top:10px"></div>
+          </div>`;
+        })
+        .join('');
+
+      el.querySelectorAll('.schedule-loc-card').forEach((card) => {
+        card.querySelectorAll('.schedule-day-row').forEach((row) => {
+          const cb = row.querySelector('.sch-open');
+          const openIn = row.querySelector('.sch-open-time');
+          const closeIn = row.querySelector('.sch-close-time');
+          cb?.addEventListener('change', () => {
+            const on = cb.checked;
+            if (openIn) openIn.disabled = !on;
+            if (closeIn) closeIn.disabled = !on;
+          });
+        });
+        card.querySelector('[data-sch-weekdays]')?.addEventListener('click', () => {
+          const mon = card.querySelector('.schedule-day-row[data-day="Пн"]');
+          const open = mon?.querySelector('.sch-open')?.checked;
+          const openT = mon?.querySelector('.sch-open-time')?.value || '09:00';
+          const closeT = mon?.querySelector('.sch-close-time')?.value || '18:00';
+          ['Вт', 'Ср', 'Чт', 'Пт'].forEach((day) => {
+            const row = card.querySelector(`.schedule-day-row[data-day="${day}"]`);
+            if (!row) return;
+            const cb = row.querySelector('.sch-open');
+            const o = row.querySelector('.sch-open-time');
+            const c = row.querySelector('.sch-close-time');
+            if (cb) cb.checked = Boolean(open);
+            if (o) {
+              o.value = openT;
+              o.disabled = !open;
+            }
+            if (c) {
+              c.value = closeT;
+              c.disabled = !open;
+            }
+          });
+        });
+        card.querySelector('[data-sch-weekend-off]')?.addEventListener('click', () => {
+          ['Сб', 'Нд'].forEach((day) => {
+            const row = card.querySelector(`.schedule-day-row[data-day="${day}"]`);
+            if (!row) return;
+            const cb = row.querySelector('.sch-open');
+            const o = row.querySelector('.sch-open-time');
+            const c = row.querySelector('.sch-close-time');
+            if (cb) cb.checked = false;
+            if (o) o.disabled = true;
+            if (c) c.disabled = true;
+          });
+        });
+        card.querySelector('[data-sch-save]')?.addEventListener('click', async () => {
+          const locId = card.dataset.scheduleLoc;
+          const msg = card.querySelector('[data-sch-msg]');
+          const daysMap = {};
+          card.querySelectorAll('.schedule-day-row').forEach((row) => {
+            const day = row.dataset.day;
+            const open = row.querySelector('.sch-open')?.checked;
+            daysMap[day] = {
+              closed: !open,
+              open: row.querySelector('.sch-open-time')?.value || '09:00',
+              close: row.querySelector('.sch-close-time')?.value || '18:00',
+            };
+          });
+          const payload = scheduleDaysToPayload(daysMap);
+          try {
+            await apiFetch(`/api/provider/locations/${encodeURIComponent(locId)}`, {
+              method: 'PUT',
+              body: JSON.stringify(payload),
+            });
+            await reloadProvider();
+            notifyMapDataChanged();
+            if (msg) {
+              msg.style.display = 'block';
+              msg.className = 'msg ok';
+              msg.textContent = 'Графік збережено';
+            }
+            renderProviderSchedule();
+            renderMyLocations();
+          } catch (err) {
+            if (msg) {
+              msg.style.display = 'block';
+              msg.className = 'msg err';
+              msg.textContent = err.message || 'Помилка збереження';
+            }
+          }
+        });
+      });
     }
 
     async function loadProviderClaim() {

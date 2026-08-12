@@ -33,10 +33,12 @@ function publicReport(r) {
     id: r.id,
     reporterId: r.reporterId,
     reporterLogin: r.reporterLogin || '',
+    contact: r.contact || '',
     locationId: r.locationId || '',
     locationTitle: r.locationTitle || '',
     reason: r.reason || '',
     message: r.message || '',
+    page: r.page || '',
     status: r.status || 'new',
     adminNote: r.adminNote || '',
     createdAt: r.createdAt,
@@ -44,19 +46,23 @@ function publicReport(r) {
   };
 }
 
-async function createReport({ user, locationId, locationTitle, reason, message }) {
+async function createReport({ user, locationId, locationTitle, reason, message, contact, page }) {
   const msg = String(message || '').trim().slice(0, 2000);
   const why = String(reason || 'other').trim().slice(0, 40);
+  const contactStr = String(contact || '').trim().slice(0, 120);
+  const pageStr = String(page || '').trim().slice(0, 200);
   if (msg.length < 5) throw new Error('Опишіть причину скарги детальніше');
   const now = new Date().toISOString();
   const report = {
     id: crypto.randomUUID(),
-    reporterId: user.id,
-    reporterLogin: user.login || '',
+    reporterId: user?.id || null,
+    reporterLogin: user?.login || (contactStr ? `гість` : 'гість'),
+    contact: contactStr,
     locationId: locationId || '',
     locationTitle: locationTitle || '',
     reason: why,
     message: msg,
+    page: pageStr,
     status: 'new',
     adminNote: '',
     createdAt: now,

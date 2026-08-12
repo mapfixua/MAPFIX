@@ -479,6 +479,14 @@ async function fetchGooglePlaces({ city, category, apiKey }) {
       const title = p.displayName?.text;
       if (!title) return null;
       const placeId = p.id || title + lat + lng;
+      const weekdayDescriptions = Array.isArray(p.regularOpeningHours?.weekdayDescriptions)
+        ? p.regularOpeningHours.weekdayDescriptions
+        : [];
+      const schedule = mapGoogleSchedule(weekdayDescriptions);
+      const hasSchedule = Object.keys(schedule).length > 0;
+      const workingHours = hasSchedule
+        ? weekdayDescriptions.join('; ')
+        : '09:00 - 18:00';
       return {
         id: makeLocationId(`ggl:${placeId}`),
         providerId: null,
@@ -490,10 +498,10 @@ async function fetchGooglePlaces({ city, category, apiKey }) {
         rating: Number(p.rating) || 0,
         reviewsCount: Number(p.userRatingCount) || 0,
         openStatus: 'open',
-        workingHours: '09:00 - 18:00',
+        workingHours,
         phone: normalizePhone(p.nationalPhoneNumber || ''),
         address: p.formattedAddress || preset.name,
-        schedule: { 'Пн-Пт': '09:00 - 18:00' },
+        schedule: hasSchedule ? schedule : { 'Пн-Пт': '09:00 - 18:00' },
         subcats: (CATEGORY_SUBCAT_HINTS[cat] || []).slice(0, 1),
         prices: {},
         reviews: [],
@@ -803,15 +811,51 @@ function mapGoogleReviews(reviews) {
     .filter((r) => r.text);
 }
 
+const GOOGLE_DAY_TO_SHORT = {
+  monday: 'Пн',
+  tuesday: 'Вт',
+  wednesday: 'Ср',
+  thursday: 'Чт',
+  friday: 'Пт',
+  saturday: 'Сб',
+  sunday: 'Нд',
+  понеділок: 'Пн',
+  вівторок: 'Вт',
+  середа: 'Ср',
+  четвер: 'Чт',
+  "п'ятниця": 'Пт',
+  пятниця: 'Пт',
+  субота: 'Сб',
+  неділя: 'Нд',
+  пн: 'Пн',
+  вт: 'Вт',
+  ср: 'Ср',
+  чт: 'Чт',
+  пт: 'Пт',
+  сб: 'Сб',
+  нд: 'Нд',
+};
+
+function normalizeScheduleDayLabel(raw) {
+  const key = String(raw || '')
+    .trim()
+    .toLowerCase()
+    .replace(/\.$/, '');
+  return GOOGLE_DAY_TO_SHORT[key] || String(raw || '').trim();
+}
+
 function mapGoogleSchedule(weekdayDescriptions) {
   if (!Array.isArray(weekdayDescriptions)) return {};
   return weekdayDescriptions.reduce((schedule, rawLine) => {
     const line = String(rawLine || '').trim();
     const separator = line.indexOf(':');
     if (separator <= 0) return schedule;
-    const day = line.slice(0, separator).trim();
-    const hours = line.slice(separator + 1).trim();
-    if (day && hours) schedule[day] = hours;
+    const day = normalizeScheduleDayLabel(line.slice(0, separator));
+    let hours = line.slice(separator + 1).trim();
+    if (!day || !hours) return schedule;
+    if (/closed|вихідн|зачинен/i.test(hours)) hours = 'Вихідний';
+    hours = hours.replace(/[–—]/g, '-').replace(/\s*-\s*/g, ' - ');
+    schedule[day] = hours;
     return schedule;
   }, {});
 }
