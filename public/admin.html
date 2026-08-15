@@ -227,9 +227,14 @@
     .stat-card.stat-highlight .stat-value { color: #0f766e; font-size: 1.75rem; }
     .metric-charts-grid {
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      grid-template-columns: repeat(2, minmax(0, 1fr));
       gap: 12px;
       margin-bottom: 16px;
+    }
+    @media (max-width: 860px) {
+      .metric-charts-grid {
+        grid-template-columns: 1fr;
+      }
     }
     .metric-chart-card {
       background: #fff;
@@ -852,7 +857,7 @@
             <div id="analyticsLivePaths" class="field-hint" style="margin-bottom:16px"></div>
 
             <h3 style="font-size:1rem;margin:0 0 8px">Ключові метрики по днях</h3>
-            <p class="field-hint" style="margin-top:0">
+            <p class="field-hint" style="margin-top:0" id="analyticsChartsHint">
               Стовпчики: справа — сьогодні, лівіше — попередні дні. Пунктирна лінія — медіана за період.
               Унікальні заходи — різні відвідувачі (сесії) за київським часом.
             </p>
@@ -1869,9 +1874,6 @@
             ['Відкриття карток', 'locationOpens', false],
             ['Пошукові запити', 'searches', false],
             ['Замовлення', 'orders', false],
-            ['Обране', 'favorites', false],
-            ['Входи', 'logins', false],
-            ['Реєстрації', 'registers', false],
           ];
           kpisEl.innerHTML = charts
             .map(([title, field, highlight]) =>
