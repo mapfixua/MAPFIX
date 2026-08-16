@@ -714,6 +714,33 @@
       border: 1px solid #cbd5e1;
       z-index: 0;
     }
+    .user-locs-map-wrap {
+      position: relative;
+      margin: 14px 0 4px;
+    }
+    .user-locs-map {
+      height: 280px;
+      width: 100%;
+      border-radius: 12px;
+      border: 1px solid #e4e6eb;
+      z-index: 0;
+      background: #f1f5f9;
+    }
+    .user-locs-map-empty {
+      position: absolute;
+      left: 12px;
+      right: 12px;
+      bottom: 12px;
+      margin: 0;
+      padding: 8px 10px;
+      border-radius: 8px;
+      background: rgba(255,255,255,0.92);
+      font-size: 0.8rem;
+      font-weight: 600;
+      color: #64748b;
+      z-index: 2;
+      pointer-events: none;
+    }
     .loc-coords-hint {
       font-size: 0.8rem;
       color: #64748b;
@@ -1470,6 +1497,7 @@
     const LOC_MAP_DEFAULT = [50.4501, 30.5234];
     let locPickMap = null;
     let locPickMarker = null;
+    let entityLocsMap = null;
     let locGeocodeTimer = null;
     let locGeocodeSeq = 0;
 
@@ -2559,11 +2587,84 @@
       btn.onclick = () => showAdminPane(btn.dataset.adminNav);
     });
 
+    function destroyEntityLocsMap() {
+      if (!entityLocsMap) return;
+      try {
+        entityLocsMap.remove();
+      } catch (_) {}
+      entityLocsMap = null;
+    }
+
+    function openAdminLocationFromMap(locId) {
+      if (!locId) return;
+      showAdminPane('locations', { keepDetail: true });
+      openLocationDetail(locId);
+    }
+
+    function mountEntityLocsMap(elId, locations) {
+      destroyEntityLocsMap();
+      const el = document.getElementById(elId);
+      if (!el || typeof L === 'undefined') return;
+      const pts = (locations || [])
+        .map((l) => ({
+          id: l.id,
+          title: l.title || 'Без назви',
+          address: l.address || '',
+          lat: Number(l.lat),
+          lng: Number(l.lng),
+        }))
+        .filter((l) => Number.isFinite(l.lat) && Number.isFinite(l.lng));
+      entityLocsMap = L.map(elId, { zoomControl: true, scrollWheelZoom: false }).setView(
+        LOC_MAP_DEFAULT,
+        12
+      );
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        maxZoom: 19,
+        attribution: '&copy; OpenStreetMap',
+      }).addTo(entityLocsMap);
+      const bounds = [];
+      pts.forEach((l) => {
+        const marker = L.marker([l.lat, l.lng]).addTo(entityLocsMap);
+        marker.bindPopup(
+          `<strong>${esc(l.title)}</strong><br>${esc(l.address || 'Адреса не вказана')}<br>` +
+            `<button type="button" class="btn-secondary" style="width:auto;margin-top:8px" data-map-loc="${esc(l.id)}">Відкрити в адмінці</button>`
+        );
+        marker.on('popupopen', () => {
+          const sid = typeof CSS !== 'undefined' && CSS.escape ? CSS.escape(l.id) : String(l.id).replace(/"/g, '');
+          const btn = document.querySelector(`[data-map-loc="${sid}"]`);
+          if (btn) btn.onclick = () => openAdminLocationFromMap(l.id);
+        });
+        bounds.push([l.lat, l.lng]);
+      });
+      if (bounds.length === 1) entityLocsMap.setView(bounds[0], 15);
+      else if (bounds.length > 1) {
+        entityLocsMap.fitBounds(bounds, { padding: [28, 28], maxZoom: 15 });
+      }
+      setTimeout(() => entityLocsMap && entityLocsMap.invalidateSize(), 220);
+    }
+
+    function entityLocsMapHtml(locations) {
+      const pts = (locations || []).filter(
+        (l) => Number.isFinite(Number(l.lat)) && Number.isFinite(Number(l.lng))
+      );
+      const emptyText = !(locations || []).length
+        ? 'Локацій ще немає — карта показує загальну зону'
+        : pts.length
+          ? ''
+          : 'У локацій немає координат на карті';
+      return `<div class="user-locs-map-wrap">
+        <div id="entityLocsMap" class="user-locs-map"></div>
+        ${emptyText ? `<p class="user-locs-map-empty">${esc(emptyText)}</p>` : ''}
+      </div>`;
+    }
+
     function showUsersList() {
+      destroyEntityLocsMap();
       document.getElementById('usersListView')?.classList.remove('hidden');
       document.getElementById('usersDetailView')?.classList.add('hidden');
     }
     function showProvidersList() {
+      destroyEntityLocsMap();
       document.getElementById('providersListView')?.classList.remove('hidden');
       document.getElementById('providersDetailView')?.classList.add('hidden');
     }
@@ -2617,6 +2718,7 @@
       const list = document.getElementById('usersListView');
       list.classList.add('hidden');
       detail.classList.remove('hidden');
+      destroyEntityLocsMap();
       detail.innerHTML = '<p class="list-item-meta">Завантаження…</p>';
       try {
         const u = await apiFetch('/api/admin/users/' + encodeURIComponent(userId));
@@ -2649,6 +2751,7 @@
             <div class="kv"><div class="k">Замовлення</div><div class="v">${u.ordersCount}</div></div>
             <div class="kv"><div class="k">Локації</div><div class="v">${u.locationsCount}</div></div>
           </div>
+          ${entityLocsMapHtml(u.locations)}
           ${passwordBlock(u.id, u.hasPassword)}
           <div class="inline-actions" style="display:flex;flex-wrap:wrap;gap:8px;margin:12px 0">
             ${u.role === 'provider' ? `<button type="button" class="btn-secondary" style="width:auto" id="goProviderFromUser">Картка провайдера</button>` : ''}
@@ -2656,7 +2759,7 @@
           </div>
           <div class="detail-section">
             <h3>Локації користувача</h3>
-            <p class="field-hint" style="margin-top:0">Клік — відкрити локацію в адмінці. На карті: посилання з картки локації.</p>
+            <p class="field-hint" style="margin-top:0">Клік по рядку або маркеру — відкрити локацію в адмінці.</p>
             ${locsHtml}
           </div>
           <div class="detail-section">
@@ -2712,6 +2815,7 @@
           };
         });
         bindPasswordForms(detail);
+        mountEntityLocsMap('entityLocsMap', u.locations);
       } catch (err) {
         detail.innerHTML = `<button type="button" class="detail-back" id="usersBackBtn">← Назад</button><p class="list-item-meta">${esc(err.message)}</p>`;
         document.getElementById('usersBackBtn').onclick = showUsersList;
@@ -2723,6 +2827,7 @@
       const list = document.getElementById('providersListView');
       list.classList.add('hidden');
       detail.classList.remove('hidden');
+      destroyEntityLocsMap();
       detail.innerHTML = '<p class="list-item-meta">Завантаження…</p>';
       try {
         const p = await apiFetch('/api/admin/providers/' + encodeURIComponent(userId));
@@ -2763,6 +2868,7 @@
             <div class="kv"><div class="k">Замовлення</div><div class="v">${p.stats.ordersCount}</div></div>
             <div class="kv"><div class="k">Відгуки</div><div class="v">${p.stats.reviewsCount}</div></div>
           </div>
+          ${entityLocsMapHtml(p.locations)}
           ${passwordBlock(p.id, p.hasPassword)}
           <div class="inline-actions">
             <button type="button" class="btn-danger" style="width:auto" id="delProviderBtn">Видалити провайдера</button>
@@ -2792,6 +2898,7 @@
           };
         });
         bindPasswordForms(detail);
+        mountEntityLocsMap('entityLocsMap', p.locations);
       } catch (err) {
         detail.innerHTML = `<button type="button" class="detail-back" id="providersBackBtn">← Назад</button><p class="list-item-meta">${esc(err.message)}</p>`;
         document.getElementById('providersBackBtn').onclick = showProvidersList;

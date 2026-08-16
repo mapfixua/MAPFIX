@@ -1506,6 +1506,8 @@ app.get('/api/admin/providers/:userId', requireAuth, requireAdmin, async (req, r
         servicesCount: Object.keys(loc.prices || {}).length,
         prices: loc.prices || {},
         subcats: loc.subcats || [],
+        lat: Number.isFinite(Number(loc.lat)) ? Number(loc.lat) : null,
+        lng: Number.isFinite(Number(loc.lng)) ? Number(loc.lng) : null,
       })),
       services,
       recentOrders: providerOrders.slice(-20).reverse(),
@@ -1539,6 +1541,8 @@ app.get('/api/admin/users/:userId', requireAuth, requireAdmin, async (req, res) 
         servicesCount: Object.keys(l.prices || {}).length,
         rating: Number(l.rating) || 0,
         imported: Boolean(l.importMeta || l.imported),
+        lat: Number.isFinite(Number(l.lat)) ? Number(l.lat) : null,
+        lng: Number.isFinite(Number(l.lng)) ? Number(l.lng) : null,
       }));
 
     res.json({
