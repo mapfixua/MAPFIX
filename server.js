@@ -1365,6 +1365,7 @@ app.get('/api/admin/overview', requireAuth, requireAdmin, async (req, res) => {
           ordersCount,
           hasPassword: Boolean(u.passwordHash),
           telegramLinked: Boolean(u.telegramId),
+          createdAt: u.createdAt || data.providerProfiles[u.id]?.createdAt || u.telegramLinkedAt || null,
         };
       });
 
@@ -1377,6 +1378,7 @@ app.get('/api/admin/overview', requireAuth, requireAdmin, async (req, res) => {
         email: u.email || null,
         hasPassword: Boolean(u.passwordHash),
         telegramLinked: Boolean(u.telegramId),
+        createdAt: u.createdAt || u.telegramLinkedAt || null,
       }));
 
     const admins = users
@@ -1387,6 +1389,7 @@ app.get('/api/admin/overview', requireAuth, requireAdmin, async (req, res) => {
         phone: u.phone || null,
         email: u.email || null,
         hasPassword: Boolean(u.passwordHash),
+        createdAt: u.createdAt || null,
       }));
 
     const locations = activeLocations(data.mockLocations).map((loc) => ({
@@ -1554,6 +1557,7 @@ app.get('/api/admin/users/:userId', requireAuth, requireAdmin, async (req, res) 
       hasPassword: Boolean(user.passwordHash),
       telegramLinked: Boolean(user.telegramId),
       telegramId: user.telegramId || null,
+      createdAt: user.createdAt || profile?.createdAt || user.telegramLinkedAt || null,
       profile,
       ordersCount: userOrders.length,
       recentOrders: userOrders.slice(-20).reverse(),

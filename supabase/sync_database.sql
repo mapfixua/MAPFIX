@@ -19,6 +19,8 @@ BEGIN;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS phone text;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS telegram_id bigint;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS telegram_linked_at timestamptz;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS created_at timestamptz;
+ALTER TABLE users ALTER COLUMN created_at SET DEFAULT now();
 
 COMMENT ON COLUMN users.phone IS 'E.164 normalized phone (+380...) for OTP login';
 COMMENT ON COLUMN users.telegram_id IS 'Telegram chat_id for Bot API sendMessage';

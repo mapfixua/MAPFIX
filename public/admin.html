@@ -925,6 +925,7 @@
           <div id="adminPaneUsers" class="admin-pane card">
             <div id="usersListView">
               <h2>Користувачі</h2>
+              <p class="field-hint" style="margin-top:0">Спочатку ті, хто приєднався останнім.</p>
               <div id="usersList"></div>
             </div>
             <div id="usersDetailView" class="hidden"></div>
@@ -2303,6 +2304,22 @@
       }
     }
 
+    function formatJoinDate(iso) {
+      if (!iso) return '';
+      try {
+        const d = new Date(iso);
+        if (Number.isNaN(d.getTime())) return '';
+        return d.toLocaleDateString('uk-UA', { day: '2-digit', month: '2-digit', year: 'numeric' });
+      } catch (_) {
+        return '';
+      }
+    }
+
+    function userJoinedMs(u) {
+      const t = Date.parse(u?.createdAt || u?.profileCreatedAt || u?.telegramLinkedAt || '');
+      return Number.isFinite(t) ? t : 0;
+    }
+
     function formatSupportDate(iso) {
       try {
         return new Date(iso).toLocaleString('uk-UA');
@@ -2750,6 +2767,7 @@
             <div class="kv"><div class="k">Telegram</div><div class="v">${u.telegramLinked ? 'підключено' : 'ні'}</div></div>
             <div class="kv"><div class="k">Замовлення</div><div class="v">${u.ordersCount}</div></div>
             <div class="kv"><div class="k">Локації</div><div class="v">${u.locationsCount}</div></div>
+            <div class="kv"><div class="k">Приєднався</div><div class="v">${esc(formatJoinDate(u.createdAt) || '—')}</div></div>
           </div>
           ${entityLocsMapHtml(u.locations)}
           ${passwordBlock(u.id, u.hasPassword)}
@@ -3662,20 +3680,21 @@
         ...(data.admins || []).map((u) => ({ ...u, role: 'admin' })),
         ...(data.providers || []).map((u) => ({ ...u, role: 'provider' })),
         ...(data.clients || []).map((u) => ({ ...u, role: 'client' })),
-      ];
+      ].sort((a, b) => userJoinedMs(b) - userJoinedMs(a));
       const usersEl = document.getElementById('usersList');
       usersEl.innerHTML = allUsers.length
         ? allUsers
-            .map(
-              (u) => `
+            .map((u) => {
+              const joined = formatJoinDate(u.createdAt);
+              return `
           <button type="button" class="click-row" data-user-id="${esc(u.id)}">
             <div class="row-main">
               <div class="row-title">${esc(u.login)}${u.companyName && u.companyName !== '—' ? ' · ' + esc(u.companyName) : ''}</div>
-              <div class="row-meta">${esc(roleLabel(u.role))} · ${esc(u.phone || 'без телефону')} · пароль: ${u.hasPassword ? 'є' : 'немає'}</div>
+              <div class="row-meta">${esc(roleLabel(u.role))} · ${esc(u.phone || 'без телефону')} · пароль: ${u.hasPassword ? 'є' : 'немає'}${joined ? ' · приєднався ' + esc(joined) : ''}</div>
             </div>
             <span class="row-chevron">›</span>
-          </button>`
-            )
+          </button>`;
+            })
             .join('')
         : '<p class="list-item-meta">Користувачів ще немає</p>';
       usersEl.querySelectorAll('[data-user-id]').forEach((btn) => {

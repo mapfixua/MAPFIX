@@ -49,6 +49,7 @@ function mapUserRow(row) {
     telegramLinkedAt: row.telegramLinkedAt ?? row.telegram_linked_at ?? null,
     googleId: row.googleId ?? row.google_id ?? null,
     appleId: row.appleId ?? row.apple_id ?? null,
+    createdAt: row.createdAt ?? row.created_at ?? null,
   };
 }
 
