@@ -1,6 +1,6 @@
 <html lang="uk"><head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover, interactive-widget=resizes-content">
     <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
     <meta http-equiv="Pragma" content="no-cache">
     <meta http-equiv="Expires" content="0">
@@ -46,26 +46,36 @@
             --desktop-max: 100%;
             --ease-sheet: cubic-bezier(0.32, 0.72, 0, 1);
             --font: 'Manrope', 'Segoe UI', sans-serif;
+            --safe-bottom: env(safe-area-inset-bottom, 0px);
+            --chrome-nav-pad: 0px;
+            --sheet-pad-bottom: max(8px, calc(var(--safe-bottom) + var(--chrome-nav-pad)));
         }
 
         * { -webkit-tap-highlight-color: transparent; }
+
+        html {
+            height: 100%;
+            height: 100dvh;
+            overflow: hidden;
+        }
 
         body {
             margin: 0; padding: 0;
             font-family: var(--font);
             overflow: hidden;
             background: var(--bg);
-            height: 100vh;
+            height: 100%;
             height: 100dvh;
             color: var(--ink);
         }
 
         #app-shell {
             display: flex;
-            height: 100vh;
+            height: 100%;
             height: 100dvh;
             width: 100%;
             background: var(--bg);
+            box-sizing: border-box;
         }
 
         #map-container {
@@ -342,17 +352,53 @@
         .provider-card-price { font-size: 14px; font-weight: 800; color: var(--success); margin: 0; }
 
         /* ДЕТАЛЬНА КАРТКА */
-        .detail-header { padding: 15px 20px; border-bottom: 1px solid var(--border); display: flex; flex-direction: column; gap: 12px; background: white; }
+        .detail-header { padding: 10px 12px 8px; border-bottom: 1px solid var(--border); display: flex; flex-direction: column; gap: 8px; background: white; }
         .back-btn { background: none; border: none; color: var(--primary); font-size: 13px; font-weight: 700; cursor: pointer; display: flex; align-items: center; gap: 4px; padding: 0; width: fit-content; }
-        .detail-main-title { font-size: 18px; font-weight: 800; color: var(--dark); margin: 0; }
-        
-        .detail-actions-row { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 4px; }
-        .action-btn { flex: 1 1 calc(50% - 4px); min-width: 120px; height: 38px; border-radius: 8px; border: none; font-weight: 700; font-size: 13px; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 6px; text-decoration: none; }
+        .detail-title-row {
+            display: flex;
+            align-items: flex-start;
+            gap: 8px;
+        }
+        .detail-main-title { font-size: 16px; font-weight: 800; color: var(--dark); margin: 0; line-height: 1.2; flex: 1; min-width: 0; }
+        .detail-title-meta {
+            flex-shrink: 0;
+            flex-direction: column;
+            align-items: flex-end;
+            gap: 2px;
+            padding-top: 2px;
+        }
+
+        .detail-actions { display: flex; flex-direction: column; gap: 6px; }
+        .detail-actions-row { display: flex; flex-wrap: nowrap; gap: 6px; margin: 0; }
+        .action-btn {
+            flex: 1 1 0;
+            min-width: 0;
+            height: auto;
+            min-height: 36px;
+            padding: 6px 4px;
+            border-radius: 8px;
+            border: none;
+            font-weight: 700;
+            font-size: 12px;
+            line-height: 1.15;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 4px;
+            text-decoration: none;
+            text-align: center;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
         .btn-call { background: var(--success); color: white; }
         .btn-route { background: var(--ink); color: white; }
         .btn-directions { background: var(--primary); color: var(--ink); }
+        .btn-share { background: var(--ink); color: white; }
+        .btn-report { background: #1f2937; color: white; }
 
-        .detail-scroll-body { flex-grow: 1; overflow-y: auto; padding: 20px; background: #f8fafc; display: flex; flex-direction: column; gap: 16px; }
+        .detail-scroll-body { flex-grow: 1; overflow-y: auto; padding: 10px 12px 12px; background: #f8fafc; display: flex; flex-direction: column; gap: 8px; }
         #sidebar-detail-view.mode-dive .detail-scroll-body {
             animation: detail-dive-in 0.28s var(--ease-sheet);
         }
@@ -374,11 +420,12 @@
         .claim-owner-banner {
             display: flex;
             flex-direction: column;
-            gap: 8px;
-            padding: 12px 14px;
+            gap: 6px;
+            padding: 10px 12px;
             border-radius: 10px;
             border: 1.5px solid var(--ink);
             background: var(--primary-light);
+            margin-top: 4px;
         }
         .claim-owner-banner strong {
             font-size: 14px;
@@ -409,36 +456,72 @@
                 cursor: pointer;
             }
             #sidebar-detail-view.mode-preview .detail-header {
-                padding: 10px 14px 12px;
-                gap: 8px;
+                padding: 8px 12px 10px;
+                gap: 6px;
                 overflow-y: auto;
                 flex: 1;
                 min-height: 0;
             }
             #sidebar-detail-view.mode-preview .detail-actions-row {
-                gap: 6px;
-            }
-            #sidebar-detail-view.mode-preview .detail-actions-row .action-btn:not(.btn-dive):not(.btn-call):not(.btn-claim) {
-                display: none;
+                gap: 5px;
             }
             #sidebar-detail-view.mode-preview .claim-owner-banner {
-                display: flex;
+                display: none !important;
             }
             #sidebar-detail-view.mode-preview .btn-fav-header {
-                display: none;
+                display: flex;
             }
             #sidebar-detail-view.mode-preview .detail-scroll-body {
                 display: none;
             }
             #sidebar-detail-view.mode-dive .detail-scroll-body {
                 display: flex;
+                padding-bottom: 12px;
             }
             #sidebar-detail-view.mode-dive .detail-header {
                 flex-shrink: 0;
                 overflow: visible;
             }
         }
-        .detail-section { background: white; border: 1px solid var(--border); border-radius: 12px; padding: 14px; display: flex; flex-direction: column; gap: 10px; }
+        .detail-section { background: white; border: 1px solid var(--border); border-radius: 12px; padding: 10px 12px; display: flex; flex-direction: column; gap: 6px; }
+        .detail-about-inline {
+            display: flex;
+            align-items: flex-start;
+            gap: 8px;
+            background: white;
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 8px 10px;
+        }
+        .detail-about-i {
+            flex-shrink: 0;
+            width: 18px;
+            height: 18px;
+            margin-top: 1px;
+            border-radius: 50%;
+            border: 1.5px solid #94a3b8;
+            color: #64748b;
+            font-size: 11px;
+            font-weight: 800;
+            font-style: italic;
+            font-family: Georgia, 'Times New Roman', serif;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            line-height: 1;
+        }
+        .detail-about-copy {
+            flex: 1;
+            min-width: 0;
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--dark);
+            line-height: 1.35;
+        }
+        .detail-about-copy .info-item { margin: 0; }
         .detail-photos {
             display: grid;
             grid-template-columns: repeat(3, 1fr);
@@ -498,14 +581,15 @@
         .btn-order:hover { filter: brightness(1.05); }
         .btn-fav-header {
             background: #fff;
-            border: 2px solid #fbbf24;
+            border: 1.5px solid #fbbf24;
             color: #b45309;
-            padding: 6px 12px;
+            padding: 6px 4px;
             border-radius: 8px;
             font-size: 12px;
             font-weight: 700;
             cursor: pointer;
         }
+        .action-btn.btn-fav-header { height: auto; min-height: 36px; }
         .btn-fav-header.active { background: #fef3c7; }
 
         .top-header {
@@ -1095,7 +1179,7 @@
                 border-top-right-radius: 22px;
                 box-shadow: 0 -8px 32px rgba(0,0,0,0.08);
                 transition: height 0.38s var(--ease-sheet);
-                padding-bottom: var(--safe-bottom);
+                padding-bottom: var(--sheet-pad-bottom);
                 box-sizing: border-box;
             }
 
@@ -1175,7 +1259,7 @@
                 max-width: 70px;
             }
 
-            #geo-btn { bottom: 14px; right: 14px; }
+            #geo-btn { bottom: calc(14px + var(--chrome-nav-pad)); right: 14px; }
 
             /* Compact mode — тільки мобільний */
             .sidebar-header {
@@ -1188,7 +1272,7 @@
             .hotline-filter-bar { font-size: 12px; gap: 6px; }
 
             .sidebar-content {
-                padding: 0 0 16px;
+                padding: 0 0 12px;
                 gap: 0;
             }
             .nav-title { font-size: 16px; }
@@ -1212,6 +1296,10 @@
             .nav-item-meta { font-size: 12px; }
             .nav-item-arrow { font-size: 14px; }
             .nav-hint { font-size: 13px; padding: 12px 14px; }
+            .action-btn {
+                font-size: 11px;
+                white-space: normal;
+            }
 
             .provider-card {
                 border: none;
@@ -2085,6 +2173,51 @@
                 return window.matchMedia('(max-width: 768px)').matches;
             }
 
+            function syncMobileViewport() {
+                const shell = document.getElementById('app-shell');
+                const root = document.documentElement;
+                const mobile = isMobileLayout();
+                const ua = navigator.userAgent || '';
+                const android = /Android/i.test(ua);
+                const standalone =
+                    window.matchMedia('(display-mode: standalone)').matches ||
+                    Boolean(window.navigator.standalone);
+                const vv = window.visualViewport;
+                let covered = 0;
+                if (vv) {
+                    covered = Math.max(0, Math.round(window.innerHeight - (vv.height + vv.offsetTop)));
+                }
+                let chromePad = covered;
+                if (mobile && android && !standalone && chromePad < 40) chromePad = 48;
+                if (!mobile) chromePad = 0;
+                root.style.setProperty('--chrome-nav-pad', chromePad + 'px');
+
+                if (!shell) return;
+                if (!mobile || !vv) {
+                    shell.style.position = '';
+                    shell.style.top = '';
+                    shell.style.left = '';
+                    shell.style.right = '';
+                    shell.style.height = '';
+                    return;
+                }
+                shell.style.position = 'fixed';
+                shell.style.left = '0';
+                shell.style.right = '0';
+                shell.style.top = Math.max(0, Math.round(vv.offsetTop)) + 'px';
+                shell.style.height = Math.round(vv.height) + 'px';
+            }
+
+            syncMobileViewport();
+            window.addEventListener('resize', syncMobileViewport);
+            window.visualViewport?.addEventListener('resize', () => {
+                syncMobileViewport();
+                if (typeof map !== 'undefined' && map && map.invalidateSize) {
+                    map.invalidateSize();
+                }
+            });
+            window.visualViewport?.addEventListener('scroll', syncMobileViewport);
+
             function expandBottomSheet() {
                 if (isMobileLayout()) {
                     appShell.classList.add('sheet-expanded');
@@ -2513,9 +2646,7 @@
                     ? `<button type="button" class="action-btn btn-dive" onclick="event.stopPropagation(); diveIntoSelectedDetail()">Детальніше</button>
                        <p class="detail-preview-hint">Ще раз по маркеру або «Детальніше» — повна картка</p>`
                     : '';
-                const canOfferClaim =
-                    !loc.providerId &&
-                    !(State.currentUser && State.currentUser.role === 'admin');
+                const canOfferClaim = !loc.providerId;
                 const locPhoneDigits = String(loc.phone || '').replace(/\D/g, '');
                 const locHasClaimPhone = locPhoneDigits.length >= 10;
                 const claimBannerHtml = canOfferClaim
@@ -2534,25 +2665,30 @@
                 const headerBox = document.getElementById('detailHeaderContent');
                 headerBox.innerHTML = `
                     <button class="back-btn" onclick="event.stopPropagation(); closeMasterDetail()">⬅️ Назад до списку</button>
-                    <h2 class="detail-main-title">${escapeHtml(loc.title)}</h2>
-                    <div class="provider-meta">
-                        <span class="status-badge ${loc.openStatus === 'open' ? 'open' : 'closed'}">${loc.openStatus === 'open' ? 'Відкрито' : 'Зачинено'}</span>
-                        <span class="rating-block"><span class="star-icon">★</span><b>${Number(loc.rating || 0).toFixed(1)}</b> <span class="reviews-count">(${Number(loc.reviewsCount) || 0})</span></span>
+                    <div class="detail-title-row">
+                        <h2 class="detail-main-title">${escapeHtml(loc.title)}</h2>
+                        <div class="provider-meta detail-title-meta">
+                            <span class="status-badge ${loc.openStatus === 'open' ? 'open' : 'closed'}">${loc.openStatus === 'open' ? 'Відкрито' : 'Зачинено'}</span>
+                            <span class="rating-block"><span class="star-icon">★</span><b>${Number(loc.rating || 0).toFixed(1)}</b> <span class="reviews-count">(${Number(loc.reviewsCount) || 0})</span></span>
+                        </div>
                     </div>
-                    ${claimBannerHtml}
-                    <div class="detail-actions-row">
-                        ${loc.phone ? `<a href="tel:${escapeHtml(loc.phone)}" class="action-btn btn-call" onclick="event.stopPropagation()">📞 Зателефонувати</a>` : ''}
-                        <button type="button" class="action-btn btn-route" onclick="event.stopPropagation(); panToMaster(${Number(loc.lat)}, ${Number(loc.lng)})">🗺️ На карті</button>
-                        ${directionsBtn}
-                        <button type="button" class="btn-fav-header ${isFav ? 'active' : ''}" onclick="event.stopPropagation(); toggleFavorite('${escapeHtml(loc.id)}')">${isFav ? '★ В обраному' : '☆ В обране'}</button>
-                        <button type="button" class="action-btn btn-route" onclick="event.stopPropagation(); shareLocation('${escapeHtml(loc.id)}')">↗ Поділитись</button>
-                        <button type="button" class="action-btn btn-route" onclick="event.stopPropagation(); reportLocation('${escapeHtml(loc.id)}')">⚑ Скарга</button>
-                        ${manageLocationBtnHtml(loc)}
+                    <div class="detail-actions">
+                        <div class="detail-actions-row">
+                            ${loc.phone ? `<a href="tel:${escapeHtml(loc.phone)}" class="action-btn btn-call" onclick="event.stopPropagation()">📞 Зателефонувати</a>` : ''}
+                            ${directionsBtn}
+                            <button type="button" class="action-btn btn-route" onclick="event.stopPropagation(); panToMaster(${Number(loc.lat)}, ${Number(loc.lng)})">🗺️ На карті</button>
+                        </div>
+                        <div class="detail-actions-row">
+                            <button type="button" class="action-btn btn-share" onclick="event.stopPropagation(); shareLocation('${escapeHtml(loc.id)}')">↗ Поділитись</button>
+                            <button type="button" class="action-btn btn-fav-header ${isFav ? 'active' : ''}" onclick="event.stopPropagation(); toggleFavorite('${escapeHtml(loc.id)}')">${isFav ? '★ В обраному' : '☆ В обране'}</button>
+                            <button type="button" class="action-btn btn-report" onclick="event.stopPropagation(); reportLocation('${escapeHtml(loc.id)}')">⚑ Скарга</button>
+                            ${manageLocationBtnHtml(loc)}
+                        </div>
                         ${diveBtn}
                     </div>
                 `;
 
-                renderDetailBody(loc);
+                renderDetailBody(loc, { claimBannerHtml, mode });
 
                 const detailView = document.getElementById('sidebar-detail-view');
                 detailView.classList.add('show');
@@ -2644,8 +2780,14 @@
                     }
                     return;
                 }
+                if (u.role === 'admin') {
+                    if (confirm('Ви в акаунті адміна. Відкрити картку в адмінці, щоб призначити власника?\n\nЩоб пройти claim як майстер (код на телефон у Telegram) — вийдіть і зайдіть як провайдер.')) {
+                        location.href = '/admin?pane=locations&loc=' + encodeURIComponent(locationId);
+                    }
+                    return;
+                }
                 if (u.role !== 'provider') {
-                    alert('Потрібен акаунт майстра, щоб забрати заклад. Вийдіть з адмінки й увійдіть як майстер, або призначте власника в адмінці.');
+                    alert('Потрібен акаунт майстра, щоб забрати заклад.');
                     return;
                 }
                 try {
@@ -2718,9 +2860,10 @@
                 }
             }
 
-            function renderDetailBody(loc) {
+            function renderDetailBody(loc, opts = {}) {
                 const bodyBox = document.getElementById('detailBodyContent');
                 const priceEntries = Object.entries(loc.prices || {});
+                const claimBannerHtml = opts.mode === 'preview' ? '' : (opts.claimBannerHtml || '');
 
                 let scheduleRowsHtml = '';
                 for (const [days, hours] of Object.entries(loc.schedule || {})) {
@@ -2769,28 +2912,21 @@
                 }
 
                 const aboutText = String(loc.text || '').trim();
-                const aboutHtml = aboutText
-                    ? `<div class="detail-section">
-                        <h4 class="section-title">ℹ️ Про заклад</h4>
-                        <div class="info-item" style="font-weight:500;line-height:1.45">${escapeHtml(aboutText)}</div>
-                       </div>`
-                    : '';
-
                 const providerName = typeof getProviderName === 'function' ? getProviderName(loc) : '';
-                const providerHtml = providerName
-                    ? `<div class="info-item">👤 ${escapeHtml(providerName)}</div>`
-                    : '';
+                const aboutHtml = `<div class="detail-about-inline">
+                        <span class="detail-about-i" aria-hidden="true">i</span>
+                        <div class="detail-about-copy">
+                            ${aboutText ? `<div class="info-item" style="font-weight:500">${escapeHtml(aboutText)}</div>` : ''}
+                            ${providerName ? `<div class="info-item">👤 ${escapeHtml(providerName)}</div>` : ''}
+                            <div class="info-item">🏢 ${escapeHtml(loc.address || 'Адресу не вказано')}</div>
+                            <div class="info-item">📞 ${escapeHtml(loc.phone || 'Телефон не вказано')}</div>
+                            ${Number(loc.views) ? `<div class="info-item">👁 Переглядів: ${Number(loc.views)}</div>` : ''}
+                        </div>
+                    </div>`;
 
                 bodyBox.innerHTML = `
                     ${photosHtml}
                     ${aboutHtml}
-                    <div class="detail-section">
-                        <h4 class="section-title">📍 Контакти та адреса</h4>
-                        ${providerHtml}
-                        <div class="info-item">🏢 ${escapeHtml(loc.address || 'Адресу не вказано')}</div>
-                        <div class="info-item">📞 ${escapeHtml(loc.phone || 'Телефон не вказано')}</div>
-                        ${Number(loc.views) ? `<div class="info-item">👁 Переглядів: ${Number(loc.views)}</div>` : ''}
-                    </div>
                     <div class="detail-section">
                         <h4 class="section-title">🕒 Графік роботи</h4>
                         <div class="schedule-table">${scheduleRowsHtml}</div>
@@ -2819,6 +2955,7 @@
                         <h4 class="section-title">⭐ Відгуки користувачів (${Number(loc.reviewsCount) || 0})</h4>
                         <div style="display:flex; flex-direction:column; gap:10px;">${reviewsHtml}</div>
                     </div>
+                    ${claimBannerHtml}
                 `;
 
                 const priceList = document.getElementById('detailPriceList');
@@ -3471,6 +3608,7 @@
             }, { passive: true });
 
             window.addEventListener('resize', () => {
+                syncMobileViewport();
                 if (!isMobileLayout()) {
                     appShell.classList.remove('sheet-expanded', 'sheet-browse', 'sheet-dive');
                 }
