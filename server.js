@@ -1366,6 +1366,13 @@ app.get('/api/admin/overview', requireAuth, requireAdmin, async (req, res) => {
           hasPassword: Boolean(u.passwordHash),
           telegramLinked: Boolean(u.telegramId),
           createdAt: u.createdAt || data.providerProfiles[u.id]?.createdAt || u.telegramLinkedAt || null,
+          imported: locs.some((l) => isImportedLocation(l)),
+          cats: [...new Set(locs.map((l) => l.cat).filter(Boolean))],
+          subcats: [
+            ...new Set(locs.flatMap((l) => (Array.isArray(l.subcats) ? l.subcats : []))),
+          ],
+          serviceCategories: data.providerProfiles[u.id]?.serviceCategories || [],
+          serviceSubcategories: data.providerProfiles[u.id]?.serviceSubcategories || [],
         };
       });
 
@@ -1679,6 +1686,64 @@ app.post('/api/admin/users/:userId/password', requireAuth, requireAdmin, async (
   } catch (err) {
     console.error('[POST /api/admin/users/:userId/password]', err);
     res.status(500).json({ error: 'Помилка оновлення пароля' });
+  }
+});
+
+app.post('/api/admin/users/:userId/make-provider', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const userId = String(req.params.userId || '').trim();
+    const companyName = String(req.body?.companyName || '').trim();
+    const users = await readUsers();
+    const user = users.find((u) => u.id === userId);
+    if (!user) return res.status(404).json({ error: 'Користувача не знайдено' });
+    if (user.role === 'admin') {
+      return res.status(400).json({ error: 'Не можна змінити роль суперадміна' });
+    }
+    if (user.role === 'provider') {
+      return res.status(400).json({ error: 'Це вже майстер' });
+    }
+    const name = companyName || user.login;
+    if (name.length < 2) {
+      return res.status(400).json({ error: 'Вкажіть назву компанії (мін. 2 символи)' });
+    }
+
+    const { error } = await supabaseClient.from(USERS_TABLE).update({ role: 'provider' }).eq('id', userId);
+    if (error) {
+      console.error('[make-provider] users.role', error.message);
+      return res.status(500).json({ error: 'Не вдалося змінити роль у базі' });
+    }
+
+    const data = await readData();
+    const existing = data.providerProfiles[userId] || {};
+    const profile = {
+      ...existing,
+      companyName: name,
+      phone: existing.phone || user.phone || '',
+      serviceCategories: Array.isArray(existing.serviceCategories) ? existing.serviceCategories : [],
+      serviceSubcategories: Array.isArray(existing.serviceSubcategories)
+        ? existing.serviceSubcategories
+        : [],
+      customSubcategories: Array.isArray(existing.customSubcategories)
+        ? existing.customSubcategories
+        : [],
+      createdAt: existing.createdAt || new Date().toISOString(),
+    };
+    data.providerProfiles[userId] = profile;
+    const saved = await upsertProviderProfile(userId, profile);
+    if (!saved?.ok && !saved?.missing) {
+      console.warn('[make-provider] profile', saved?.error?.message || saved?.error);
+    }
+    invalidateReadDataCache();
+    try {
+      await fsPromises.writeFile(DATA_FILE, JSON.stringify(ensureDataShape(data), null, 2), 'utf8');
+    } catch (e) {
+      console.warn('[make-provider] local skip:', e.message);
+    }
+
+    res.json({ ok: true, role: 'provider', companyName: name });
+  } catch (err) {
+    console.error('[POST /api/admin/users/:userId/make-provider]', err);
+    res.status(500).json({ error: 'Не вдалося зробити майстром' });
   }
 });
 

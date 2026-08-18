@@ -348,7 +348,7 @@ async function buildAdminReport({
 
   const dailySeries = Object.keys(state.daily || {})
     .sort()
-    .slice(-14)
+    .slice(-60)
     .map((day) => {
       const summary = summarizeDay(state.daily[day]);
       return {

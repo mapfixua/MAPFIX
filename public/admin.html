@@ -228,13 +228,39 @@
     .metric-charts-grid {
       display: grid;
       grid-template-columns: repeat(2, minmax(0, 1fr));
+      grid-auto-rows: 1fr;
       gap: 12px;
-      margin-bottom: 16px;
+      margin-bottom: 10px;
+      align-items: stretch;
     }
     @media (max-width: 860px) {
       .metric-charts-grid {
         grid-template-columns: 1fr;
       }
+    }
+    .metric-window-bar {
+      margin: 0 0 16px;
+      padding: 10px 12px 12px;
+      background: #f8fafc;
+      border: 1px solid #e4e6eb;
+      border-radius: 12px;
+    }
+    .metric-window-bar label {
+      font-size: 0.78rem;
+      font-weight: 800;
+      color: #475569;
+      margin-bottom: 6px;
+    }
+    .metric-window-bar input[type="range"] {
+      width: 100%;
+      margin: 0;
+      accent-color: #12c4b5;
+    }
+    .metric-window-label {
+      font-size: 0.82rem;
+      font-weight: 700;
+      color: #0f766e;
+      margin: 4px 0 0;
     }
     .metric-chart-card {
       background: #fff;
@@ -244,7 +270,8 @@
       display: flex;
       flex-direction: column;
       gap: 10px;
-      min-height: 220px;
+      min-height: 278px;
+      height: 100%;
     }
     .metric-chart-card.metric-highlight {
       border-color: #12c4b5;
@@ -295,8 +322,8 @@
       display: flex;
       align-items: stretch;
       justify-content: space-between;
-      gap: 3px;
-      height: 132px;
+      gap: 4px;
+      height: 178px;
       position: relative;
       z-index: 1;
       padding-top: 16px;
@@ -347,23 +374,50 @@
       font-weight: 800;
     }
     .metric-bar-day {
-      font-size: 0.58rem;
+      font-size: 0.68rem;
       font-weight: 700;
-      color: #94a3b8;
+      color: #64748b;
       white-space: nowrap;
-      line-height: 1.1;
+      line-height: 1;
       text-align: center;
       flex-shrink: 0;
-      min-height: 1.4em;
+      writing-mode: vertical-rl;
+      transform: rotate(180deg);
+      height: 52px;
+      letter-spacing: 0.04em;
     }
     .metric-median-overlay {
       position: absolute;
       left: 0;
       right: 0;
       top: 16px;
-      bottom: 22px;
+      bottom: 56px;
       z-index: 2;
       pointer-events: none;
+    }
+    .admin-list-toolbar {
+      display: grid;
+      grid-template-columns: minmax(180px, 1.6fr) repeat(auto-fit, minmax(150px, 1fr));
+      gap: 8px 10px;
+      margin: 0 0 10px;
+      align-items: end;
+    }
+    .admin-list-toolbar .field-block { margin-bottom: 0; }
+    .admin-list-toolbar label {
+      font-size: 0.75rem;
+      font-weight: 800;
+      color: #64748b;
+      margin-bottom: 4px;
+    }
+    .admin-list-toolbar input,
+    .admin-list-toolbar select {
+      width: 100%;
+      margin: 0;
+    }
+    .admin-list-count {
+      font-size: 0.8rem;
+      color: #64748b;
+      margin: 0 0 10px;
     }
     .metric-median-line {
       position: absolute;
@@ -885,10 +939,15 @@
 
             <h3 style="font-size:1rem;margin:0 0 8px">Ключові метрики по днях</h3>
             <p class="field-hint" style="margin-top:0" id="analyticsChartsHint">
-              Стовпчики: справа — сьогодні, лівіше — попередні дні. Пунктирна лінія — медіана за період.
-              Унікальні заходи — різні відвідувачі (сесії) за київським часом.
+              Кожне вікно показує 10 днів. Справа — найновіший день у вибраному періоді.
+              Пунктирна лінія — медіана. Дати підписані вертикально. Повзунок нижче — попередні періоди.
             </p>
-            <div class="metric-charts-grid" id="analyticsKpis" style="margin-bottom:16px"></div>
+            <div class="metric-charts-grid" id="analyticsKpis" style="margin-bottom:10px"></div>
+            <div class="metric-window-bar">
+              <label for="analyticsRangeSlider">Період на графіках</label>
+              <input type="range" id="analyticsRangeSlider" min="0" max="0" value="0" step="1">
+              <p class="metric-window-label" id="analyticsRangeLabel">Останні 10 днів</p>
+            </div>
 
             <h3 style="font-size:1rem;margin:0 0 8px">Стан платформи (загалом)</h3>
             <div class="stat-grid" id="analyticsPlatformStats" style="margin-bottom:16px"></div>
@@ -918,14 +977,30 @@
             <p class="field-hint" style="margin:0 0 6px">Подвійний клік — відкрити локацію</p>
             <div id="analyticsTopLocs"><p class="list-item-meta">—</p></div>
 
-            <h3 style="font-size:1rem;margin:16px 0 8px">Останні 14 днів (по днях)</h3>
+            <h3 style="font-size:1rem;margin:16px 0 8px">Історія по днях</h3>
             <div id="analyticsDaily"><p class="list-item-meta">—</p></div>
           </div>
 
           <div id="adminPaneUsers" class="admin-pane card">
             <div id="usersListView">
               <h2>Користувачі</h2>
-              <p class="field-hint" style="margin-top:0">Спочатку ті, хто приєднався останнім.</p>
+              <p class="field-hint" style="margin-top:0">Спочатку ті, хто приєднався останнім. Клієнта можна зробити майстром у картці — без повторної реєстрації.</p>
+              <div class="admin-list-toolbar">
+                <div class="field-block">
+                  <label for="usersSearch">Пошук</label>
+                  <input type="search" id="usersSearch" placeholder="логін, телефон, email, компанія…" autocomplete="off">
+                </div>
+                <div class="field-block">
+                  <label for="usersRoleFilter">Роль</label>
+                  <select id="usersRoleFilter">
+                    <option value="">Усі</option>
+                    <option value="client">Клієнти</option>
+                    <option value="provider">Майстри</option>
+                    <option value="admin">Адміни</option>
+                  </select>
+                </div>
+              </div>
+              <p class="admin-list-count" id="usersListCount"></p>
               <div id="usersList"></div>
             </div>
             <div id="usersDetailView" class="hidden"></div>
@@ -1001,6 +1076,33 @@
           <div id="adminPaneProviders" class="admin-pane card">
             <div id="providersListView">
               <h2>Провайдери</h2>
+              <div class="admin-list-toolbar">
+                <div class="field-block">
+                  <label for="providersSearch">Пошук</label>
+                  <input type="search" id="providersSearch" placeholder="компанія, логін, телефон…" autocomplete="off">
+                </div>
+                <div class="field-block">
+                  <label for="providersImportFilter">Джерело</label>
+                  <select id="providersImportFilter">
+                    <option value="">Усі</option>
+                    <option value="imported">Імпортовані</option>
+                    <option value="registered">Зареєстровані (не імпорт)</option>
+                  </select>
+                </div>
+                <div class="field-block">
+                  <label for="providersCatFilter">Категорія</label>
+                  <select id="providersCatFilter">
+                    <option value="">Усі категорії</option>
+                  </select>
+                </div>
+                <div class="field-block">
+                  <label for="providersSubFilter">Підкатегорія</label>
+                  <select id="providersSubFilter" disabled>
+                    <option value="">Усі підкатегорії</option>
+                  </select>
+                </div>
+              </div>
+              <p class="admin-list-count" id="providersListCount"></p>
               <div id="providersList"></div>
             </div>
             <div id="providersDetailView" class="hidden"></div>
@@ -1009,6 +1111,34 @@
           <div id="adminPaneLocations" class="admin-pane card">
             <div id="locationsListView">
               <h2>Усі точки на карті</h2>
+              <div class="admin-list-toolbar">
+                <div class="field-block">
+                  <label for="locationsSearch">Пошук</label>
+                  <input type="search" id="locationsSearch" placeholder="назва, адреса, телефон…" autocomplete="off">
+                </div>
+                <div class="field-block">
+                  <label for="locationsImportFilter">Джерело</label>
+                  <select id="locationsImportFilter">
+                    <option value="">Усі</option>
+                    <option value="imported">Імпортовані</option>
+                    <option value="claimed">З власником</option>
+                    <option value="unowned">Без власника</option>
+                  </select>
+                </div>
+                <div class="field-block">
+                  <label for="locationsCatFilter">Категорія</label>
+                  <select id="locationsCatFilter">
+                    <option value="">Усі категорії</option>
+                  </select>
+                </div>
+                <div class="field-block">
+                  <label for="locationsSubFilter">Підкатегорія</label>
+                  <select id="locationsSubFilter" disabled>
+                    <option value="">Усі підкатегорії</option>
+                  </select>
+                </div>
+              </div>
+              <p class="admin-list-count" id="locationsListCount"></p>
               <div style="border:1px solid #e5e7eb;border-radius:12px;padding:12px;margin-bottom:14px;background:#fafafa">
                 <h3 style="margin:0 0 8px;font-size:0.95rem">Масове видалення в кошик</h3>
                 <p class="field-hint">Спочатку в кошик (можна відновити). Остаточне видалення — у розділі «Кошик».</p>
@@ -1772,7 +1902,7 @@
       return isoDay;
     }
 
-    function padAnalyticsDaily(daily, todayIso, days = 14) {
+    function padAnalyticsDaily(daily, todayIso, days = 60) {
       const byDay = {};
       (daily || []).forEach((d) => {
         if (d?.day) byDay[d.day] = d;
@@ -1801,11 +1931,65 @@
       return out;
     }
 
+    const ANALYTICS_WINDOW = 10;
+    let analyticsDailySeries = [];
+    let analyticsTodayIso = null;
+
+    function analyticsWindowRangeText(windowRows, todayIso) {
+      if (!windowRows.length) return 'Немає даних';
+      const a = analyticsDayLabel(windowRows[0].day, todayIso);
+      const b = analyticsDayLabel(windowRows[windowRows.length - 1].day, todayIso);
+      return `${a} — ${b} · ${windowRows.length} дн.`;
+    }
+
+    function renderAnalyticsChartsWindow() {
+      const kpisEl = document.getElementById('analyticsKpis');
+      const slider = document.getElementById('analyticsRangeSlider');
+      const label = document.getElementById('analyticsRangeLabel');
+      if (!kpisEl) return;
+      const series = analyticsDailySeries;
+      if (!series.length) {
+        kpisEl.innerHTML = '<p class="list-item-meta">Дані зʼявляться після трафіку</p>';
+        if (label) label.textContent = 'Немає даних';
+        return;
+      }
+      const maxStart = Math.max(0, series.length - ANALYTICS_WINDOW);
+      let start = Number(slider?.value);
+      if (!Number.isFinite(start)) start = maxStart;
+      start = Math.max(0, Math.min(maxStart, start));
+      if (slider && Number(slider.value) !== start) slider.value = String(start);
+      const windowRows = series.slice(start, start + ANALYTICS_WINDOW);
+      const todayIso = analyticsTodayIso || windowRows[windowRows.length - 1]?.day;
+      if (label) label.textContent = analyticsWindowRangeText(windowRows, todayIso);
+      const charts = [
+        ['Унікальні заходи', 'uniqueVisits', true],
+        ['Перегляди сторінок', 'pageViews', false],
+        ['Завантаження карти', 'mapLoads', false],
+        ['Відкриття карток', 'locationOpens', false],
+        ['Пошукові запити', 'searches', false],
+        ['Замовлення', 'orders', false],
+      ];
+      const dayKeys = windowRows.map((d) => d.day);
+      kpisEl.innerHTML = charts
+        .map(([title, field, highlight]) =>
+          renderMetricBarChart({
+            title,
+            values: windowRows.map((d) => Number(d[field]) || 0),
+            days: dayKeys,
+            todayIso,
+            highlight,
+          })
+        )
+        .join('');
+    }
+
     function renderMetricBarChart({ title, values, days, todayIso, highlight }) {
       const max = Math.max(1, ...values);
       const med = analyticsMedian(values);
       const medPct = Math.max(0, Math.min(100, (med / max) * 100));
-      const todayVal = values[values.length - 1] ?? 0;
+      const lastVal = values[values.length - 1] ?? 0;
+      const lastDay = days[days.length - 1];
+      const lastCaption = lastDay === todayIso ? 'сьогодні' : analyticsDayLabel(lastDay, todayIso);
       const bars = values
         .map((val, i) => {
           const day = days[i];
@@ -1824,7 +2008,7 @@
       return `<div class="metric-chart-card${highlight ? ' metric-highlight' : ''}">
         <div class="metric-chart-head">
           <div class="metric-chart-title">${esc(title)}</div>
-          <div class="metric-chart-today">${esc(String(todayVal))}<span>сьогодні</span></div>
+          <div class="metric-chart-today">${esc(String(lastVal))}<span>${esc(lastCaption)}</span></div>
         </div>
         <div class="metric-chart-median">медіана: ${esc(medLabel)}</div>
         <div class="metric-chart-plot">
@@ -1874,7 +2058,7 @@
             : 'Ніхто не на звʼязку (відкрийте карту в іншій вкладці для перевірки).';
         }
 
-        const series = padAnalyticsDaily(data.daily || [], todayIso, 14);
+        const series = padAnalyticsDaily(data.daily || [], todayIso, 60);
         if (data.today?.day && series.length) {
           const last = series[series.length - 1];
           if (last.day === data.today.day) {
@@ -1892,30 +2076,16 @@
             };
           }
         }
-        const dayKeys = series.map((d) => d.day);
-        if (!series.length) {
-          kpisEl.innerHTML = '<p class="list-item-meta">Дані зʼявляться після трафіку</p>';
-        } else {
-          const charts = [
-            ['Унікальні заходи', 'uniqueVisits', true],
-            ['Перегляди сторінок', 'pageViews', false],
-            ['Завантаження карти', 'mapLoads', false],
-            ['Відкриття карток', 'locationOpens', false],
-            ['Пошукові запити', 'searches', false],
-            ['Замовлення', 'orders', false],
-          ];
-          kpisEl.innerHTML = charts
-            .map(([title, field, highlight]) =>
-              renderMetricBarChart({
-                title,
-                values: series.map((d) => Number(d[field]) || 0),
-                days: dayKeys,
-                todayIso: todayIso || dayKeys[dayKeys.length - 1],
-                highlight,
-              })
-            )
-            .join('');
+        analyticsDailySeries = series;
+        analyticsTodayIso = todayIso || (series.length ? series[series.length - 1].day : null);
+        const slider = document.getElementById('analyticsRangeSlider');
+        if (slider) {
+          const maxStart = Math.max(0, series.length - ANALYTICS_WINDOW);
+          slider.min = '0';
+          slider.max = String(maxStart);
+          slider.value = String(maxStart);
         }
+        renderAnalyticsChartsWindow();
 
         if (platformEl) {
           platformEl.innerHTML = [
@@ -2033,6 +2203,24 @@
     }
 
     document.getElementById('analyticsRefreshBtn')?.addEventListener('click', () => loadAdminAnalytics());
+    document.getElementById('analyticsRangeSlider')?.addEventListener('input', () => renderAnalyticsChartsWindow());
+
+    document.getElementById('usersSearch')?.addEventListener('input', () => renderAdminUsersList());
+    document.getElementById('usersRoleFilter')?.addEventListener('change', () => renderAdminUsersList());
+    document.getElementById('providersSearch')?.addEventListener('input', () => renderAdminProvidersList());
+    document.getElementById('providersImportFilter')?.addEventListener('change', () => renderAdminProvidersList());
+    document.getElementById('providersCatFilter')?.addEventListener('change', () => {
+      refillAdminSubFilter('providersCatFilter', 'providersSubFilter');
+      renderAdminProvidersList();
+    });
+    document.getElementById('providersSubFilter')?.addEventListener('change', () => renderAdminProvidersList());
+    document.getElementById('locationsSearch')?.addEventListener('input', () => renderAdminLocationsList());
+    document.getElementById('locationsImportFilter')?.addEventListener('change', () => renderAdminLocationsList());
+    document.getElementById('locationsCatFilter')?.addEventListener('change', () => {
+      refillAdminSubFilter('locationsCatFilter', 'locationsSubFilter');
+      renderAdminLocationsList();
+    });
+    document.getElementById('locationsSubFilter')?.addEventListener('change', () => renderAdminLocationsList());
 
     function formatBillingDate(iso) {
       if (!iso) return '—';
@@ -2675,6 +2863,182 @@
       </div>`;
     }
 
+    function adminNormQ(s) {
+      return String(s || '')
+        .trim()
+        .toLowerCase()
+        .replace(/^@/, '');
+    }
+    function adminMatchesQ(q, ...parts) {
+      if (!q) return true;
+      return parts.some((p) => String(p || '').toLowerCase().includes(q));
+    }
+    function refillAdminSubFilter(catId, subId) {
+      const catSel = document.getElementById(catId);
+      const subSel = document.getElementById(subId);
+      if (!subSel) return;
+      const prevSub = subSel.value;
+      const catKey = catSel?.value || '';
+      const subs = Object.entries((adminCatalog || {})[catKey]?.subcats || {});
+      subSel.disabled = !catKey;
+      subSel.innerHTML =
+        '<option value="">Усі підкатегорії</option>' +
+        subs.map(([k, s]) => `<option value="${esc(k)}">${esc(s.name || k)}</option>`).join('');
+      if (catKey && [...subSel.options].some((o) => o.value === prevSub)) subSel.value = prevSub;
+    }
+    function fillAdminEntityFilters() {
+      ['providersCatFilter', 'locationsCatFilter'].forEach((catId) => {
+        const catSel = document.getElementById(catId);
+        if (!catSel) return;
+        const prevCat = catSel.value;
+        const cats = Object.entries(adminCatalog || {});
+        catSel.innerHTML =
+          '<option value="">Усі категорії</option>' +
+          cats.map(([k, c]) => `<option value="${esc(k)}">${esc(c.name || k)}</option>`).join('');
+        if ([...catSel.options].some((o) => o.value === prevCat)) catSel.value = prevCat;
+      });
+      refillAdminSubFilter('providersCatFilter', 'providersSubFilter');
+      refillAdminSubFilter('locationsCatFilter', 'locationsSubFilter');
+    }
+    function catalogCatLabel(key) {
+      if (!key) return '';
+      return (adminCatalog || {})[key]?.name || key;
+    }
+
+    function renderAdminUsersList() {
+      const data = adminOverviewCache || {};
+      const usersEl = document.getElementById('usersList');
+      const countEl = document.getElementById('usersListCount');
+      if (!usersEl) return;
+      const q = adminNormQ(document.getElementById('usersSearch')?.value);
+      const role = document.getElementById('usersRoleFilter')?.value || '';
+      const allUsers = [
+        ...(data.admins || []).map((u) => ({ ...u, role: 'admin' })),
+        ...(data.providers || []).map((u) => ({ ...u, role: 'provider' })),
+        ...(data.clients || []).map((u) => ({ ...u, role: 'client' })),
+      ].sort((a, b) => userJoinedMs(b) - userJoinedMs(a));
+      const filtered = allUsers.filter((u) => {
+        if (role && u.role !== role) return false;
+        return adminMatchesQ(q, u.login, u.phone, u.email, u.companyName);
+      });
+      if (countEl) {
+        countEl.textContent = allUsers.length
+          ? `Показано ${filtered.length} з ${allUsers.length}`
+          : '';
+      }
+      usersEl.innerHTML = filtered.length
+        ? filtered
+            .map((u) => {
+              const joined = formatJoinDate(u.createdAt);
+              return `
+          <button type="button" class="click-row" data-user-id="${esc(u.id)}">
+            <div class="row-main">
+              <div class="row-title">${esc(u.login)}${u.companyName && u.companyName !== '—' ? ' · ' + esc(u.companyName) : ''}</div>
+              <div class="row-meta">${esc(roleLabel(u.role))} · ${esc(u.phone || 'без телефону')} · пароль: ${u.hasPassword ? 'є' : 'немає'}${joined ? ' · приєднався ' + esc(joined) : ''}</div>
+            </div>
+            <span class="row-chevron">›</span>
+          </button>`;
+            })
+            .join('')
+        : `<p class="list-item-meta">${allUsers.length ? 'Нічого не знайдено' : 'Користувачів ще немає'}</p>`;
+      usersEl.querySelectorAll('[data-user-id]').forEach((btn) => {
+        btn.onclick = () => openUserDetail(btn.dataset.userId);
+      });
+    }
+
+    function renderAdminProvidersList() {
+      const data = adminOverviewCache || {};
+      const provEl = document.getElementById('providersList');
+      const countEl = document.getElementById('providersListCount');
+      if (!provEl) return;
+      const q = adminNormQ(document.getElementById('providersSearch')?.value);
+      const src = document.getElementById('providersImportFilter')?.value || '';
+      const cat = document.getElementById('providersCatFilter')?.value || '';
+      const sub = document.getElementById('providersSubFilter')?.value || '';
+      const all = data.providers || [];
+      const filtered = all.filter((p) => {
+        if (src === 'imported' && !p.imported) return false;
+        if (src === 'registered' && p.imported) return false;
+        if (cat) {
+          const cats = p.cats || [];
+          const svc = p.serviceCategories || [];
+          if (!cats.includes(cat) && !svc.includes(cat)) return false;
+        }
+        if (sub) {
+          const subs = p.subcats || [];
+          const svcSubs = p.serviceSubcategories || [];
+          if (!subs.includes(sub) && !svcSubs.includes(sub)) return false;
+        }
+        return adminMatchesQ(q, p.companyName, p.login, p.phone);
+      });
+      if (countEl) {
+        countEl.textContent = all.length ? `Показано ${filtered.length} з ${all.length}` : '';
+      }
+      provEl.innerHTML = filtered.length
+        ? filtered
+            .map(
+              (p) => `
+          <button type="button" class="click-row" data-provider-id="${esc(p.id)}">
+            <div class="row-main">
+              <div class="row-title">${esc(p.companyName || p.login)}</div>
+              <div class="row-meta">@${esc(p.login)} · ${p.locationsCount} локацій · ${p.servicesCount} послуг · ${p.views} переглядів · ${p.ordersCount} замовлень${p.imported ? ' · імпорт' : ''}</div>
+            </div>
+            <span class="row-chevron">›</span>
+          </button>`
+            )
+            .join('')
+        : `<p class="list-item-meta">${all.length ? 'Нічого не знайдено' : 'Провайдерів ще немає'}</p>`;
+      provEl.querySelectorAll('[data-provider-id]').forEach((btn) => {
+        btn.onclick = () => openProviderDetail(btn.dataset.providerId);
+      });
+    }
+
+    function renderAdminLocationsList() {
+      const data = adminOverviewCache || {};
+      const locEl = document.getElementById('adminLocationsList');
+      const countEl = document.getElementById('locationsListCount');
+      if (!locEl) return;
+      const q = adminNormQ(document.getElementById('locationsSearch')?.value);
+      const src = document.getElementById('locationsImportFilter')?.value || '';
+      const cat = document.getElementById('locationsCatFilter')?.value || '';
+      const sub = document.getElementById('locationsSubFilter')?.value || '';
+      const all = data.locations || [];
+      const filtered = all.filter((l) => {
+        if (src === 'imported' && !l.imported) return false;
+        if (src === 'claimed' && !l.providerId) return false;
+        if (src === 'unowned' && l.providerId) return false;
+        if (cat && l.cat !== cat) return false;
+        if (sub && !(l.subcats || []).includes(sub)) return false;
+        return adminMatchesQ(q, l.title, l.address, l.phone);
+      });
+      if (countEl) {
+        countEl.textContent = all.length ? `Показано ${filtered.length} з ${all.length}` : '';
+      }
+      locEl.innerHTML = filtered.length
+        ? filtered
+            .map(
+              (l) => `
+        <button type="button" class="click-row" data-loc-id="${esc(l.id)}">
+          <div class="row-main">
+            <div class="row-title">${esc(l.title)}</div>
+            <div class="row-meta">${esc(catalogCatLabel(l.cat))} · ${esc(l.address || '—')} · ${l.servicesCount} послуг · ${l.imported ? 'імпорт' : l.providerId ? 'провайдер' : 'системна'}</div>
+          </div>
+          <span class="row-chevron">›</span>
+        </button>`
+            )
+            .join('')
+        : `<p class="list-item-meta">${all.length ? 'Нічого не знайдено' : 'Локацій ще немає'}</p>`;
+      locEl.querySelectorAll('[data-loc-id]').forEach((btn) => {
+        btn.onclick = () => openLocationDetail(btn.dataset.locId);
+      });
+    }
+
+    function renderAdminEntityLists() {
+      renderAdminUsersList();
+      renderAdminProvidersList();
+      renderAdminLocationsList();
+    }
+
     function showUsersList() {
       destroyEntityLocsMap();
       document.getElementById('usersListView')?.classList.remove('hidden');
@@ -2773,6 +3137,7 @@
           ${passwordBlock(u.id, u.hasPassword)}
           <div class="inline-actions" style="display:flex;flex-wrap:wrap;gap:8px;margin:12px 0">
             ${u.role === 'provider' ? `<button type="button" class="btn-secondary" style="width:auto" id="goProviderFromUser">Картка провайдера</button>` : ''}
+            ${u.role === 'client' ? `<button type="button" class="btn-pro" style="width:auto" id="makeProviderBtn">Зробити майстром</button>` : ''}
             <button type="button" class="btn-danger" style="width:auto" id="delUserBtn">Видалити користувача</button>
           </div>
           <div class="detail-section">
@@ -2799,6 +3164,29 @@
           goProv.onclick = () => {
             showAdminPane('providers');
             openProviderDetail(u.id);
+          };
+        }
+        const makeProv = document.getElementById('makeProviderBtn');
+        if (makeProv) {
+          makeProv.onclick = async () => {
+            const suggested =
+              (u.profile?.companyName && u.profile.companyName !== 'Моя компанія'
+                ? u.profile.companyName
+                : '') || u.login;
+            const name = prompt('Назва компанії / імʼя майстра:', suggested);
+            if (name === null) return;
+            try {
+              await apiFetch('/api/admin/users/' + encodeURIComponent(u.id) + '/make-provider', {
+                method: 'POST',
+                body: JSON.stringify({ companyName: String(name).trim() }),
+              });
+              showMessage('Користувача зроблено майстром. Видаляти акаунт не потрібно. Нехай вийде і зайде знову, щоб відкрився кабінет майстра.');
+              await initAdmin();
+              showAdminPane('providers');
+              openProviderDetail(u.id);
+            } catch (err) {
+              showMessage(err.message, true);
+            }
           };
         }
         document.getElementById('delUserBtn').onclick = async () => {
@@ -3676,73 +4064,15 @@
         })
         .catch(() => {});
 
-      const allUsers = [
-        ...(data.admins || []).map((u) => ({ ...u, role: 'admin' })),
-        ...(data.providers || []).map((u) => ({ ...u, role: 'provider' })),
-        ...(data.clients || []).map((u) => ({ ...u, role: 'client' })),
-      ].sort((a, b) => userJoinedMs(b) - userJoinedMs(a));
-      const usersEl = document.getElementById('usersList');
-      usersEl.innerHTML = allUsers.length
-        ? allUsers
-            .map((u) => {
-              const joined = formatJoinDate(u.createdAt);
-              return `
-          <button type="button" class="click-row" data-user-id="${esc(u.id)}">
-            <div class="row-main">
-              <div class="row-title">${esc(u.login)}${u.companyName && u.companyName !== '—' ? ' · ' + esc(u.companyName) : ''}</div>
-              <div class="row-meta">${esc(roleLabel(u.role))} · ${esc(u.phone || 'без телефону')} · пароль: ${u.hasPassword ? 'є' : 'немає'}${joined ? ' · приєднався ' + esc(joined) : ''}</div>
-            </div>
-            <span class="row-chevron">›</span>
-          </button>`;
-            })
-            .join('')
-        : '<p class="list-item-meta">Користувачів ще немає</p>';
-      usersEl.querySelectorAll('[data-user-id]').forEach((btn) => {
-        btn.onclick = () => openUserDetail(btn.dataset.userId);
-      });
-
-      const provEl = document.getElementById('providersList');
-      provEl.innerHTML = data.providers?.length
-        ? data.providers
-            .map(
-              (p) => `
-          <button type="button" class="click-row" data-provider-id="${esc(p.id)}">
-            <div class="row-main">
-              <div class="row-title">${esc(p.companyName)}</div>
-              <div class="row-meta">@${esc(p.login)} · ${p.locationsCount} локацій · ${p.servicesCount} послуг · ${p.views} переглядів · ${p.ordersCount} замовлень</div>
-            </div>
-            <span class="row-chevron">›</span>
-          </button>`
-            )
-            .join('')
-        : '<p class="list-item-meta">Провайдерів ще немає</p>';
-      provEl.querySelectorAll('[data-provider-id]').forEach((btn) => {
-        btn.onclick = () => openProviderDetail(btn.dataset.providerId);
-      });
-
-      const locEl = document.getElementById('adminLocationsList');
-      locEl.innerHTML = data.locations?.length
-        ? data.locations
-            .map(
-              (l) => `
-        <button type="button" class="click-row" data-loc-id="${esc(l.id)}">
-          <div class="row-main">
-            <div class="row-title">${esc(l.title)}</div>
-            <div class="row-meta">${esc(l.cat || '')} · ${esc(l.address || '—')} · ${l.servicesCount} послуг · ${l.imported ? 'імпорт' : l.providerId ? 'провайдер' : 'системна'}</div>
-          </div>
-          <span class="row-chevron">›</span>
-        </button>`
-            )
-            .join('')
-        : '<p class="list-item-meta">Локацій ще немає</p>';
-      locEl.querySelectorAll('[data-loc-id]').forEach((btn) => {
-        btn.onclick = () => openLocationDetail(btn.dataset.locId);
-      });
+      renderAdminEntityLists();
 
       const catRes = await apiFetch('/api/data');
       adminCatalog = catRes.masterCatalog || {};
       fillAdminCatalogSelects();
       fillBulkTrashFilters(adminCatalog);
+      fillAdminEntityFilters();
+      renderAdminLocationsList();
+      renderAdminProvidersList();
       renderTrashList();
 
       const importCat = document.getElementById('importCategory');
