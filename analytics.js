@@ -45,6 +45,10 @@ function summarizeDay(dayBucket) {
     favorites: d.favorites || 0,
     logins: d.logins || 0,
     registers: d.registers || 0,
+    callClicks: d.callClicks || 0,
+    directionsClicks: d.directionsClicks || 0,
+    shareClicks: d.shareClicks || 0,
+    diveClicks: d.diveClicks || 0,
     uniqueVisits: d.uniqueSessions ? Object.keys(d.uniqueSessions).length : 0,
   };
 }
@@ -70,6 +74,11 @@ function emptyState() {
       reports: 0,
       donateClicks: 0,
       subscribeClicks: 0,
+      callClicks: 0,
+      directionsClicks: 0,
+      shareClicks: 0,
+      diveClicks: 0,
+      mapFocusClicks: 0,
     },
     daily: {},
   };
@@ -131,6 +140,10 @@ function bumpDaily(state, field, n = 1) {
     'favorites',
     'logins',
     'registers',
+    'callClicks',
+    'directionsClicks',
+    'shareClicks',
+    'diveClicks',
   ]) {
     if (day[f] == null) day[f] = 0;
   }
@@ -237,7 +250,20 @@ async function bumpTotal(field, n = 1) {
   if (!allowed.has(field)) return { ok: false };
   const state = await readState();
   state.totals[field] = (Number(state.totals[field]) || 0) + n;
-  if (['orders', 'favorites', 'logins', 'registers', 'locationOpens', 'mapLoads'].includes(field)) {
+  if (
+    [
+      'orders',
+      'favorites',
+      'logins',
+      'registers',
+      'locationOpens',
+      'mapLoads',
+      'callClicks',
+      'directionsClicks',
+      'shareClicks',
+      'diveClicks',
+    ].includes(field)
+  ) {
     bumpDaily(state, field, n);
   }
   await writeState(state);
@@ -316,6 +342,7 @@ async function buildAdminReport({
   providersCount = 0,
   clientsCount = 0,
   billingStats = null,
+  locationCtaSummary = null,
 }) {
   const state = await readState();
   prunePresence(state);
@@ -330,15 +357,44 @@ async function buildAdminReport({
   }
 
   const funnel = parseCatalogClicks(catalogClicks, masterCatalog);
+  const {
+    summarizeLocationClicks,
+  } = require('./catalog-clicks-store.js');
+  const locationCta =
+    locationCtaSummary || summarizeLocationClicks(catalogClicks, locations);
+
   const locationViews = [...locations]
-    .map((l) => ({
-      id: l.id,
-      title: l.title,
-      views: Number(l.views) || 0,
-      cat: l.cat,
-    }))
-    .filter((l) => l.views > 0)
-    .sort((a, b) => b.views - a.views)
+    .map((l) => {
+      const call = Number(catalogClicks[`loc:call:${l.id}`]) || 0;
+      const directions = Number(catalogClicks[`loc:directions:${l.id}`]) || 0;
+      const share = Number(catalogClicks[`loc:share:${l.id}`]) || 0;
+      const favorite = Number(catalogClicks[`loc:favorite:${l.id}`]) || 0;
+      const order = Number(catalogClicks[`loc:order:${l.id}`]) || 0;
+      const dive = Number(catalogClicks[`loc:dive:${l.id}`]) || 0;
+      const claim = Number(catalogClicks[`loc:claim:${l.id}`]) || 0;
+      const review = Number(catalogClicks[`loc:review:${l.id}`]) || 0;
+      const report = Number(catalogClicks[`loc:report:${l.id}`]) || 0;
+      const mapFocus = Number(catalogClicks[`loc:map_focus:${l.id}`]) || 0;
+      const views = Number(l.views) || 0;
+      const ctaTotal =
+        call + directions + share + favorite + order + dive + claim + review + report + mapFocus;
+      return {
+        id: l.id,
+        title: l.title,
+        views,
+        call,
+        directions,
+        share,
+        favorite,
+        order,
+        dive,
+        ctaTotal,
+        callRate: views > 0 ? Math.round((call / views) * 1000) / 10 : 0,
+        cat: l.cat,
+      };
+    })
+    .filter((l) => l.views > 0 || l.ctaTotal > 0)
+    .sort((a, b) => b.call - a.call || b.views - a.views)
     .slice(0, 25);
 
   const totalLocViews = locations.reduce((s, l) => s + (Number(l.views) || 0), 0);
@@ -363,6 +419,8 @@ async function buildAdminReport({
   const today = { day: todayId, ...summarizeDay(state.daily?.[todayId]) };
   const yesterday = { day: yesterdayId, ...summarizeDay(state.daily?.[yesterdayId]) };
   const uniqueVisits14d = dailySeries.reduce((s, d) => s + (d.uniqueVisits || 0), 0);
+  const callTotal = locationCta.byType?.call || state.totals.callClicks || 0;
+  const directionsTotal = locationCta.byType?.directions || state.totals.directionsClicks || 0;
 
   return {
     generatedAt: new Date().toISOString(),
@@ -397,6 +455,18 @@ async function buildAdminReport({
       donateClicks: billingStats?.donateClicks ?? state.totals.donateClicks ?? 0,
       subscribeClicks: billingStats?.subscribeClicks ?? state.totals.subscribeClicks ?? 0,
       activePaid: billingStats?.activePaid ?? 0,
+      callClicks: callTotal,
+      directionsClicks: directionsTotal,
+      shareClicks: locationCta.byType?.share || state.totals.shareClicks || 0,
+      diveClicks: locationCta.byType?.dive || state.totals.diveClicks || 0,
+      mapFocusClicks: locationCta.byType?.map_focus || state.totals.mapFocusClicks || 0,
+      claimClicks: locationCta.byType?.claim || 0,
+      reviewClicks: locationCta.byType?.review || 0,
+      reportClicks: locationCta.byType?.report || 0,
+      favoriteClicks: locationCta.byType?.favorite || state.totals.favorites || 0,
+      orderClicks: locationCta.byType?.order || 0,
+      callRate:
+        totalLocViews > 0 ? Math.round((callTotal / totalLocViews) * 1000) / 10 : 0,
       uniqueVisitsToday: today.uniqueVisits,
       uniqueVisitsYesterday: yesterday.uniqueVisits,
       uniqueVisits14d,
@@ -408,11 +478,14 @@ async function buildAdminReport({
       favoritesToday: today.favorites,
       loginsToday: today.logins,
       registersToday: today.registers,
+      callClicksToday: today.callClicks,
+      directionsClicksToday: today.directionsClicks,
     },
     pages: topEntries(state.pageViews, 30),
     searchesTop: topEntries(state.searchCounts, 40),
     recentSearches: (state.recentSearches || []).slice(0, 50),
     catalogFunnel: funnel,
+    locationCta,
     topLocations: locationViews,
     daily: dailySeries,
     totals: state.totals,
