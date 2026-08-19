@@ -4,12 +4,20 @@
     <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
     <meta http-equiv="Pragma" content="no-cache">
     <meta http-equiv="Expires" content="0">
-    <title>Mapfix — Карта послуг</title>
-    <meta name="description" content="Mapfix — карта локальних послуг поруч із вами. Знайдіть майстра, замовте послугу, залиште відгук.">
-    <meta property="og:title" content="Mapfix — Карта послуг">
-    <meta property="og:description" content="Знайдіть майстра поруч: краса, авто, ремонт, дім та інше.">
+    <title>Mapfix — майстер додому, сантехнік Київ, ремонт поруч</title>
+    <meta name="description" content="Карта майстрів у Києві: сантехнік, ремонт квартири, майстер додому. Знайдіть виконавця поруч, порівняйте ціни й замовте послугу на Mapfix.">
+    <meta name="keywords" content="майстер додому, сантехнік Київ, ремонт, майстер Київ, карта послуг, сантехнік, електрик, ремонт квартири, Mapfix">
+    <link rel="canonical" href="https://mapfix-wine.vercel.app/">
+    <meta property="og:title" content="Mapfix — майстер додому, сантехнік Київ, ремонт поруч">
+    <meta property="og:description" content="Карта майстрів у Києві: сантехнік, ремонт, майстер додому. Знайдіть виконавця поруч на карті Mapfix.">
     <meta property="og:type" content="website">
+    <meta property="og:locale" content="uk_UA">
+    <meta property="og:site_name" content="Mapfix">
     <meta property="og:url" content="https://mapfix-wine.vercel.app/">
+    <meta property="og:image" content="https://mapfix-wine.vercel.app/icon-512.png">
+    <meta name="twitter:card" content="summary">
+    <meta name="twitter:title" content="Mapfix — майстер додому, сантехнік Київ, ремонт поруч">
+    <meta name="twitter:description" content="Карта майстрів у Києві: сантехнік, ремонт квартири, майстер додому.">
     <meta name="theme-color" content="#12c4b5">
     <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-capable" content="yes">
@@ -25,11 +33,10 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link rel="preconnect" href="https://tile.openstreetmap.org" crossorigin>
-    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-    <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" crossorigin="anonymous" referrerpolicy="no-referrer" media="print" onload="this.media='all'">
     <noscript><link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" crossorigin="anonymous" referrerpolicy="no-referrer"></noscript>
-    <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;600;700;800&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;600;700;800&display=swap" rel="stylesheet" media="print" onload="this.media='all'">
+    <noscript><link href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;600;700;800&display=swap" rel="stylesheet"></noscript>
     
     <style>
         :root {
@@ -82,9 +89,15 @@
             position: relative;
             z-index: 1;
             min-width: 0;
+            margin: 0;
         }
 
-        #map { width: 100%; height: 100%; z-index: 1; }
+        #map {
+            width: 100%;
+            height: 100%;
+            z-index: 1;
+            background: #dbe4ea;
+        }
 
         #sidebar {
             background: white;
@@ -233,6 +246,7 @@
         }
 
         .nav-title { font-size: 15px; font-weight: 800; color: var(--dark); margin: 0; line-height: 1.3; }
+        .nav-item-title { font-size: inherit; font-weight: 700; margin: 0; line-height: 1.3; color: inherit; }
         .sidebar-header .back-btn {
             margin: 0;
             padding: 8px 12px;
@@ -1331,8 +1345,8 @@
 <body>
 
     <div id="app-shell">
-    <div id="map-container">
-        <div class="top-header">
+    <main id="map-container">
+        <header class="top-header">
             <div class="top-header-row top-header-main">
                 <button type="button" class="brand-chip" id="brandHomeBtn" aria-label="Mapfix — на головну" title="На головну">
                     <span class="brand-chip-mark">M</span>
@@ -1360,10 +1374,10 @@
                     </div>
                 </div>
             </div>
-        </div>
+        </header>
 
         <button id="geo-btn" type="button" aria-label="Моє місцезнаходження"><i class="fa-solid fa-location-crosshairs"></i></button>
-        <div id="map"></div>
+        <div id="map" role="application" aria-label="Карта майстрів Києва"></div>
 
         <div class="pwa-install-banner" id="pwaInstallBanner" role="dialog" aria-label="Встановити Mapfix">
             <div class="pwa-install-banner-icon" aria-hidden="true"></div>
@@ -1376,7 +1390,7 @@
                 <button type="button" class="pwa-install-cta" id="pwaInstallBannerBtn">Додати</button>
             </div>
         </div>
-    </div>
+    </main>
 
     <div class="pwa-install-modal" id="pwaInstallModal" aria-hidden="true">
         <div class="pwa-install-sheet" role="dialog" aria-labelledby="pwaInstallTitle">
@@ -1406,12 +1420,12 @@
         </div>
     </div>
 
-    <div id="sidebar" class="bottom-sheet">
+    <aside id="sidebar" class="bottom-sheet">
         <div class="sheet-drag-handle" id="sheetHandle" role="button" tabindex="0" aria-label="Потягніть вгору, щоб розширити список"></div>
 
-        <div class="category-strip-wrap">
+        <nav class="category-strip-wrap">
             <div id="categoryStrip" class="category-strip" aria-label="Категорії послуг"></div>
-        </div>
+        </nav>
 
         <div class="sheet-body-host">
             <div id="sidebar-list-view" class="sidebar-view sheet-panel">
@@ -1420,7 +1434,7 @@
                         <i class="fa-solid fa-chevron-left" aria-hidden="true"></i>
                         <span id="navBackLabel">Назад</span>
                     </button>
-                    <h2 class="nav-title" id="navTitle">Оберіть категорію</h2>
+                    <h1 class="nav-title" id="navTitle">Майстри та ремонт у Києві</h1>
                     <div id="sortPanelWrap" style="display:none">
                         <div class="sort-panel">
                             <div class="sort-label"><i class="fa-solid fa-sliders"></i> Сортування виконавців</div>
@@ -1456,7 +1470,7 @@
                 <div class="detail-scroll-body" id="detailBodyContent"></div>
             </div>
         </div>
-    </div>
+    </aside>
     </div>
 
     <div id="googleImportModal" class="import-modal hidden" role="dialog" aria-modal="true" aria-labelledby="googleImportTitle">
@@ -1476,12 +1490,62 @@
         </div>
     </div>
 
-    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-    <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
-    <script src="/mapfix-sync.js"></script>
+    <script src="/mapfix-sync.js" defer></script>
     <script src="/mf-analytics.js" defer></script>
 
     <script>
+        function loadStylesheet(href) {
+            return new Promise((resolve) => {
+                const exists = [...document.querySelectorAll('link[rel="stylesheet"]')].some(
+                    (n) => (n.href || '').includes(href.split('/').slice(-2).join('/')) || n.href === href
+                );
+                if (exists) {
+                    resolve();
+                    return;
+                }
+                const link = document.createElement('link');
+                link.rel = 'stylesheet';
+                link.href = href;
+                link.onload = () => resolve();
+                link.onerror = () => resolve();
+                document.head.appendChild(link);
+            });
+        }
+        function loadScriptOnce(src) {
+            return new Promise((resolve, reject) => {
+                const exists = [...document.scripts].some((s) => s.src === src);
+                if (exists && window.L) {
+                    resolve();
+                    return;
+                }
+                const el = document.createElement('script');
+                el.src = src;
+                el.async = true;
+                el.onload = resolve;
+                el.onerror = () => reject(new Error('Не вдалося завантажити карту'));
+                document.head.appendChild(el);
+            });
+        }
+        function loadLeafletBundle() {
+            if (window.__leafletReady) return window.__leafletReady;
+            window.__leafletReady = (async () => {
+                await Promise.all([
+                    loadStylesheet('https://unpkg.com/leaflet@1.9.4/dist/leaflet.css'),
+                    loadStylesheet('https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css'),
+                ]);
+                if (!window.L) {
+                    await loadScriptOnce('https://unpkg.com/leaflet@1.9.4/dist/leaflet.js');
+                }
+                if (!window.L?.markerClusterGroup) {
+                    await loadScriptOnce(
+                        'https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js'
+                    );
+                }
+            })();
+            return window.__leafletReady;
+        }
+        const leafletReady = loadLeafletBundle();
+
         async function loadCatalogData() {
             const res = await fetch(`/api/data?t=${Date.now()}`, {
                 cache: 'no-store',
@@ -1497,7 +1561,8 @@
         }
 
         document.addEventListener("DOMContentLoaded", async () => {
-            // Paint map tiles immediately — do not block on /api/data (often 0.5–1.5s).
+            await leafletReady;
+            // Paint map tiles after Leaflet is loaded — CSS/JS no longer block first paint.
             const map = L.map('map', { zoomControl: false }).setView([50.4501, 30.5234], 11);
             L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
 
@@ -1932,6 +1997,11 @@
 
             const urlParams = new URLSearchParams(window.location.search);
             const urlLoc = urlParams.get('loc');
+            const urlCat = urlParams.get('cat');
+            if (!urlLoc && urlCat && window.masterCatalog?.[urlCat]) {
+                State.category = urlCat;
+                browseBottomSheet();
+            }
             if (urlLoc) {
                 setTimeout(() => openMasterDetail(urlLoc, { mode: 'dive', forceMode: true }), 400);
             }
@@ -2436,7 +2506,7 @@
                 el.className = 'nav-item';
                 el.innerHTML = `
                     <div>
-                        <div>${label}</div>
+                        <h2 class="nav-item-title">${label}</h2>
                         ${meta ? `<div class="nav-item-meta">${meta}</div>` : ''}
                     </div>
                     <span class="nav-item-arrow"><i class="fa-solid fa-chevron-right"></i></span>`;
@@ -2523,7 +2593,7 @@
                     collapseBottomSheet();
                     navBackBtn.style.display = 'none';
                     updateNavBackButton();
-                    navTitle.textContent = 'Оберіть категорію';
+                    navTitle.textContent = 'Майстри та ремонт у Києві';
                     catalogNav.innerHTML = `
                         <p class="nav-hint">
                             <i class="fa-solid fa-hand-pointer" style="color:var(--primary);margin-right:6px"></i>
@@ -2723,6 +2793,7 @@
                 // У preview не відкриваємо popup — zoomToShowLayer/кластери зривають 2-й тап на мобілці
                 if (mode === 'dive') openPopupForLocation(loc);
                 refreshClaimButton(loc);
+                applyPageSeoFromState();
             };
 
             async function refreshClaimButton(loc) {
@@ -2926,7 +2997,7 @@
                               .slice(0, 6)
                               .map(
                                 (p) =>
-                                  `<a href="${escapeHtml(p.url)}" target="_blank" rel="noopener"><img src="${escapeHtml(p.url)}" alt=""></a>`
+                                  `<a href="${escapeHtml(p.url)}" target="_blank" rel="noopener"><img src="${escapeHtml(p.url)}" alt="Фото закладу" loading="lazy" decoding="async"></a>`
                               )
                               .join('')}
                         </div>
@@ -3063,6 +3134,7 @@
                     renderLocationList();
                     syncMapMarkers();
                 }
+                applyPageSeoFromState();
             };
 
             window.panToMaster = function(lat, lng) { 
@@ -3129,7 +3201,7 @@
 
                     card.innerHTML = `
                         <div class="provider-top">
-                            <div class="provider-title">${loc.title}</div>
+                            <h2 class="provider-title">${loc.title}</h2>
                             <div class="rating-block"><span class="star-icon">★</span><span>${loc.rating.toFixed(1)}</span><span class="reviews-count">(${loc.reviewsCount})</span></div>
                         </div>
                         <div class="provider-desc">${loc.text}</div>
@@ -3203,7 +3275,7 @@
                     card.className = `provider-card ${State.selectedLocation?.id === loc.id ? 'active' : ''}`;
                     card.innerHTML = `
                         <div class="provider-top">
-                            <div class="provider-title">${escapeHtml(loc.title)}</div>
+                            <h2 class="provider-title">${escapeHtml(loc.title)}</h2>
                             <div class="rating-block"><span class="star-icon">★</span><span>${Number(loc.rating || 0).toFixed(1)}</span></div>
                         </div>
                         ${providerName ? `<div class="provider-desc">Майстер: ${escapeHtml(providerName)}</div>` : ''}
@@ -3217,8 +3289,78 @@
                 });
             }
 
+            function setSeoMeta(attr, key, content) {
+                let el = document.head.querySelector(`meta[${attr}="${key}"]`);
+                if (!el) {
+                    el = document.createElement('meta');
+                    el.setAttribute(attr, key);
+                    document.head.appendChild(el);
+                }
+                el.setAttribute('content', content);
+            }
+            function applyPageSeo({ title, description, keywords, url }) {
+                document.title = title;
+                setSeoMeta('name', 'description', description);
+                setSeoMeta('name', 'keywords', keywords);
+                setSeoMeta('property', 'og:title', title);
+                setSeoMeta('property', 'og:description', description);
+                setSeoMeta('property', 'og:url', url);
+                setSeoMeta('name', 'twitter:title', title);
+                setSeoMeta('name', 'twitter:description', description);
+                let canon = document.querySelector('link[rel="canonical"]');
+                if (!canon) {
+                    canon = document.createElement('link');
+                    canon.rel = 'canonical';
+                    document.head.appendChild(canon);
+                }
+                canon.href = url;
+            }
+            function applyPageSeoFromState() {
+                const origin = window.location.origin;
+                let url = origin + '/';
+                if (State.selectedLocation) {
+                    const loc = State.selectedLocation;
+                    const catName = categoryLabel(
+                        window.masterCatalog?.[loc.cat]?.name || loc.cat || 'майстер'
+                    );
+                    url = `${origin}/?loc=${encodeURIComponent(loc.id)}`;
+                    applyPageSeo({
+                        title: `${loc.title} — ${catName} Київ, майстер додому | Mapfix`,
+                        description: `${loc.title}: ${loc.address || 'Київ'}. Ремонт, сантехнік, майстер додому. Телефон, маршрут і відгуки на карті Mapfix.`,
+                        keywords: `${loc.title}, ${catName}, майстер додому, сантехнік Київ, ремонт, Mapfix`,
+                        url,
+                    });
+                } else if (State.category) {
+                    const cat = window.masterCatalog?.[State.category];
+                    const name = categoryLabel(cat?.name || State.category);
+                    url = `${origin}/?cat=${encodeURIComponent(State.category)}`;
+                    applyPageSeo({
+                        title: `${name} Київ — майстер додому, ремонт | Mapfix`,
+                        description: `${name} у Києві та області. Майстер додому, сантехнік, ремонт — оберіть виконавця на карті Mapfix і замовте послугу.`,
+                        keywords: `${name}, ${name} Київ, майстер додому, сантехнік Київ, ремонт, Mapfix`,
+                        url,
+                    });
+                } else {
+                    applyPageSeo({
+                        title: 'Mapfix — майстер додому, сантехнік Київ, ремонт поруч',
+                        description:
+                            'Карта майстрів у Києві: сантехнік, ремонт квартири, майстер додому. Знайдіть виконавця поруч, порівняйте ціни й замовте послугу на Mapfix.',
+                        keywords:
+                            'майстер додому, сантехнік Київ, ремонт, майстер Київ, карта послуг, сантехнік, електрик, ремонт квартири, Mapfix',
+                        url,
+                    });
+                }
+                try {
+                    if (!new URLSearchParams(window.location.search).has('claim')) {
+                        const next = new URL(url, origin);
+                        history.replaceState(null, '', next.pathname + next.search);
+                    }
+                } catch (_) {}
+            }
+
             function syncUI() {
                 renderCatalogNav();
+                applyPageSeoFromState();
             }
 
             function buildLocationIcon(loc) {

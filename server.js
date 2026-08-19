@@ -10,6 +10,15 @@ const { parseVoiceSearch, suggestCatalogForPlace, classifyPlacesForImport } = re
 const { attachAuth, setAuthCookie, clearAuthCookie } = require('./auth-jwt.js');
 const { resolveProjectRoot, resolvePublicDir } = require('./paths.js');
 const {
+  seoForHome,
+  seoForCategory,
+  seoForLocation,
+  injectSeoIntoHtml,
+  robotsTxt,
+  sitemapXml,
+  stripHeadingDecor,
+} = require('./seo.js');
+const {
   supabaseClient,
   USERS_TABLE,
   mapUserRow,
@@ -694,8 +703,61 @@ function sendPublicPage(res, filename) {
   });
 }
 
-app.get('/', (req, res) => {
-  sendPublicPage(res, 'index.html');
+app.get('/', async (req, res) => {
+  try {
+    const filePath = path.resolve(PUBLIC_DIR, 'index.html');
+    let html = await fsPromises.readFile(filePath, 'utf8');
+    let seo = seoForHome();
+    const locId = String(req.query.loc || '').trim();
+    const catKey = String(req.query.cat || '').trim();
+    if (locId || catKey) {
+      const data = await readData();
+      if (locId) {
+        const loc = activeLocations(data.mockLocations).find((l) => l.id === locId);
+        if (loc) {
+          const catName = data.masterCatalog?.[loc.cat]?.name || loc.cat;
+          seo = seoForLocation(loc, catName);
+        }
+      } else if (catKey && data.masterCatalog?.[catKey]) {
+        seo = seoForCategory(catKey, data.masterCatalog[catKey].name);
+      }
+    }
+    html = injectSeoIntoHtml(html, seo);
+    res.set('Cache-Control', 'no-store');
+    res.set('Content-Type', 'text/html; charset=utf-8');
+    res.send(html);
+  } catch (err) {
+    console.error('[GET /] seo index', err);
+    sendPublicPage(res, 'index.html');
+  }
+});
+
+app.get('/robots.txt', (_req, res) => {
+  res.set('Cache-Control', 'public, max-age=3600');
+  res.type('text/plain').send(robotsTxt());
+});
+
+app.get('/sitemap.xml', async (_req, res) => {
+  try {
+    const data = await readData();
+    const catalog = data.masterCatalog || {};
+    const categories = Object.entries(catalog).map(([key, cat]) => ({
+      key,
+      name: stripHeadingDecor(cat?.name || key),
+    }));
+    const locations = activeLocations(data.mockLocations)
+      .filter((loc) => loc && loc.id)
+      .slice(0, 2000)
+      .map((loc) => ({
+        id: loc.id,
+        lastmod: String(loc.updatedAt || loc.claimedAt || loc.createdAt || '').slice(0, 10),
+      }));
+    res.set('Cache-Control', 'public, max-age=1800');
+    res.type('application/xml').send(sitemapXml({ categories, locations }));
+  } catch (err) {
+    console.error('[GET /sitemap.xml]', err);
+    res.status(500).type('text/plain').send('sitemap error');
+  }
 });
 
 app.get('/login.html', (req, res) => {
@@ -3556,10 +3618,19 @@ app.get('/api/provider/claimable', requireAuth, requireProvider, async (req, res
     const user = getSessionUser(req);
     const fullUser = (await readUsers()).find((u) => u.id === user.id) || user;
     const accountPhone = formatLocationPhone(fullUser.phone || '');
+    const queryPhone = formatLocationPhone(req.query.phone || '');
+    if (accountPhone && queryPhone && !phonesMatch(accountPhone, queryPhone)) {
+      return res.status(403).json({
+        error: `Телефон у профілі (${accountPhone}) не збігається з пошуком (${queryPhone}). Змініть телефон у профілі або шукайте свій номер.`,
+      });
+    }
+    const matchPhone = queryPhone || accountPhone;
     const data = await readData();
-    const claimable = activeLocations(data.mockLocations)
-      .filter((loc) => isClaimableLocation(loc) && phonesMatch(accountPhone, loc.phone))
-      .map(publicClaimPreview);
+    const claimable = matchPhone
+      ? activeLocations(data.mockLocations)
+          .filter((loc) => isClaimableLocation(loc) && phonesMatch(matchPhone, loc.phone))
+          .map(publicClaimPreview)
+      : [];
     res.json({
       ok: true,
       phone: accountPhone || null,

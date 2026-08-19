@@ -43,7 +43,8 @@
           "reports.js",
           "billing.js",
           "analytics.js",
-          "ops-monitor.js"
+          "ops-monitor.js",
+          "seo.js"
         ]
       }
     }

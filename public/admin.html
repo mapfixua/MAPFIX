@@ -1514,9 +1514,13 @@
           <div id="providerPaneClaim" class="admin-pane card">
             <h2>Забрати заклад з карти</h2>
             <p class="field-hint">
-              Показуються імпортовані точки без власника, де телефон збігається з телефоном вашого акаунта.
-              Підтвердження — код у Telegram.
+              Знайдіть імпортовану точку за номером з вивіски. Підтвердження — код у Telegram на цей самий телефон.
             </p>
+            <label for="providerClaimPhone">Номер телефону на картці</label>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:stretch;margin-bottom:12px">
+              <input type="tel" id="providerClaimPhone" placeholder="+380XXXXXXXXX" autocomplete="tel" style="flex:1;min-width:180px;margin-bottom:0">
+              <button type="button" id="providerClaimSearchBtn" class="btn-secondary" style="width:auto">Знайти точки</button>
+            </div>
             <div id="providerClaimStatus" class="field-hint" style="margin-bottom:12px"></div>
             <div id="providerClaimList"><p class="list-item-meta">Завантаження…</p></div>
           </div>
@@ -5696,6 +5700,14 @@
       });
       document.getElementById('providerDonateBtn')?.addEventListener('click', () => openMonoJar('donate'));
 
+      document.getElementById('providerClaimSearchBtn')?.addEventListener('click', () => loadProviderClaim());
+      document.getElementById('providerClaimPhone')?.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          loadProviderClaim();
+        }
+      });
+
       if (new URLSearchParams(window.location.search).get('newLocation') === '1') {
         showProviderPane('locations');
         await openLocationEditor(null);
@@ -6016,21 +6028,25 @@
     async function loadProviderClaim() {
       const statusEl = document.getElementById('providerClaimStatus');
       const listEl = document.getElementById('providerClaimList');
+      const phoneInput = document.getElementById('providerClaimPhone');
       if (!listEl) return;
       listEl.innerHTML = '<p class="list-item-meta">Завантаження…</p>';
       try {
-        const data = await apiFetch('/api/provider/claimable');
+        const typed = String(phoneInput?.value || '').trim();
+        const qs = typed ? `?phone=${encodeURIComponent(typed)}` : '';
+        const data = await apiFetch('/api/provider/claimable' + qs);
+        if (phoneInput && !typed && data.phone) phoneInput.value = data.phone;
         if (statusEl) {
           statusEl.innerHTML = data.phone
             ? `Телефон акаунта: <b>${esc(data.phone)}</b>. Telegram: ${
                 data.telegramLinked ? 'підключено ✓' : 'не підключено — <a href="/link-telegram.html">підключити</a>'
               }`
-            : 'У профілі немає телефону. Вкажіть телефон у профілі (той самий, що на імпортованій точці), або почніть claim з карти — підставимо телефон із точки.';
+            : 'У профілі немає телефону — введіть номер з вивіски вище. Після claim цей номер збережеться в акаунт.';
         }
         const locs = data.locations || [];
         if (!locs.length) {
           listEl.innerHTML =
-            '<p class="list-item-meta">Немає точок із вашим телефоном без власника. Відкрийте заклад на карті → «Це мій заклад».</p>';
+            '<p class="list-item-meta">Немає точок без власника з цим номером. Перевірте телефон або відкрийте заклад на карті → «Забрати заклад».</p>';
           return;
         }
         listEl.innerHTML =
