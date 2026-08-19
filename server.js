@@ -693,6 +693,15 @@ async function persistLocationsPatch(data, changedLocs) {
 function sendPublicPage(res, filename) {
   const filePath = path.resolve(PUBLIC_DIR, filename);
   res.set('Cache-Control', 'no-store');
+  if (
+    filename === 'login.html' ||
+    filename === 'register.html' ||
+    filename === 'forgot-password.html' ||
+    filename === 'reset-password.html' ||
+    filename === 'link-telegram.html'
+  ) {
+    res.set('X-Robots-Tag', 'noindex, nofollow');
+  }
   res.sendFile(filePath, (err) => {
     if (err) {
       console.error('[sendPublicPage]', { filename, filePath, publicDir: PUBLIC_DIR, err: err.message });

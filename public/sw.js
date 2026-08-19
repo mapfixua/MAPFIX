@@ -1,5 +1,5 @@
 /* Mapfix offline shell */
-const CACHE = 'mapfix-shell-v3';
+const CACHE = 'mapfix-shell-v4';
 const ASSETS = [
   '/',
   '/manifest.json',
@@ -7,8 +7,6 @@ const ASSETS = [
   '/icon-192.png',
   '/icon-512.png',
   '/apple-touch-icon.png',
-  '/login.html',
-  '/register.html',
 ];
 
 self.addEventListener('install', (event) => {
@@ -28,6 +26,15 @@ self.addEventListener('fetch', (event) => {
   if (req.method !== 'GET') return;
   const url = new URL(req.url);
   if (url.pathname.startsWith('/api/')) return;
+  if (
+    url.pathname === '/login.html' ||
+    url.pathname === '/register.html' ||
+    url.pathname === '/forgot-password.html' ||
+    url.pathname === '/reset-password.html'
+  ) {
+    event.respondWith(fetch(req));
+    return;
+  }
   event.respondWith(
     fetch(req)
       .then((res) => {

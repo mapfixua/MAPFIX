@@ -72,7 +72,8 @@
   gap: 10px;
   margin-bottom: 22px;
 }
-.mf-brand-mark {
+.mf-brand-mark,
+.mf-brand-logo {
   width: 36px;
   height: 36px;
   border-radius: 50%;
@@ -85,6 +86,15 @@
   font-size: 1rem;
   letter-spacing: -0.02em;
   flex-shrink: 0;
+}
+.mf-brand-logo {
+  object-fit: cover;
+  background: #fff;
+  border: 1px solid var(--mf-line);
+}
+a.mf-brand {
+  text-decoration: none;
+  color: inherit;
 }
 .mf-brand-name {
   font-weight: 800;
@@ -627,6 +637,23 @@
 }
 .mf-oauth-btn:hover { background: var(--mf-input); }
 .mf-oauth-btn:disabled { opacity: 0.55; cursor: not-allowed; }
+.mf-google-btn-slot {
+  width: 100%;
+  min-height: 44px;
+  display: flex;
+  justify-content: center;
+}
+.mf-google-btn-slot iframe { margin: 0 auto; }
+.mf-auth-notice {
+  margin: 0 0 16px;
+  padding: 10px 12px;
+  border-radius: 14px;
+  background: var(--mf-accent-soft);
+  color: var(--mf-ink);
+  font-size: 0.82rem;
+  font-weight: 600;
+  line-height: 1.45;
+}
 .mf-or {
   display: flex; align-items: center; gap: 12px; margin: 4px 0 16px;
   color: var(--mf-muted); font-size: 0.82rem; font-weight: 600;

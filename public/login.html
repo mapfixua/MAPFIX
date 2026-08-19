@@ -3,23 +3,26 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Mapfix — Вхід</title>
+  <title>Вхід в акаунт Mapfix</title>
+  <meta name="description" content="Офіційна сторінка входу в Mapfix — карта майстрів. Не вводьте пароль від Google, Apple чи пошти.">
+  <meta name="robots" content="noindex, nofollow">
+  <link rel="canonical" href="https://mapfix-wine.vercel.app/login.html">
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="/css/mapfix-ui.css">
-  <script src="https://accounts.google.com/gsi/client" async defer></script>
-  <script src="https://appleid.cdn-apple.com/appleauth/static/jsapi/appleid/1/en_US/appleid.auth.js" async defer></script>
 </head>
 <body class="mf-auth-body">
   <div class="mf-auth-wrap">
     <a class="mf-back" href="/">← На головну</a>
 
     <div class="mf-card">
-      <div class="mf-brand">
-        <span class="mf-brand-mark" aria-hidden="true">M</span>
+      <a class="mf-brand" href="/" title="Mapfix — карта майстрів">
+        <img class="mf-brand-logo" src="/icon-192.png" width="36" height="36" alt="">
         <span class="mf-brand-name">Mapfix</span>
-      </div>
+      </a>
 
-      <h1 class="mf-title">Вхід</h1>
-      <p class="mf-sub" id="loginSub">Увійдіть логіном і паролем. Якщо акаунта ще немає — зареєструйтесь.</p>
+      <h1 class="mf-title">Вхід у Mapfix</h1>
+      <p class="mf-sub" id="loginSub">Увійдіть логіном і паролем акаунта Mapfix. Якщо акаунта ще немає — зареєструйтесь.</p>
+      <p class="mf-auth-notice">Це офіційна сторінка Mapfix. Ми ніколи не просимо пароль від Google, Apple, банку чи пошти.</p>
 
       <nav class="mf-seg" aria-label="Вхід або реєстрація">
         <a class="active" href="/login.html" id="navLogin">Вхід</a>
@@ -27,18 +30,19 @@
       </nav>
 
       <div id="oauthBlock" class="mf-oauth mf-hidden">
-        <button type="button" class="mf-oauth-btn" id="googleBtn"><span class="g-icon">G</span> Увійти з Google</button>
-        <button type="button" class="mf-oauth-btn" id="appleBtn"><span class="a-icon"></span> Увійти з Apple</button>
+        <div id="googleBtnSlot" class="mf-google-btn-slot mf-hidden"></div>
+        <button type="button" class="mf-oauth-btn mf-hidden" id="appleBtn">Продовжити з Apple ID</button>
       </div>
-      <div id="oauthOr" class="mf-or mf-hidden">або</div>
+      <div id="oauthOr" class="mf-or mf-hidden">або логін Mapfix</div>
 
-      <form id="classicForm">
-        <label class="mf-label" for="login">Логін</label>
-        <input id="login" name="login" type="text" autocomplete="username" placeholder="Ваш логін" required>
+      <form id="classicForm" action="/login.html" method="post" autocomplete="on">
+        <label class="mf-label" for="login">Логін Mapfix</label>
+        <input id="login" name="login" type="text" autocomplete="username" placeholder="логін акаунта Mapfix" required>
+        <p class="mf-hint">Лише логін цього сервісу, не email Google і не пароль від пошти.</p>
 
-        <label class="mf-label" for="password">Пароль</label>
+        <label class="mf-label" for="password">Пароль Mapfix</label>
         <div class="mf-password">
-          <input id="password" name="password" type="password" autocomplete="current-password" placeholder="Пароль" required>
+          <input id="password" name="password" type="password" autocomplete="current-password" placeholder="пароль акаунта Mapfix" required>
           <button type="button" class="mf-toggle-eye" id="passwordToggle"><span class="eye-label">Показати</span></button>
         </div>
 
@@ -74,7 +78,7 @@
     <p class="mf-foot">
       Немає акаунта? <a href="/register.html" id="footRegister">Зареєструйтесь</a>.
     </p>
-    <p class="mf-links"><a href="/forgot-password.html">Забули пароль?</a> · <a href="/?feedback=1">Повідомити про помилку</a></p>
+    <p class="mf-links"><a href="/forgot-password.html">Забули пароль?</a> · <a href="/privacy.html">Конфіденційність</a> · <a href="/terms.html">Умови</a> · <a href="/?feedback=1">Повідомити про помилку</a></p>
   </div>
 
   <script>
@@ -183,6 +187,7 @@
       try {
         const res = await fetch('/api/login', {
           method: 'POST',
+          credentials: 'same-origin',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             login: document.getElementById('login').value.trim(),
@@ -272,6 +277,7 @@
       clearMessage();
       const res = await fetch(url, {
         method: 'POST',
+        credentials: 'same-origin',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
       });
@@ -279,6 +285,112 @@
       if (!res.ok) throw new Error(data.message || data.error || 'Помилка OAuth');
       showSuccess('Успішний вхід');
       redirectByRole(data.user?.role);
+    }
+
+    function loadScriptOnce(src) {
+      return new Promise((resolve, reject) => {
+        const found = document.querySelector('script[data-mf-src="' + src + '"]');
+        if (found) {
+          if (found.getAttribute('data-loaded') === '1') return resolve();
+          found.addEventListener('load', () => resolve());
+          found.addEventListener('error', () => reject(new Error('script')));
+          return;
+        }
+        const s = document.createElement('script');
+        s.src = src;
+        s.async = true;
+        s.setAttribute('data-mf-src', src);
+        s.onload = () => {
+          s.setAttribute('data-loaded', '1');
+          resolve();
+        };
+        s.onerror = () => reject(new Error('Не вдалося завантажити вхід'));
+        document.head.appendChild(s);
+      });
+    }
+
+    function makeNonce() {
+      const bytes = new Uint8Array(16);
+      crypto.getRandomValues(bytes);
+      return Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
+    }
+
+    async function sha256Hex(value) {
+      const data = new TextEncoder().encode(value);
+      const hash = await crypto.subtle.digest('SHA-256', data);
+      return Array.from(new Uint8Array(hash), (b) => b.toString(16).padStart(2, '0')).join('');
+    }
+
+    async function setupGoogleButton() {
+      const slot = document.getElementById('googleBtnSlot');
+      if (!oauthConfig.googleEnabled || !oauthConfig.googleClientId) {
+        slot.classList.add('mf-hidden');
+        return;
+      }
+      await loadScriptOnce('https://accounts.google.com/gsi/client');
+      if (!window.google?.accounts?.id) return;
+      slot.classList.remove('mf-hidden');
+      google.accounts.id.initialize({
+        client_id: oauthConfig.googleClientId,
+        callback: async (response) => {
+          try {
+            await finishOauth('/api/auth/google', { credential: response.credential, role: 'client' });
+          } catch (err) {
+            showError(err.message);
+          }
+        },
+        auto_select: false,
+        cancel_on_tap_outside: true,
+        use_fedcm_for_prompt: false,
+      });
+      const width = Math.min(400, Math.max(240, Math.floor(slot.getBoundingClientRect().width || 320)));
+      google.accounts.id.renderButton(slot, {
+        type: 'standard',
+        theme: 'outline',
+        size: 'large',
+        text: 'signin_with',
+        shape: 'pill',
+        logo_alignment: 'left',
+        locale: 'uk',
+        width,
+      });
+    }
+
+    async function setupAppleButton() {
+      const btn = document.getElementById('appleBtn');
+      if (!oauthConfig.appleEnabled) {
+        btn.classList.add('mf-hidden');
+        return;
+      }
+      await loadScriptOnce('https://appleid.cdn-apple.com/appleauth/static/jsapi/appleid/1/en_US/appleid.auth.js');
+      btn.classList.remove('mf-hidden');
+      btn.onclick = async () => {
+        if (!window.AppleID) return showError('Apple SDK ще завантажується');
+        try {
+          const rawNonce = makeNonce();
+          const hashedNonce = await sha256Hex(rawNonce);
+          AppleID.auth.init({
+            clientId: oauthConfig.appleClientId,
+            scope: 'name email',
+            redirectURI: window.location.origin + '/login.html',
+            usePopup: true,
+            nonce: hashedNonce,
+          });
+          const response = await AppleID.auth.signIn();
+          const fullName = response.user?.name
+            ? [response.user.name.firstName, response.user.name.lastName].filter(Boolean).join(' ')
+            : '';
+          await finishOauth('/api/auth/apple', {
+            idToken: response.authorization?.id_token,
+            rawNonce,
+            user: response.user,
+            name: fullName,
+            role: 'client',
+          });
+        } catch (err) {
+          if (err?.error !== 'popup_closed_by_user') showError(err.message || 'Apple Sign In скасовано');
+        }
+      };
     }
 
     async function setupAuthOptions() {
@@ -298,50 +410,15 @@
       const showOauth = oauthConfig.googleEnabled || oauthConfig.appleEnabled;
       document.getElementById('oauthBlock').classList.toggle('mf-hidden', !showOauth);
       document.getElementById('oauthOr').classList.toggle('mf-hidden', !showOauth);
-      document.getElementById('googleBtn').classList.toggle('mf-hidden', !oauthConfig.googleEnabled);
-      document.getElementById('appleBtn').classList.toggle('mf-hidden', !oauthConfig.appleEnabled);
       document.getElementById('telegramBlock').classList.toggle('mf-hidden', !telegramConfigured);
       updateSubtitle();
 
-      if (oauthConfig.googleEnabled && window.google?.accounts?.id) {
-        google.accounts.id.initialize({
-          client_id: oauthConfig.googleClientId,
-          callback: async (response) => {
-            try {
-              await finishOauth('/api/auth/google', { credential: response.credential, role: 'client' });
-            } catch (err) {
-              showError(err.message);
-            }
-          },
-        });
+      if (oauthConfig.googleEnabled) {
+        setupGoogleButton().catch(() => showError('Не вдалося показати вхід Google'));
       }
-
-      document.getElementById('googleBtn').onclick = () => {
-        if (!oauthConfig.googleEnabled) return showError('Google вхід ще не налаштовано');
-        if (window.google?.accounts?.id) google.accounts.id.prompt();
-        else showError('Google SDK ще завантажується, спробуйте знову');
-      };
-
-      document.getElementById('appleBtn').onclick = async () => {
-        if (!oauthConfig.appleEnabled) return showError('Apple вхід ще не налаштовано');
-        try {
-          AppleID.auth.init({
-            clientId: oauthConfig.appleClientId,
-            scope: 'name email',
-            redirectURI: window.location.origin + '/login.html',
-            usePopup: true,
-          });
-          const response = await AppleID.auth.signIn();
-          await finishOauth('/api/auth/apple', {
-            id_token: response.authorization?.id_token,
-            code: response.authorization?.code,
-            user: response.user,
-            role: 'client',
-          });
-        } catch (err) {
-          if (err?.error !== 'popup_closed_by_user') showError(err.message || 'Apple Sign In скасовано');
-        }
-      };
+      if (oauthConfig.appleEnabled) {
+        setupAppleButton().catch(() => showError('Не вдалося показати вхід Apple'));
+      }
     }
 
     setupAuthOptions();

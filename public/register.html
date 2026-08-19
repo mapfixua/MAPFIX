@@ -3,21 +3,24 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Mapfix — Реєстрація</title>
+  <title>Реєстрація акаунта Mapfix</title>
+  <meta name="description" content="Офіційна реєстрація в Mapfix — карта майстрів. Створіть логін цього сервісу, не вводьте пароль від Google чи пошти.">
+  <meta name="robots" content="noindex, nofollow">
+  <link rel="canonical" href="https://mapfix-wine.vercel.app/register.html">
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="/css/mapfix-ui.css">
-  <script src="https://accounts.google.com/gsi/client" async defer></script>
-  <script src="https://appleid.cdn-apple.com/appleauth/static/jsapi/appleid/1/en_US/appleid.auth.js" async defer></script>
 </head>
 <body class="mf-auth-body">
   <div class="mf-auth-wrap" style="max-width:440px">
     <a class="mf-back" href="/">← На головну</a>
     <div class="mf-card">
-      <div class="mf-brand">
-        <span class="mf-brand-mark" aria-hidden="true">M</span>
+      <a class="mf-brand" href="/" title="Mapfix — карта майстрів">
+        <img class="mf-brand-logo" src="/icon-192.png" width="36" height="36" alt="">
         <span class="mf-brand-name">Mapfix</span>
-      </div>
-      <h1 class="mf-title">Реєстрація</h1>
-      <p class="mf-sub" id="registerSub">Створіть акаунт логіном і паролем.</p>
+      </a>
+      <h1 class="mf-title">Реєстрація в Mapfix</h1>
+      <p class="mf-sub" id="registerSub">Створіть акаунт логіном і паролем Mapfix.</p>
+      <p class="mf-auth-notice">Це офіційна сторінка Mapfix. Ми ніколи не просимо пароль від Google, Apple, банку чи пошти.</p>
 
       <nav class="mf-seg" aria-label="Вхід або реєстрація">
         <a href="/login.html">Вхід</a>
@@ -25,12 +28,12 @@
       </nav>
 
       <div id="oauthBlock" class="mf-oauth mf-hidden">
-        <button type="button" class="mf-oauth-btn" id="googleBtn"><span class="g-icon">G</span> Продовжити з Google</button>
-        <button type="button" class="mf-oauth-btn" id="appleBtn"><span class="a-icon"></span> Продовжити з Apple</button>
+        <div id="googleBtnSlot" class="mf-google-btn-slot mf-hidden"></div>
+        <button type="button" class="mf-oauth-btn mf-hidden" id="appleBtn">Продовжити з Apple ID</button>
       </div>
-      <div id="oauthOr" class="mf-or mf-hidden">або email / логін</div>
+      <div id="oauthOr" class="mf-or mf-hidden">або логін Mapfix</div>
 
-      <form id="registerForm">
+      <form id="registerForm" action="/register.html" method="post" autocomplete="on">
         <p class="mf-label">Хто ви?</p>
         <div class="mf-role" role="group" aria-label="Роль">
           <button type="button" class="active" id="roleClientBtn" data-role="client">Я клієнт</button>
@@ -41,11 +44,11 @@
           <option value="provider">provider</option>
         </select>
 
-        <label class="mf-label" for="login">Логін</label>
+        <label class="mf-label" for="login">Логін Mapfix</label>
         <input id="login" type="text" required minlength="3" maxlength="32" pattern="[A-Za-z0-9._\-]+" autocomplete="username" placeholder="напр. orenda_kvartyra" title="Лише латиниця, цифри, . _ -">
-        <p class="mf-hint">Лише латиниця: a–z, цифри, . _ - (не українською). Назва бізнесу нижче може бути українською.</p>
+        <p class="mf-hint">Лише латиниця: a–z, цифри, . _ - (не українською). Це логін Mapfix, не email Google.</p>
 
-        <label class="mf-label" for="password">Пароль</label>
+        <label class="mf-label" for="password">Пароль Mapfix</label>
         <div class="mf-password">
           <input id="password" type="password" required minlength="6" autocomplete="new-password" placeholder="мін. 6 символів">
           <button type="button" class="mf-toggle-eye" id="passwordToggle"><span class="eye-label">Показати</span></button>
@@ -80,7 +83,7 @@
 
       <div id="message" class="msg" role="alert"></div>
     </div>
-    <p class="mf-links" style="text-align:center;margin-top:14px"><a href="/?feedback=1">Повідомити про помилку</a></p>
+      <p class="mf-links" style="text-align:center;margin-top:14px"><a href="/privacy.html">Конфіденційність</a> · <a href="/terms.html">Умови</a> · <a href="/?feedback=1">Повідомити про помилку</a></p>
   </div>
 
   <script>
@@ -208,64 +211,76 @@
       redirectByRole(data.user?.role);
     }
 
-    async function initOauth() {
-      try {
-        const res = await fetch('/api/auth/oauth-config', { cache: 'no-store' });
-        oauthConfig = await res.json();
-      } catch (_) {
+    function loadScriptOnce(src) {
+      return new Promise((resolve, reject) => {
+        const found = document.querySelector('script[data-mf-src="' + src + '"]');
+        if (found) {
+          if (found.getAttribute('data-loaded') === '1') return resolve();
+          found.addEventListener('load', () => resolve());
+          found.addEventListener('error', () => reject(new Error('script')));
+          return;
+        }
+        const s = document.createElement('script');
+        s.src = src;
+        s.async = true;
+        s.setAttribute('data-mf-src', src);
+        s.onload = () => {
+          s.setAttribute('data-loaded', '1');
+          resolve();
+        };
+        s.onerror = () => reject(new Error('Не вдалося завантажити вхід'));
+        document.head.appendChild(s);
+      });
+    }
+
+    async function setupGoogleButton() {
+      const slot = document.getElementById('googleBtnSlot');
+      if (!oauthConfig.googleEnabled || !oauthConfig.googleClientId) {
+        slot.classList.add('mf-hidden');
         return;
       }
-      const block = document.getElementById('oauthBlock');
-      const or = document.getElementById('oauthOr');
-      const show = oauthConfig.googleEnabled || oauthConfig.appleEnabled;
-      block.classList.toggle('mf-hidden', !show);
-      or.classList.toggle('mf-hidden', !show);
-      document.getElementById('googleBtn').classList.toggle('mf-hidden', !oauthConfig.googleEnabled);
-      document.getElementById('appleBtn').classList.toggle('mf-hidden', !oauthConfig.appleEnabled);
+      await loadScriptOnce('https://accounts.google.com/gsi/client');
+      if (!window.google?.accounts?.id) return;
+      slot.classList.remove('mf-hidden');
+      google.accounts.id.initialize({
+        client_id: oauthConfig.googleClientId,
+        callback: async (response) => {
+          try {
+            await finishOauth('/api/auth/google', {
+              credential: response.credential,
+              role: roleSel.value,
+              companyName: document.getElementById('companyName').value.trim(),
+            });
+          } catch (err) {
+            showMsg(err.message, false);
+          }
+        },
+        auto_select: false,
+        cancel_on_tap_outside: true,
+        use_fedcm_for_prompt: false,
+      });
+      const width = Math.min(400, Math.max(240, Math.floor(slot.getBoundingClientRect().width || 320)));
+      google.accounts.id.renderButton(slot, {
+        type: 'standard',
+        theme: 'outline',
+        size: 'large',
+        text: 'signup_with',
+        shape: 'pill',
+        logo_alignment: 'left',
+        locale: 'uk',
+        width,
+      });
+    }
 
-      const sub = document.getElementById('registerSub');
-      if (sub) {
-        if (show) {
-          const parts = [];
-          if (oauthConfig.googleEnabled) parts.push('Google');
-          if (oauthConfig.appleEnabled) parts.push('Apple');
-          sub.textContent =
-            'Створіть акаунт через ' +
-            parts.join(' / ') +
-            ' або логіном і паролем.';
-        } else {
-          sub.textContent = 'Створіть акаунт логіном і паролем.';
-        }
+    async function setupAppleButton() {
+      const btn = document.getElementById('appleBtn');
+      if (!oauthConfig.appleEnabled) {
+        btn.classList.add('mf-hidden');
+        return;
       }
-
-      if (oauthConfig.googleEnabled && window.google?.accounts?.id) {
-        google.accounts.id.initialize({
-          client_id: oauthConfig.googleClientId,
-          callback: async (response) => {
-            try {
-              await finishOauth('/api/auth/google', {
-                credential: response.credential,
-                role: roleSel.value,
-                companyName: document.getElementById('companyName').value.trim(),
-              });
-            } catch (err) {
-              showMsg(err.message, false);
-            }
-          },
-        });
-      }
-
-      document.getElementById('googleBtn').onclick = () => {
-        if (!oauthConfig.googleEnabled) return showMsg('Вхід через Google тимчасово недоступний. Зареєструйтесь логіном і паролем.', false);
-        if (window.google?.accounts?.id) {
-          google.accounts.id.prompt();
-        } else {
-          showMsg('Google SDK ще завантажується. Спробуйте за секунду.', false);
-        }
-      };
-
-      document.getElementById('appleBtn').onclick = async () => {
-        if (!oauthConfig.appleEnabled) return showMsg('Вхід через Apple тимчасово недоступний. Зареєструйтесь логіном і паролем.', false);
+      await loadScriptOnce('https://appleid.cdn-apple.com/appleauth/static/jsapi/appleid/1/en_US/appleid.auth.js');
+      btn.classList.remove('mf-hidden');
+      btn.onclick = async () => {
         if (!window.AppleID) return showMsg('Apple SDK ще завантажується', false);
         try {
           const rawNonce = makeNonce();
@@ -295,6 +310,42 @@
           }
         }
       };
+    }
+
+    async function initOauth() {
+      try {
+        const res = await fetch('/api/auth/oauth-config', { cache: 'no-store' });
+        oauthConfig = await res.json();
+      } catch (_) {
+        return;
+      }
+      const block = document.getElementById('oauthBlock');
+      const or = document.getElementById('oauthOr');
+      const show = oauthConfig.googleEnabled || oauthConfig.appleEnabled;
+      block.classList.toggle('mf-hidden', !show);
+      or.classList.toggle('mf-hidden', !show);
+
+      const sub = document.getElementById('registerSub');
+      if (sub) {
+        if (show) {
+          const parts = [];
+          if (oauthConfig.googleEnabled) parts.push('Google');
+          if (oauthConfig.appleEnabled) parts.push('Apple');
+          sub.textContent =
+            'Створіть акаунт Mapfix через ' +
+            parts.join(' / ') +
+            ' або логіном і паролем цього сервісу.';
+        } else {
+          sub.textContent = 'Створіть акаунт логіном і паролем Mapfix.';
+        }
+      }
+
+      if (oauthConfig.googleEnabled) {
+        setupGoogleButton().catch(() => showMsg('Не вдалося показати вхід Google', false));
+      }
+      if (oauthConfig.appleEnabled) {
+        setupAppleButton().catch(() => showMsg('Не вдалося показати вхід Apple', false));
+      }
     }
 
     registerForm.onsubmit = async (e) => {
@@ -368,8 +419,7 @@
     };
 
     loadCategories();
-    window.addEventListener('load', initOauth);
-    setTimeout(initOauth, 800);
+    initOauth();
   </script>
 </body>
 </html>
