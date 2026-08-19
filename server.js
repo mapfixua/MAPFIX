@@ -737,6 +737,11 @@ app.get('/robots.txt', (_req, res) => {
   res.type('text/plain').send(robotsTxt());
 });
 
+app.get('/google8adca38c98f2ae5a.html', (_req, res) => {
+  res.set('Cache-Control', 'public, max-age=300');
+  res.type('html').send('google-site-verification: google8adca38c98f2ae5a.html\n');
+});
+
 app.get('/sitemap.xml', async (_req, res) => {
   try {
     const data = await readData();
