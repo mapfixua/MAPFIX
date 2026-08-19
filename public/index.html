@@ -1986,6 +1986,7 @@
                     });
                     const data = await res.json();
                     if (!res.ok) throw new Error(data.error);
+                    trackLocationClick(locationId, 'order');
                     alert('Замовлення створено! Майстра сповіщено. Дивіться статус у кабінеті клієнта.');
                 } catch (err) {
                     alert(err.message);
@@ -1997,6 +1998,7 @@
                 const url = `${location.origin}/?loc=${encodeURIComponent(locationId)}`;
                 const title = loc?.title || 'Mapfix';
                 const text = loc ? `${loc.title} — ${loc.address || 'на Mapfix'}` : 'Mapfix';
+                trackLocationClick(locationId, 'share');
                 try {
                     if (navigator.share) {
                         await navigator.share({ title, text, url });
@@ -2030,6 +2032,7 @@
                     });
                     const data = await res.json();
                     if (!res.ok) throw new Error(data.error);
+                    trackLocationClick(locationId, 'report');
                     alert('Скаргу надіслано. Дякуємо!');
                 } catch (err) {
                     alert(err.message);
@@ -2129,7 +2132,10 @@
                 const data = await res.json();
                 if (!res.ok) return alert(data.error || 'Помилка');
                 if (isFav) State.favoriteIds.delete(locationId);
-                else State.favoriteIds.add(locationId);
+                else {
+                    State.favoriteIds.add(locationId);
+                    trackLocationClick(locationId, 'favorite');
+                }
                 if (State.selectedLocation?.id === locationId) {
                     openMasterDetail(locationId, {
                         mode: State.detailMode || 'dive',
@@ -2301,6 +2307,7 @@
 
             window.diveIntoSelectedDetail = function () {
                 if (!State.selectedLocation) return;
+                trackLocationClick(State.selectedLocation.id, 'dive');
                 openMasterDetail(State.selectedLocation.id, { mode: 'dive', forceMode: true });
             };
 
@@ -2370,6 +2377,20 @@
                     body: JSON.stringify(payload),
                 }).catch(() => {});
             }
+
+            function trackLocationClick(locationId, type) {
+                const id = String(locationId || '').trim();
+                const t = String(type || '').trim();
+                if (!id || !t) return;
+                fetch('/api/locations/' + encodeURIComponent(id) + '/click', {
+                    method: 'POST',
+                    credentials: 'same-origin',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ type: t }),
+                    keepalive: true,
+                }).catch(() => {});
+            }
+            window.trackLocationClick = trackLocationClick;
 
             function renderCategoryStrip() {
                 categoryStrip.innerHTML = '';
@@ -2674,9 +2695,9 @@
                     </div>
                     <div class="detail-actions">
                         <div class="detail-actions-row">
-                            ${loc.phone ? `<a href="tel:${escapeHtml(loc.phone)}" class="action-btn btn-call" onclick="event.stopPropagation()">📞 Зателефонувати</a>` : ''}
+                            ${loc.phone ? `<a href="tel:${escapeHtml(loc.phone)}" class="action-btn btn-call" onclick="event.stopPropagation(); trackLocationClick('${escapeHtml(loc.id)}','call')">📞 Зателефонувати</a>` : ''}
                             ${directionsBtn}
-                            <button type="button" class="action-btn btn-route" onclick="event.stopPropagation(); panToMaster(${Number(loc.lat)}, ${Number(loc.lng)})">🗺️ На карті</button>
+                            <button type="button" class="action-btn btn-route" onclick="event.stopPropagation(); trackLocationClick('${escapeHtml(loc.id)}','map_focus'); panToMaster(${Number(loc.lat)}, ${Number(loc.lng)})">🗺️ На карті</button>
                         </div>
                         <div class="detail-actions-row">
                             <button type="button" class="action-btn btn-share" onclick="event.stopPropagation(); shareLocation('${escapeHtml(loc.id)}')">↗ Поділитись</button>
@@ -2759,6 +2780,7 @@
             }
 
             window.claimLocationFromMap = async function(locationId) {
+                trackLocationClick(locationId, 'claim');
                 const u = State.currentUser;
                 if (!locationHasClaimPhone(locationId)) {
                     if (confirm('У цього закладу немає телефону для автопідтвердження.\n\nВідкрити форму «Повідомити про помилку», щоб ми призначили вас власником?')) {
@@ -3015,6 +3037,7 @@
                     });
                     const data = await res.json();
                     if (!res.ok) throw new Error(data.error || 'Помилка');
+                    trackLocationClick(locId, 'review');
                     const loc = window.mockLocations.find((l) => l.id === locId);
                     if (loc) {
                         loc.reviews = data.reviews || loc.reviews;
@@ -3067,6 +3090,7 @@
                     return;
                 }
 
+                trackLocationClick(locId, 'directions');
                 window.open(url, '_blank', 'noopener,noreferrer');
             };
 

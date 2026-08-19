@@ -225,6 +225,36 @@
     }
     .stat-card.stat-highlight .stat-label { color: #0f766e; }
     .stat-card.stat-highlight .stat-value { color: #0f766e; font-size: 1.75rem; }
+    .engagement-strip {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin: 4px 0 12px;
+    }
+    .engagement-chip {
+      display: inline-flex;
+      align-items: baseline;
+      gap: 6px;
+      padding: 8px 10px;
+      border-radius: 12px;
+      background: #f8fafc;
+      border: 1px solid #e2e8f0;
+      min-width: 72px;
+    }
+    .engagement-chip .eng-icon { font-size: 0.9rem; line-height: 1; }
+    .engagement-chip .eng-val { font-size: 1.05rem; font-weight: 800; letter-spacing: -0.02em; color: #0f172a; }
+    .engagement-chip .eng-label { font-size: 0.68rem; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.02em; }
+    .engagement-chip.is-primary {
+      background: #ecfdf5;
+      border-color: #a7f3d0;
+    }
+    .engagement-chip.is-primary .eng-val { color: #047857; }
+    .engagement-rate {
+      font-size: 0.8rem;
+      color: #64748b;
+      margin: 0 0 10px;
+      line-height: 1.4;
+    }
     .metric-charts-grid {
       display: grid;
       grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -952,7 +982,14 @@
             <h3 style="font-size:1rem;margin:0 0 8px">Стан платформи (загалом)</h3>
             <div class="stat-grid" id="analyticsPlatformStats" style="margin-bottom:16px"></div>
 
-            <h3 style="font-size:1rem;margin:0 0 8px">Куди заходять (сторінки)</h3>
+            <h3 style="font-size:1rem;margin:0 0 8px">Взаємодії з картками (CTA)</h3>
+            <p class="field-hint" style="margin-top:0">Як у Google Business: дзвінки, маршрути, поділитись, обране, замовлення, детальніше. Call rate = дзвінки / перегляди.</p>
+            <div class="stat-grid" id="analyticsCtaStats" style="margin-bottom:12px"></div>
+            <h3 style="font-size:0.95rem;margin:0 0 6px">Топ локацій за дзвінками</h3>
+            <p class="field-hint" style="margin:0 0 6px">Подвійний клік — відкрити локацію</p>
+            <div id="analyticsTopCalls"><p class="list-item-meta">—</p></div>
+
+            <h3 style="font-size:1rem;margin:16px 0 8px">Куди заходять (сторінки)</h3>
             <div id="analyticsPages"><p class="list-item-meta">Завантаження…</p></div>
 
             <h3 style="font-size:1rem;margin:16px 0 8px">Категорії (кліки)</h3>
@@ -973,8 +1010,8 @@
             <h3 style="font-size:1rem;margin:16px 0 8px">Останні пошукові запити</h3>
             <div id="analyticsRecentSearches"><p class="list-item-meta">—</p></div>
 
-            <h3 style="font-size:1rem;margin:16px 0 8px">Топ локацій за переглядами картки</h3>
-            <p class="field-hint" style="margin:0 0 6px">Подвійний клік — відкрити локацію</p>
+            <h3 style="font-size:1rem;margin:16px 0 8px">Топ локацій за залученістю</h3>
+            <p class="field-hint" style="margin:0 0 6px">Спочатку за дзвінками, потім за переглядами. Подвійний клік — відкрити локацію</p>
             <div id="analyticsTopLocs"><p class="list-item-meta">—</p></div>
 
             <h3 style="font-size:1rem;margin:16px 0 8px">Історія по днях</h3>
@@ -1846,17 +1883,78 @@
       if (name === 'analytics') loadAdminAnalytics();
     }
 
+    function locEngagementStripHtml(loc) {
+      const stats = loc?.clickStats || {};
+      const meta = loc?.clickMeta || {};
+      const labels = meta.labels || {
+        call: 'Дзвінки',
+        directions: 'Маршрути',
+        map_focus: 'На карті',
+        share: 'Поділитись',
+        favorite: 'В обране',
+        order: 'Замовлення',
+        claim: 'Claim',
+        review: 'Відгуки',
+        report: 'Скарги',
+        dive: 'Детальніше',
+      };
+      const icons = meta.icons || {
+        call: '📞',
+        directions: '🧭',
+        map_focus: '🗺️',
+        share: '↗',
+        favorite: '☆',
+        order: '🛒',
+        claim: '🔑',
+        review: '⭐',
+        report: '⚑',
+        dive: '🔎',
+      };
+      const order = meta.types || [
+        'call',
+        'directions',
+        'dive',
+        'share',
+        'favorite',
+        'order',
+        'map_focus',
+        'claim',
+        'review',
+        'report',
+      ];
+      const views = Number(loc?.views) || 0;
+      const calls = Number(stats.call) || 0;
+      const dirs = Number(stats.directions) || 0;
+      const chips = [
+        `<span class="engagement-chip is-primary"><span class="eng-icon">👁</span><span class="eng-val">${views}</span><span class="eng-label">перегляди</span></span>`,
+        ...order.map((type) => {
+          const n = Number(stats[type]) || 0;
+          const primary = type === 'call' || type === 'directions';
+          return `<span class="engagement-chip${primary ? ' is-primary' : ''}"><span class="eng-icon">${esc(
+            icons[type] || '•'
+          )}</span><span class="eng-val">${n}</span><span class="eng-label">${esc(
+            labels[type] || type
+          )}</span></span>`;
+        }),
+      ].join('');
+      const callRate = views > 0 ? Math.round((calls / views) * 1000) / 10 : 0;
+      const dirRate = views > 0 ? Math.round((dirs / views) * 1000) / 10 : 0;
+      return `<div class="engagement-strip">${chips}</div>
+        <p class="engagement-rate">Конверсія з перегляду: дзвінки <b>${callRate}%</b> · маршрути <b>${dirRate}%</b></p>`;
+    }
+
     function rankingListHtml(items, emptyText, lineFn, navAttrFn) {
       if (!items || !items.length) return `<p class="list-item-meta">${esc(emptyText)}</p>`;
       return items
         .map((item, i) => {
           const nav = typeof navAttrFn === 'function' ? navAttrFn(item) || '' : '';
           const clickable = Boolean(nav);
+          const count = item.count ?? item.call ?? item.views ?? item.total ?? 0;
           return `<div class="list-item${clickable ? ' analytics-jump' : ''}" style="margin-bottom:6px;display:flex;justify-content:space-between;gap:12px;${
             clickable ? 'cursor:pointer;' : ''
           }" ${nav} title="${clickable ? 'Подвійний клік — відкрити' : ''}">
               <div>${i + 1}. ${lineFn(item)}</div>
-              <strong>${esc(String(item.count ?? item.views ?? 0))}</strong>
+              <strong>${esc(String(count))}</strong>
             </div>`;
         })
         .join('');
@@ -2105,6 +2203,38 @@
             .join('');
         }
 
+        const ctaEl = document.getElementById('analyticsCtaStats');
+        if (ctaEl) {
+          ctaEl.innerHTML = [
+            ['📞 Дзвінки', kpis.callClicks, true],
+            ['🧭 Маршрути', kpis.directionsClicks, true],
+            ['Call rate %', kpis.callRate, true],
+            ['🔎 Детальніше', kpis.diveClicks, false],
+            ['↗ Поділитись', kpis.shareClicks, false],
+            ['☆ В обране', kpis.favoriteClicks, false],
+            ['🛒 Замовлення (клік)', kpis.orderClicks, false],
+            ['🗺️ На карті', kpis.mapFocusClicks, false],
+            ['🔑 Claim', kpis.claimClicks, false],
+            ['⭐ Відгук', kpis.reviewClicks, false],
+            ['⚑ Скарга', kpis.reportClicks, false],
+          ]
+            .map(([label, value, hi]) => card(label, value, hi))
+            .join('');
+        }
+
+        const topCalls = (data.locationCta?.topByCalls || data.topLocations || []).filter(
+          (x) => (x.call || 0) > 0
+        );
+        document.getElementById('analyticsTopCalls').innerHTML = rankingListHtml(
+          topCalls.length ? topCalls : data.topLocations || [],
+          'Кліків «Зателефонувати» ще немає — зʼявляться після натискань на карті',
+          (x) =>
+            `${esc(x.title || x.id)} · 📞 ${x.call || 0} · 🧭 ${x.directions || 0} · 👁 ${x.views || 0}${
+              x.callRate != null ? ` · ${x.callRate}%` : ''
+            }`,
+          (x) => `data-jump-loc="${esc(x.id || '')}"`
+        );
+
         const funnel = data.catalogFunnel || {};
         document.getElementById('analyticsPages').innerHTML = rankingListHtml(
           data.pages,
@@ -2152,9 +2282,15 @@
           : '<p class="list-item-meta">Порожньо</p>';
 
         document.getElementById('analyticsTopLocs').innerHTML = rankingListHtml(
-          (data.topLocations || []).map((l) => ({ ...l, count: l.views })),
-          'Переглядів карток ще немає',
-          (x) => esc(x.title || x.id),
+          (data.topLocations || []).map((l) => ({
+            ...l,
+            count: l.call || l.ctaTotal || l.views || 0,
+          })),
+          'Переглядів / кліків по картках ще немає',
+          (x) =>
+            `${esc(x.title || x.id)} · 📞 ${x.call || 0} · 🧭 ${x.directions || 0} · 👁 ${x.views || 0}${
+              x.callRate != null ? ` · ${x.callRate}%` : ''
+            }`,
           (x) => (x.id ? `data-jump-loc="${esc(x.id)}"` : '')
         );
 
@@ -2163,6 +2299,7 @@
         bindAnalyticsJumps(document.getElementById('analyticsSvcs'));
         bindAnalyticsJumps(document.getElementById('analyticsSearches'));
         bindAnalyticsJumps(document.getElementById('analyticsRecentSearches'));
+        bindAnalyticsJumps(document.getElementById('analyticsTopCalls'));
         bindAnalyticsJumps(document.getElementById('analyticsTopLocs'));
 
         const daily = data.daily || [];
@@ -2652,6 +2789,12 @@
               <div class="kv"><div class="k">Перегляди</div><div class="v">${Number(l.views) || 0}</div></div>
               <div class="kv"><div class="k">Рейтинг</div><div class="v">★ ${Number(l.rating || 0).toFixed(1)} (${l.reviewsCount || 0})</div></div>
               <div class="kv"><div class="k">Замовлення</div><div class="v">${l.ordersCount || 0}</div></div>
+              <div class="kv" style="grid-column:1/-1">
+                <div class="k">Взаємодії (кліки CTA)</div>
+                <div class="v" style="width:100%">
+                  ${locEngagementStripHtml(l)}
+                </div>
+              </div>
               <div class="kv"><div class="k">Провайдер</div><div class="v">${l.provider ? esc(l.provider.companyName + ' (@' + l.provider.login + ')') : 'системна / без власника'}</div></div>
             </div>
             <div class="detail-section" style="margin:12px 0;padding:12px;background:#f8fafc;border-radius:10px">

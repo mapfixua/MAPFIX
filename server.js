@@ -85,6 +85,11 @@ const {
   categoryClickKey,
   subcategoryClickKey,
   serviceClickKey,
+  locationClickKey,
+  LOCATION_CLICK_TYPES,
+  LOCATION_CLICK_LABELS,
+  LOCATION_CLICK_ICONS,
+  locationClickStatsFromMap,
   fetchCatalogClicksMap,
   incrementCatalogClick,
 } = require('./catalog-clicks-store.js');
@@ -1251,6 +1256,11 @@ app.post('/api/analytics/event', async (req, res) => {
       donate: 'donateClicks',
       subscribe: 'subscribeClicks',
       map_load: 'mapLoads',
+      call: 'callClicks',
+      directions: 'directionsClicks',
+      share: 'shareClicks',
+      dive: 'diveClicks',
+      map_focus: 'mapFocusClicks',
     };
     if (map[name]) await analytics.bumpTotal(map[name]);
     res.json({ ok: true });
@@ -1633,16 +1643,37 @@ app.delete('/api/admin/users/:userId', requireAuth, requireAdmin, async (req, re
 app.get('/api/admin/locations/:id/detail', requireAuth, requireAdmin, async (req, res) => {
   try {
     const id = String(req.params.id || '').trim();
-    const [data, users, orders] = await Promise.all([readData(), readUsers(), readOrders()]);
+    const [data, users, orders, clicksRes] = await Promise.all([
+      readData(),
+      readUsers(),
+      readOrders(),
+      fetchCatalogClicksMap().catch(() => ({ ok: false, clicks: {} })),
+    ]);
     const loc = data.mockLocations.find((l) => l.id === id);
     if (!loc) return res.status(404).json({ error: 'Локацію не знайдено' });
 
     const provider = loc.providerId ? users.find((u) => u.id === loc.providerId) : null;
     const profile = loc.providerId ? data.providerProfiles[loc.providerId] : null;
+    const views = Number(loc.views) || 0;
+    const clickStats = locationClickStatsFromMap(clicksRes.clicks || {}, id);
+    const ctaTotal = Object.values(clickStats).reduce((s, n) => s + (Number(n) || 0), 0);
 
     res.json({
       ...loc,
-      views: Number(loc.views) || 0,
+      views,
+      clickStats,
+      clickMeta: {
+        labels: LOCATION_CLICK_LABELS,
+        icons: LOCATION_CLICK_ICONS,
+        types: LOCATION_CLICK_TYPES,
+      },
+      engagement: {
+        views,
+        ctaTotal,
+        callRate: views > 0 ? Math.round((clickStats.call / views) * 1000) / 10 : 0,
+        directionsRate:
+          views > 0 ? Math.round((clickStats.directions / views) * 1000) / 10 : 0,
+      },
       provider: provider
         ? {
             id: provider.id,
@@ -1760,6 +1791,61 @@ app.post('/api/locations/:id/view', async (req, res) => {
   } catch (err) {
     console.error('[POST /api/locations/:id/view]', err);
     res.status(500).json({ error: 'view_failed' });
+  }
+});
+
+const LOCATION_CLICK_TOTAL_FIELD = {
+  call: 'callClicks',
+  directions: 'directionsClicks',
+  share: 'shareClicks',
+  dive: 'diveClicks',
+  map_focus: 'mapFocusClicks',
+  favorite: 'favorites',
+  order: 'orders',
+  claim: 'claims',
+  report: 'reports',
+};
+
+app.post('/api/locations/:id/click', async (req, res) => {
+  try {
+    const id = String(req.params.id || '').trim();
+    const type = String(req.body?.type || req.query?.type || '').trim().toLowerCase();
+    if (!id) return res.status(400).json({ error: 'location id required' });
+    if (!LOCATION_CLICK_TYPES.includes(type)) {
+      return res.status(400).json({
+        error: 'Невірний тип кліку',
+        allowed: LOCATION_CLICK_TYPES,
+      });
+    }
+
+    const data = await readData();
+    const loc = data.mockLocations.find((l) => l.id === id && !isLocationTrashed(l));
+    if (!loc) return res.status(404).json({ error: 'Локацію не знайдено' });
+
+    const clickKey = locationClickKey(id, type);
+    const result = await incrementCatalogClick(clickKey);
+    if (!result.ok) {
+      if (result.missing) {
+        return res.status(503).json({
+          ok: false,
+          error: 'Таблиця catalog_clicks відсутня — виконайте міграції 011/015',
+        });
+      }
+      return res.status(500).json({ error: result.error?.message || 'Не вдалося записати клік' });
+    }
+
+    const totalField = LOCATION_CLICK_TOTAL_FIELD[type];
+    if (totalField) analytics.bumpTotal(totalField).catch(() => {});
+
+    res.json({
+      ok: true,
+      type,
+      locationId: id,
+      clicks: result.clicks,
+    });
+  } catch (err) {
+    console.error('[POST /api/locations/:id/click]', err);
+    res.status(500).json({ error: 'click_failed' });
   }
 });
 
