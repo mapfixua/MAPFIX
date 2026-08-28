@@ -189,6 +189,106 @@ function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+const REGION_MIN_SIDE_METERS = 120;
+const REGION_MAX_SIDE_METERS = 40000;
+
+function stripCatalogLabel(value) {
+  return String(value || '')
+    .replace(/[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}]/gu, '')
+    .replace(/[✂️🚗🛠️🐾🏠🎓⚽🔑💄🪑]/gu, '')
+    .trim();
+}
+
+function normalizeRegionBounds(raw) {
+  if (!raw || typeof raw !== 'object') {
+    throw new Error('Виділіть область на карті');
+  }
+  let south = Number(raw.south ?? raw.minLat ?? raw.sw?.lat);
+  let north = Number(raw.north ?? raw.maxLat ?? raw.ne?.lat);
+  let west = Number(raw.west ?? raw.minLng ?? raw.sw?.lng);
+  let east = Number(raw.east ?? raw.maxLng ?? raw.ne?.lng);
+  if (![south, north, west, east].every(Number.isFinite)) {
+    throw new Error('Некоректні межі області');
+  }
+  if (south > north) [south, north] = [north, south];
+  if (west > east) [west, east] = [east, west];
+  if (south < 43.5 || north > 53.5 || west < 21.5 || east > 41.5) {
+    throw new Error('Область має бути в межах України');
+  }
+
+  const sw = { lat: south, lng: west };
+  const se = { lat: south, lng: east };
+  const nw = { lat: north, lng: west };
+  const width = haversineMeters(sw, se);
+  const height = haversineMeters(sw, nw);
+  if (width < REGION_MIN_SIDE_METERS || height < REGION_MIN_SIDE_METERS) {
+    throw new Error('Область занадто мала — збільшіть прямокутник');
+  }
+  if (width > REGION_MAX_SIDE_METERS || height > REGION_MAX_SIDE_METERS) {
+    throw new Error('Область занадто велика (макс. ~40 км по стороні). Зменшіть виділення');
+  }
+
+  return {
+    south,
+    west,
+    north,
+    east,
+    center: { lat: (south + north) / 2, lng: (west + east) / 2 },
+    radiusMeters: Math.max(width, height) / 2,
+    bbox: [west, south, east, north],
+    widthMeters: Math.round(width),
+    heightMeters: Math.round(height),
+    label: 'Виділена область',
+  };
+}
+
+function pointInRegion(lat, lng, region) {
+  const la = Number(lat);
+  const lo = Number(lng);
+  if (!Number.isFinite(la) || !Number.isFinite(lo) || !region) return false;
+  return la >= region.south && la <= region.north && lo >= region.west && lo <= region.east;
+}
+
+function boundsFromCity(city) {
+  try {
+    if (city?.bbox && city.bbox.length === 4) {
+      const [west, south, east, north] = city.bbox.map(Number);
+      return normalizeRegionBounds({ south, west, north, east });
+    }
+  } catch (_) {
+    // Whole-city bbox can exceed Places 40 km cap — fall back to a cap around center.
+  }
+  const lat = Number(city?.center?.lat);
+  const lng = Number(city?.center?.lng);
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+    throw new Error('У міста немає меж для пошуку');
+  }
+  const radius = Math.min(Math.max(Number(city?.radiusMeters) || 8000, 2500), 18000);
+  const dLat = radius / 111320;
+  const dLng = radius / (111320 * Math.max(0.2, Math.cos((lat * Math.PI) / 180)));
+  return normalizeRegionBounds({
+    south: lat - dLat,
+    north: lat + dLat,
+    west: lng - dLng,
+    east: lng + dLng,
+  });
+}
+
+function pricesFromCatalogServices(masterCatalog, catKey, subKey, serviceNames) {
+  const items = masterCatalog?.[catKey]?.subcats?.[subKey]?.items || [];
+  const wanted = new Set(
+    (Array.isArray(serviceNames) ? serviceNames : [])
+      .map((s) => String(s || '').trim())
+      .filter(Boolean)
+  );
+  const prices = {};
+  for (const item of items) {
+    if (!item?.name || !wanted.has(item.name)) continue;
+    prices[item.name] = item.price || 'за домовленістю';
+  }
+  return prices;
+}
+
 function citySlug(name) {
   return String(name || '')
     .trim()
@@ -271,15 +371,18 @@ async function geocodeCityUkraine(cityName) {
 function buildCatalogSearchQueries(masterCatalog) {
   const queries = [];
   for (const [catKey, cat] of Object.entries(masterCatalog || {})) {
+    const catLabel = stripCatalogLabel(cat.name || catKey);
     for (const [subKey, sub] of Object.entries(cat.subcats || {})) {
       const tag = Array.isArray(sub.tags) && sub.tags[0] ? sub.tags[0] : '';
-      const label = String(sub.name || subKey)
-        .replace(/[✂️🚗🛠️🐾🏠🎓⚽🔑]/gu, '')
-        .trim();
+      const label = stripCatalogLabel(sub.name || subKey);
+      const serviceNames = (sub.items || [])
+        .map((item) => stripCatalogLabel(item?.name || ''))
+        .filter(Boolean)
+        .slice(0, 3);
       queries.push({
         catKey,
         subKey,
-        queryCore: [label, tag].filter(Boolean).join(' '),
+        queryCore: [label || catLabel, tag, ...serviceNames.slice(0, 2)].filter(Boolean).join(' '),
       });
     }
   }
@@ -734,7 +837,7 @@ function mergeLocations(existing, incoming, { updateExisting = false } = {}) {
   return { locations: result, added, skipped, updated };
 }
 
-async function searchGooglePlacesText({ query, apiKey, lat, lng, maxResultCount = 8 }) {
+async function searchGooglePlacesText({ query, apiKey, lat, lng, bounds, maxResultCount = 8 }) {
   const key = apiKey || process.env.GOOGLE_PLACES_API_KEY || process.env.GOOGLE_MAPS_API_KEY;
   if (!key) throw new Error('GOOGLE_PLACES_API_KEY is not set');
   const q = String(query || '').trim();
@@ -746,7 +849,14 @@ async function searchGooglePlacesText({ query, apiKey, lat, lng, maxResultCount 
     regionCode: 'UA',
     maxResultCount: Math.min(20, Math.max(1, Number(maxResultCount) || 8)),
   };
-  if (Number.isFinite(lat) && Number.isFinite(lng)) {
+  if (bounds && Number.isFinite(bounds.south) && Number.isFinite(bounds.west)) {
+    body.locationRestriction = {
+      rectangle: {
+        low: { latitude: bounds.south, longitude: bounds.west },
+        high: { latitude: bounds.north, longitude: bounds.east },
+      },
+    };
+  } else if (Number.isFinite(lat) && Number.isFinite(lng)) {
     body.locationBias = {
       circle: {
         center: { latitude: lat, longitude: lng },
@@ -761,7 +871,7 @@ async function searchGooglePlacesText({ query, apiKey, lat, lng, maxResultCount 
       'Content-Type': 'application/json',
       'X-Goog-Api-Key': key,
       'X-Goog-FieldMask':
-        'places.id,places.displayName,places.formattedAddress,places.location,places.nationalPhoneNumber,places.rating,places.userRatingCount',
+        'places.id,places.displayName,places.formattedAddress,places.location,places.nationalPhoneNumber,places.rating,places.userRatingCount,places.types,places.editorialSummary,places.googleMapsUri',
     },
     body: JSON.stringify(body),
   });
@@ -786,6 +896,9 @@ async function searchGooglePlacesText({ query, apiKey, lat, lng, maxResultCount 
         lng: plng,
         rating: Number(p.rating) || 0,
         reviewsCount: Number(p.userRatingCount) || 0,
+        types: Array.isArray(p.types) ? p.types : [],
+        summary: p.editorialSummary?.text || '',
+        mapsUrl: p.googleMapsUri || '',
       };
     })
     .filter(Boolean);
@@ -921,7 +1034,7 @@ async function fetchGooglePlaceDetails({ placeId, apiKey }) {
   };
 }
 
-function googlePlaceToLocation(place, { providerId, cat, subcategory, subcategories } = {}) {
+function googlePlaceToLocation(place, { providerId, cat, subcategory, subcategories, prices } = {}) {
   const placeId = place.placeId || place.id;
   const subs = [];
   const multi = Array.isArray(subcategories)
@@ -961,7 +1074,7 @@ function googlePlaceToLocation(place, { providerId, cat, subcategory, subcategor
           ? { 'Графік': place.workingHours }
           : {},
     subcats: [...new Set(subs.filter(Boolean))],
-    prices: {},
+    prices: prices && typeof prices === 'object' ? { ...prices } : {},
     reviews: Array.isArray(place.reviews) ? place.reviews : [],
     views: 0,
     importSource: 'google_maps_url',
@@ -1460,49 +1573,59 @@ const PROVIDER_IMPORT_TEMPLATE_CSV =
   ',"Оренда квартири","вул. Прикладна 1, Коцюбинське",+380991112233,"09:00 - 18:00",50.4905,30.3345,rental,Опис точки,open\n';
 
 /**
- * Scan a Ukrainian city for places matching Mapfix catalog.
- * Uses Google Places Text Search per subcategory (preferred) or OSM by category.
- * Classification/filtering is done by the caller via Gemini (search-ai).
+ * Scan a drawn map rectangle for places matching Mapfix catalog
+ * (categories, subcategories, services). Prefers Google Places Text Search
+ * with locationRestriction; falls back to OSM Overpass.
  */
-async function scanCityPlacesRaw({ cityName, masterCatalog, apiKey, maxPerQuery = 8 }) {
-  const city = await geocodeCityUkraine(cityName);
+async function scanRegionPlacesRaw({ bounds, masterCatalog, apiKey, maxPerQuery = 10 }) {
+  const region = normalizeRegionBounds(bounds);
   const key = apiKey || process.env.GOOGLE_PLACES_API_KEY || process.env.GOOGLE_MAPS_API_KEY;
   const byKey = new Map();
   const queries = buildCatalogSearchQueries(masterCatalog);
   let source = 'google_places';
   let queryCount = 0;
+  const asCity = {
+    id: 'region',
+    name: region.label,
+    bbox: region.bbox,
+    center: region.center,
+  };
 
   if (key && queries.length) {
-    const limit = Math.min(queries.length, 40);
+    const limit = Math.min(queries.length, 50);
     for (let i = 0; i < limit; i++) {
       const q = queries[i];
-      const textQuery = `${q.queryCore} ${city.name}`;
+      const textQuery = q.queryCore;
       try {
         const found = await searchGooglePlacesText({
           query: textQuery,
           apiKey: key,
-          lat: city.center.lat,
-          lng: city.center.lng,
-          maxResultCount: Math.min(20, Math.max(3, Number(maxPerQuery) || 8)),
+          bounds: region,
+          maxResultCount: Math.min(20, Math.max(3, Number(maxPerQuery) || 10)),
         });
         queryCount += 1;
         for (const p of found) {
-          // Prefer places inside city radius
-          const dist = haversineMeters(city.center, { lat: p.lat, lng: p.lng });
-          if (dist > (city.radiusMeters || 12000) * 1.35) continue;
+          if (!pointInRegion(p.lat, p.lng, region)) continue;
           const dedupeKey = p.placeId || `${p.title}|${p.lat.toFixed(5)}|${p.lng.toFixed(5)}`;
-          if (byKey.has(dedupeKey)) continue;
+          if (byKey.has(dedupeKey)) {
+            const prev = byKey.get(dedupeKey);
+            if (!prev.hintSub && q.subKey) {
+              prev.hintCat = q.catKey;
+              prev.hintSub = q.subKey;
+            }
+            continue;
+          }
           byKey.set(dedupeKey, {
             ...p,
             types: p.types || [],
-            text: 'Знайдено на Google Maps',
+            text: p.summary || 'Знайдено на Google Maps',
             hintCat: q.catKey,
             hintSub: q.subKey,
             searchQuery: textQuery,
           });
         }
       } catch (err) {
-        console.warn('[scanCityPlacesRaw] Places query failed:', textQuery, err.message);
+        console.warn('[scanRegionPlacesRaw] Places query failed:', textQuery, err.message);
       }
       await sleep(120);
     }
@@ -1511,9 +1634,10 @@ async function scanCityPlacesRaw({ cityName, masterCatalog, apiKey, maxPerQuery 
     const catKeys = Object.keys(masterCatalog || {}).filter((k) => CATEGORY_OSM_FILTERS[k]);
     for (const cat of catKeys) {
       try {
-        const meta = await fetchOsmPlaces({ city, category: cat });
+        const meta = await fetchOsmPlaces({ city: asCity, category: cat });
         queryCount += 1;
         for (const loc of meta.locations || []) {
+          if (!pointInRegion(loc.lat, loc.lng, region)) continue;
           const dedupeKey = `${loc.title}|${Number(loc.lat).toFixed(5)}|${Number(loc.lng).toFixed(5)}`;
           if (byKey.has(dedupeKey)) continue;
           byKey.set(dedupeKey, {
@@ -1533,34 +1657,93 @@ async function scanCityPlacesRaw({ cityName, masterCatalog, apiKey, maxPerQuery 
           });
         }
       } catch (err) {
-        console.warn('[scanCityPlacesRaw] OSM category failed:', cat, err.message);
+        console.warn('[scanRegionPlacesRaw] OSM category failed:', cat, err.message);
       }
     }
   }
 
   return {
-    city,
+    region,
+    city: { name: region.label, id: 'region', center: region.center },
     source,
     queryCount,
     places: [...byKey.values()],
   };
 }
 
-async function buildCityImportCandidates({
-  cityName,
+async function scanCityPlacesRaw({ cityName, masterCatalog, apiKey, maxPerQuery = 8 }) {
+  const city = await geocodeCityUkraine(cityName);
+  const scan = await scanRegionPlacesRaw({
+    bounds: boundsFromCity(city),
+    masterCatalog,
+    apiKey,
+    maxPerQuery,
+  });
+  return {
+    ...scan,
+    city,
+    region: { ...scan.region, label: city.name },
+  };
+}
+
+function attachCatalogMatchToLocation(place, match, masterCatalog, scan) {
+  const serviceNames = Array.isArray(match.services) && match.services.length
+    ? match.services
+    : match.service
+      ? [match.service]
+      : [];
+  const prices = pricesFromCatalogServices(
+    masterCatalog,
+    match.category,
+    match.subcategory,
+    serviceNames
+  );
+  const loc = googlePlaceToLocation(place, {
+    providerId: null,
+    cat: match.category,
+    subcategory: match.subcategory,
+    prices,
+  });
+  const regionLabel = scan.region?.label || scan.city?.name || 'області';
+  loc.importSource = 'region_gemini';
+  loc.importMeta = {
+    ...(loc.importMeta || {}),
+    source: 'region_gemini',
+    region: scan.region
+      ? {
+          south: scan.region.south,
+          west: scan.region.west,
+          north: scan.region.north,
+          east: scan.region.east,
+        }
+      : null,
+    city: scan.city?.name || regionLabel,
+    cityId: scan.city?.id || 'region',
+    dataSource: scan.source,
+    aiSource: match.source,
+    aiConfidence: match.confidence,
+    services: Object.keys(prices),
+    importedAt: new Date().toISOString(),
+  };
+  loc.text = loc.text || `Імпортовано з Google Maps (${regionLabel})`;
+  return loc;
+}
+
+async function buildRegionImportCandidates({
+  bounds,
   masterCatalog,
   classifyPlacesForImport,
   geminiApiKey,
   placesApiKey,
-  maxPerQuery = 8,
+  maxPerQuery = 10,
   maxCandidates = 80,
 }) {
   if (typeof classifyPlacesForImport !== 'function') {
     throw new Error('classifyPlacesForImport is required');
   }
 
-  const scan = await scanCityPlacesRaw({
-    cityName,
+  const scan = await scanRegionPlacesRaw({
+    bounds,
     masterCatalog,
     apiKey: placesApiKey,
     maxPerQuery,
@@ -1583,29 +1766,12 @@ async function buildCityImportCandidates({
       rejected += 1;
       continue;
     }
-
-    const loc = googlePlaceToLocation(place, {
-      providerId: null,
-      cat: match.category,
-      subcategory: match.subcategory,
-    });
-    loc.importSource = 'city_gemini';
-    loc.importMeta = {
-      ...(loc.importMeta || {}),
-      source: 'city_gemini',
-      city: scan.city.name,
-      cityId: scan.city.id,
-      dataSource: scan.source,
-      aiSource: match.source,
-      aiConfidence: match.confidence,
-      importedAt: new Date().toISOString(),
-    };
-    loc.text = loc.text || `Імпортовано з ${scan.city.name} (каталог Mapfix)`;
-    locations.push(loc);
+    locations.push(attachCatalogMatchToLocation(place, match, masterCatalog, scan));
     if (locations.length >= maxCandidates) break;
   }
 
   return {
+    region: scan.region,
     city: scan.city,
     source: scan.source,
     queryCount: scan.queryCount,
@@ -1613,6 +1779,32 @@ async function buildCityImportCandidates({
     rejected,
     matched: locations.length,
     locations,
+  };
+}
+
+async function buildCityImportCandidates({
+  cityName,
+  masterCatalog,
+  classifyPlacesForImport,
+  geminiApiKey,
+  placesApiKey,
+  maxPerQuery = 8,
+  maxCandidates = 80,
+}) {
+  const city = await geocodeCityUkraine(cityName);
+  const result = await buildRegionImportCandidates({
+    bounds: boundsFromCity(city),
+    masterCatalog,
+    classifyPlacesForImport,
+    geminiApiKey,
+    placesApiKey,
+    maxPerQuery,
+    maxCandidates,
+  });
+  return {
+    ...result,
+    city,
+    region: { ...result.region, label: city.name },
   };
 }
 
@@ -1694,7 +1886,11 @@ module.exports = {
   csvRowToLocation,
   normalizePhone,
   scanCityPlacesRaw,
+  scanRegionPlacesRaw,
   buildCityImportCandidates,
+  buildRegionImportCandidates,
+  normalizeRegionBounds,
+  pricesFromCatalogServices,
   PROVIDER_IMPORT_COLUMNS,
   PROVIDER_IMPORT_TEMPLATE_CSV,
 };

@@ -7,6 +7,13 @@ const fsPromises = require('fs').promises;
 const crypto = require('crypto');
 const { validateCatalogHierarchy } = require('./catalog-data.js');
 const { parseVoiceSearch, suggestCatalogForPlace, classifyPlacesForImport } = require('./search-ai.js');
+const {
+  parseTelegramAdsPayload,
+  buildTelegramImportCandidates,
+  sanitizeTelegramLocationsForWrite,
+  listGroupAdsInbox,
+  clearGroupAdsInbox,
+} = require('./telegram-ads-import.js');
 const { attachAuth, setAuthCookie, clearAuthCookie } = require('./auth-jwt.js');
 const { resolveProjectRoot, resolvePublicDir } = require('./paths.js');
 const {
@@ -73,6 +80,9 @@ const {
   csvRowToLocation,
   PROVIDER_IMPORT_TEMPLATE_CSV,
   buildCityImportCandidates,
+  buildRegionImportCandidates,
+  geocodeCityUkraine,
+  pricesFromCatalogServices,
 } = require('./places-import.js');
 const {
   fetchLocationsFromSupabase,
@@ -2270,17 +2280,25 @@ app.post('/api/admin/import-places', requireAuth, requireAdmin, async (req, res)
   }
 });
 
-/** Admin-only: scan Ukrainian city → filter by Mapfix catalog (Gemini) → preview/confirm. */
+/** Admin-only: scan a drawn map region → filter by Mapfix catalog (Gemini) → preview/confirm. */
 app.post('/api/admin/import-city-gemini', requireAuth, requireAdmin, async (req, res) => {
   try {
     const cityName = String(req.body?.city || '').trim();
     const dryRun = req.body?.dryRun !== false;
     const providedLocations = Array.isArray(req.body?.locations) ? req.body.locations : null;
-    const maxPerQuery = Math.min(15, Math.max(3, Number(req.body?.maxPerQuery) || 8));
+    const maxPerQuery = Math.min(15, Math.max(3, Number(req.body?.maxPerQuery) || 10));
     const maxCandidates = Math.min(120, Math.max(10, Number(req.body?.maxCandidates) || 80));
+    const bounds = req.body?.bounds && typeof req.body.bounds === 'object' ? req.body.bounds : null;
+    const hasBounds = Boolean(
+      bounds &&
+        Number.isFinite(Number(bounds.south)) &&
+        Number.isFinite(Number(bounds.west)) &&
+        Number.isFinite(Number(bounds.north)) &&
+        Number.isFinite(Number(bounds.east))
+    );
 
-    if (!cityName && !(providedLocations && providedLocations.length && !dryRun)) {
-      return res.status(400).json({ error: 'Вкажіть українське місто або смт (наприклад Коцюбинське, Київ, Ірпінь)' });
+    if (!hasBounds && !cityName && !(providedLocations && providedLocations.length && !dryRun)) {
+      return res.status(400).json({ error: 'Виділіть область на карті' });
     }
 
     const data = await readData();
@@ -2296,29 +2314,40 @@ app.post('/api/admin/import-city-gemini', requireAuth, requireAdmin, async (req,
       incoming = providedLocations
         .filter((l) => l && l.title && Number.isFinite(Number(l.lat)) && Number.isFinite(Number(l.lng)))
         .filter((l) => catalog[l.cat]?.subcats && (l.subcats || []).some((s) => catalog[l.cat].subcats[s]))
-        .map((l) => ({
-          ...l,
-          lat: Number(l.lat),
-          lng: Number(l.lng),
-          providerId: null,
-          importSource: l.importSource || 'city_gemini',
-          subcats: Array.isArray(l.subcats) ? l.subcats.filter((s) => catalog[l.cat]?.subcats?.[s]) : [],
-        }))
+        .map((l) => {
+          const subKey = Array.isArray(l.subcats)
+            ? l.subcats.find((s) => catalog[l.cat]?.subcats?.[s])
+            : '';
+          const serviceNames = Array.isArray(l.services)
+            ? l.services
+            : Object.keys(l.prices || {});
+          const prices = pricesFromCatalogServices(catalog, l.cat, subKey, serviceNames);
+          return {
+            ...l,
+            lat: Number(l.lat),
+            lng: Number(l.lng),
+            providerId: null,
+            importSource: l.importSource || 'region_gemini',
+            subcats: subKey ? [subKey] : [],
+            prices,
+          };
+        })
         .filter((l) => l.subcats.length > 0);
     } else {
       if (!GEMINI_API_KEY && !process.env.GOOGLE_PLACES_API_KEY && !process.env.GOOGLE_MAPS_API_KEY) {
-        // OSM still works with local classifier; warn but continue
         console.warn('[import-city-gemini] No GEMINI/Places keys — OSM + local catalog match');
       }
-      scanMeta = await buildCityImportCandidates({
-        cityName,
+      const scanArgs = {
         masterCatalog: catalog,
         classifyPlacesForImport,
         geminiApiKey: GEMINI_API_KEY || undefined,
         placesApiKey: process.env.GOOGLE_PLACES_API_KEY || process.env.GOOGLE_MAPS_API_KEY || undefined,
         maxPerQuery,
         maxCandidates,
-      });
+      };
+      scanMeta = hasBounds
+        ? await buildRegionImportCandidates({ ...scanArgs, bounds })
+        : await buildCityImportCandidates({ ...scanArgs, cityName });
       incoming = scanMeta.locations;
     }
 
@@ -2338,6 +2367,7 @@ app.post('/api/admin/import-city-gemini', requireAuth, requireAdmin, async (req,
     const preview = incoming.map((l) => {
       const cat = catalog[l.cat];
       const subKey = (l.subcats || [])[0];
+      const services = Object.keys(l.prices || {});
       return {
         id: l.id,
         title: l.title,
@@ -2348,14 +2378,14 @@ app.post('/api/admin/import-city-gemini', requireAuth, requireAdmin, async (req,
         rating: l.rating || 0,
         cat: l.cat,
         subcats: l.subcats || [],
+        services,
         categoryName: cat?.name || l.cat,
         subcategoryName: subKey && cat?.subcats?.[subKey] ? cat.subcats[subKey].name : subKey || '',
         text: l.text || '',
         openStatus: l.openStatus || 'open',
-        importSource: l.importSource || 'city_gemini',
+        importSource: l.importSource || 'region_gemini',
         willAdd: merged.added.includes(l.id),
         willSkip: Boolean(merged.skipped.find((s) => s.id === l.id)),
-        // keep full location for confirm write
         _location: l,
       };
     });
@@ -2363,7 +2393,8 @@ app.post('/api/admin/import-city-gemini', requireAuth, requireAdmin, async (req,
     res.json({
       ok: true,
       dryRun,
-      city: scanMeta?.city || { name: cityName },
+      city: scanMeta?.city || { name: cityName || 'Виділена область' },
+      region: scanMeta?.region || bounds || null,
       source: scanMeta?.source || 'confirm',
       scanned: scanMeta?.scanned ?? incoming.length,
       rejected: scanMeta?.rejected ?? 0,
@@ -2382,12 +2413,173 @@ app.post('/api/admin/import-city-gemini', requireAuth, requireAdmin, async (req,
         subcats: Object.entries(cat.subcats || {}).map(([sk, sub]) => ({
           key: sk,
           name: sub.name || sk,
+          services: (sub.items || [])
+            .filter((item) => item?.name)
+            .map((item) => ({ name: item.name, price: item.price || '' })),
         })),
       })),
     });
   } catch (err) {
     console.error('[POST /api/admin/import-city-gemini]', err);
-    res.status(500).json({ error: err.message || 'Помилка імпорту міста' });
+    res.status(500).json({ error: err.message || 'Помилка імпорту області' });
+  }
+});
+
+function telegramCatalogOptions(catalog) {
+  return Object.entries(catalog || {}).map(([key, cat]) => ({
+    key,
+    name: cat.name || key,
+    subcats: Object.entries(cat.subcats || {}).map(([sk, sub]) => ({
+      key: sk,
+      name: sub.name || sk,
+      services: (sub.items || [])
+        .filter((item) => item?.name)
+        .map((item) => ({ name: item.name, price: item.price || '' })),
+    })),
+  }));
+}
+
+function previewTelegramCandidate(loc, catalog, merged) {
+  const cat = catalog[loc.cat];
+  const subKey = (loc.subcats || [])[0];
+  const skipped = (merged.skipped || []).find((s) => s.id === loc.id);
+  const needsCoords = !Number.isFinite(Number(loc.lat)) || !Number.isFinite(Number(loc.lng));
+  return {
+    id: loc.id,
+    title: loc.title,
+    phone: loc.phone || '',
+    address: loc.address || '',
+    lat: loc.lat,
+    lng: loc.lng,
+    rating: loc.rating || 0,
+    cat: loc.cat,
+    subcats: loc.subcats || [],
+    categoryName: cat?.name || loc.cat,
+    subcategoryName: subKey && cat?.subcats?.[subKey] ? cat.subcats[subKey].name : subKey || '',
+    services: loc.matchedServices || Object.keys(loc.prices || {}),
+    prices: loc.prices || {},
+    text: loc.text || '',
+    openStatus: loc.openStatus || 'open',
+    importSource: loc.importSource || 'telegram_ads',
+    telegramUsername: loc.importMeta?.telegramUsername || '',
+    needsCoords,
+    willAdd: !needsCoords && merged.added.includes(loc.id),
+    willSkip: Boolean(skipped),
+    skipReason: skipped?.reason || (needsCoords ? 'no_coords' : ''),
+    _location: loc,
+  };
+}
+
+app.get('/api/admin/import-telegram-ads/inbox', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const items = await listGroupAdsInbox();
+    res.json({
+      ok: true,
+      count: items.length,
+      items,
+      bot: getTelegramStatus(),
+    });
+  } catch (err) {
+    console.error('[GET /api/admin/import-telegram-ads/inbox]', err);
+    res.status(500).json({ error: err.message || 'Не вдалося прочитати чергу бота' });
+  }
+});
+
+app.delete('/api/admin/import-telegram-ads/inbox', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    await clearGroupAdsInbox();
+    res.json({ ok: true, count: 0 });
+  } catch (err) {
+    console.error('[DELETE /api/admin/import-telegram-ads/inbox]', err);
+    res.status(500).json({ error: err.message || 'Не вдалося очистити чергу' });
+  }
+});
+
+/** Admin-only: parse Telegram ads / JSON export → Gemini catalog match → preview/confirm. */
+app.post('/api/admin/import-telegram-ads', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const dryRun = req.body?.dryRun !== false;
+    const providedLocations = Array.isArray(req.body?.locations) ? req.body.locations : null;
+    const fromInbox = Boolean(req.body?.fromInbox);
+
+    const data = await readData();
+    const catalog = data.masterCatalog || {};
+    if (!Object.keys(catalog).length) {
+      return res.status(503).json({ error: 'Каталог Mapfix порожній' });
+    }
+
+    let incoming = [];
+    let scanMeta = null;
+    let parsedCount = 0;
+
+    if (providedLocations && providedLocations.length && !dryRun) {
+      incoming = sanitizeTelegramLocationsForWrite(providedLocations, catalog);
+    } else {
+      let ads = [];
+      if (fromInbox) {
+        ads = parseTelegramAdsPayload({ messages: await listGroupAdsInbox() });
+      } else {
+        ads = parseTelegramAdsPayload({
+          text: req.body?.text,
+          messages: req.body?.messages,
+        });
+      }
+      parsedCount = ads.length;
+      if (!ads.length) {
+        return res.status(400).json({
+          error: fromInbox
+            ? 'Черга бота порожня. Додайте бота в групу (адмін, Privacy Mode вимкнено) або вставте оголошення вручну.'
+            : 'Не знайдено оголошень. Вставте текст (розділяйте порожнім рядком) або JSON-експорт Telegram Desktop.',
+        });
+      }
+      scanMeta = await buildTelegramImportCandidates({
+        ads,
+        masterCatalog: catalog,
+        geminiApiKey: GEMINI_API_KEY || undefined,
+      });
+      incoming = scanMeta.locations;
+    }
+
+    const active = activeLocations(data.mockLocations);
+    const trash = trashedLocations(data.mockLocations);
+    const ready = incoming.filter(
+      (l) => Number.isFinite(Number(l.lat)) && Number.isFinite(Number(l.lng))
+    );
+    const merged = mergeLocations(active, ready);
+
+    if (!dryRun) {
+      if (!ready.length) {
+        return res.status(400).json({
+          error: 'Немає точок із координатами. Вкажіть широту/довготу в списку перевірки.',
+        });
+      }
+      data.mockLocations = [...merged.locations, ...trash];
+      const created = merged.locations.filter((l) => merged.added.includes(l.id));
+      await persistLocationsPatch(data, created.length ? created : ready);
+    }
+
+    const preview = incoming.map((l) => previewTelegramCandidate(l, catalog, merged));
+
+    res.json({
+      ok: true,
+      dryRun,
+      source: scanMeta ? 'telegram_ads' : 'confirm',
+      scanned: scanMeta?.scanned ?? parsedCount ?? incoming.length,
+      rejected: scanMeta?.rejected ?? 0,
+      matched: scanMeta?.matched ?? incoming.length,
+      found: incoming.length,
+      added: merged.added.length,
+      skipped: merged.skipped.length,
+      skippedDetails: merged.skipped.slice(0, 50),
+      missingCoords: preview.filter((p) => p.needsCoords).length,
+      geminiConfigured: Boolean(GEMINI_API_KEY),
+      bot: getTelegramStatus(),
+      candidates: preview,
+      catalogOptions: telegramCatalogOptions(catalog),
+    });
+  } catch (err) {
+    console.error('[POST /api/admin/import-telegram-ads]', err);
+    res.status(500).json({ error: err.message || 'Помилка імпорту з Telegram' });
   }
 });
 
@@ -3624,6 +3816,23 @@ app.get('/api/geocode/reverse', requireAuth, requireProviderOrAdmin, async (req,
     res.json({ ok: true, ...result });
   } catch (err) {
     res.status(400).json({ error: err.message || 'Не вдалося визначити адресу' });
+  }
+});
+
+app.get('/api/geocode/search', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const q = String(req.query.q || '').trim();
+    if (q.length < 2) return res.status(400).json({ error: 'Вкажіть місце для пошуку' });
+    const hit = await geocodeCityUkraine(q);
+    res.json({
+      ok: true,
+      name: hit.name || q,
+      lat: hit.center.lat,
+      lng: hit.center.lng,
+      bbox: hit.bbox || null,
+    });
+  } catch (err) {
+    res.status(400).json({ error: err.message || 'Місце не знайдено' });
   }
 });
 

@@ -373,7 +373,7 @@
             align-items: flex-start;
             gap: 8px;
         }
-        .detail-main-title { font-size: 16px; font-weight: 800; color: var(--dark); margin: 0; line-height: 1.2; flex: 1; min-width: 0; }
+        .detail-main-title { font-size: 20px; font-weight: 800; color: var(--dark); margin: 0; line-height: 1.2; flex: 1; min-width: 0; }
         .detail-title-meta {
             flex-shrink: 0;
             flex-direction: column;
@@ -605,6 +605,361 @@
         }
         .action-btn.btn-fav-header { height: auto; min-height: 36px; }
         .btn-fav-header.active { background: #fef3c7; }
+
+        .detail-hero {
+            flex-shrink: 0;
+            height: 168px;
+            background: #e8eaed;
+            overflow: hidden;
+            position: relative;
+        }
+        .detail-hero-track {
+            display: flex;
+            height: 100%;
+            overflow-x: auto;
+            scroll-snap-type: x mandatory;
+            -webkit-overflow-scrolling: touch;
+            scrollbar-width: none;
+        }
+        .detail-hero-track::-webkit-scrollbar { display: none; }
+        .detail-hero-track a,
+        .detail-hero-track img {
+            flex: 0 0 100%;
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            scroll-snap-align: start;
+            background: #dbe4ea;
+        }
+        .detail-hero-empty {
+            height: 92px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: linear-gradient(160deg, #e6faf8 0%, #eceef2 100%);
+            color: var(--primary);
+            font-size: 28px;
+        }
+        .detail-hero-count {
+            position: absolute;
+            right: 10px;
+            bottom: 10px;
+            background: rgba(11, 13, 16, 0.72);
+            color: #fff;
+            font-size: 11px;
+            font-weight: 800;
+            padding: 3px 8px;
+            border-radius: 999px;
+        }
+        .detail-place-line {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 6px 10px;
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--muted);
+        }
+        .detail-chips {
+            display: flex;
+            justify-content: space-around;
+            gap: 4px;
+            padding: 2px 0 0;
+        }
+        .detail-chip {
+            flex: 1 1 0;
+            min-width: 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 6px;
+            background: none;
+            border: none;
+            cursor: pointer;
+            text-decoration: none;
+            color: var(--ink);
+            font-family: inherit;
+            font-size: 11px;
+            font-weight: 700;
+            padding: 0;
+            line-height: 1.2;
+        }
+        .detail-chip:disabled,
+        .detail-chip[aria-disabled="true"] {
+            opacity: 0.4;
+            pointer-events: none;
+        }
+        .detail-chip-icon {
+            width: 48px;
+            height: 48px;
+            border-radius: 50%;
+            background: var(--primary-light);
+            color: var(--ink);
+            border: 1.5px solid var(--primary);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 18px;
+        }
+        .detail-chip--call .detail-chip-icon {
+            background: var(--success);
+            color: #fff;
+            border-color: var(--success);
+        }
+        .detail-chip--fav.active .detail-chip-icon {
+            background: #fef3c7;
+            border-color: #fbbf24;
+            color: #b45309;
+        }
+        .detail-secondary-row {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+        .detail-secondary-row .action-btn {
+            flex: 0 1 auto;
+            min-height: 32px;
+            padding: 6px 10px;
+            font-size: 11px;
+            background: #f3f4f6;
+            color: var(--ink);
+        }
+
+        /* Профіль майстра — як у записі: аватар, рейтинг, прайс, «Замовити послугу» */
+        #sidebar-detail-view {
+            background: #fff;
+        }
+        #sidebar-detail-view.show {
+            display: flex;
+            flex-direction: column;
+        }
+        .profile-identity {
+            display: grid;
+            grid-template-columns: 84px minmax(0, 1fr) auto;
+            gap: 10px 12px;
+            align-items: start;
+        }
+        .profile-avatar-wrap {
+            position: relative;
+            width: 84px;
+            height: 84px;
+        }
+        .profile-avatar {
+            width: 84px;
+            height: 84px;
+            border-radius: 50%;
+            overflow: hidden;
+            background: var(--primary-light);
+            color: var(--primary);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 30px;
+            border: 2px solid #e6faf8;
+        }
+        .profile-avatar img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            display: block;
+        }
+        .profile-verified-dot {
+            position: absolute;
+            right: 0;
+            bottom: 0;
+            width: 22px;
+            height: 22px;
+            border-radius: 50%;
+            background: var(--primary);
+            color: #fff;
+            border: 2px solid #fff;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 10px;
+            line-height: 1;
+        }
+        .profile-copy { min-width: 0; }
+        .profile-name-row {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 6px;
+        }
+        .profile-name {
+            margin: 0;
+            font-size: 18px;
+            font-weight: 800;
+            line-height: 1.2;
+            color: var(--ink);
+        }
+        .profile-handle {
+            margin: 2px 0 0;
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--muted);
+        }
+        .profile-verified-pill {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            background: var(--primary-light);
+            color: #0f766e;
+            font-size: 10px;
+            font-weight: 800;
+            letter-spacing: 0.02em;
+            text-transform: uppercase;
+            padding: 2px 8px;
+            border-radius: 999px;
+        }
+        .profile-rating-row {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 6px;
+            margin-top: 6px;
+            font-size: 14px;
+            font-weight: 800;
+        }
+        .profile-stars {
+            color: #ffb703;
+            letter-spacing: 1px;
+            font-size: 13px;
+        }
+        .profile-specialty {
+            margin: 4px 0 0;
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--muted);
+        }
+        .profile-quick-actions {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+        .profile-quick-btn {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            border: none;
+            background: var(--primary);
+            color: #fff;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            text-decoration: none;
+            font-size: 15px;
+            cursor: pointer;
+            box-shadow: 0 4px 10px rgba(18, 196, 181, 0.28);
+        }
+        .profile-quick-btn[aria-disabled="true"] {
+            opacity: 0.38;
+            pointer-events: none;
+            box-shadow: none;
+            background: #cbd5e1;
+        }
+        .price-accordion {
+            background: #fff;
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            overflow: hidden;
+        }
+        .price-accordion-head {
+            width: 100%;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 8px;
+            padding: 12px 14px;
+            background: #f8fafc;
+            border: none;
+            font-family: inherit;
+            font-size: 14px;
+            font-weight: 800;
+            color: var(--ink);
+            cursor: pointer;
+        }
+        .price-accordion.is-collapsed .price-accordion-body { display: none; }
+        .price-accordion.is-collapsed .price-acc-chevron { transform: rotate(180deg); }
+        .price-acc-chevron { color: var(--primary); transition: transform 0.2s ease; }
+        .price-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 12px;
+            padding: 11px 14px;
+            border-top: 1px solid #eef1f4;
+            background: none;
+            width: 100%;
+            text-align: left;
+            font-family: inherit;
+            cursor: pointer;
+        }
+        .price-row-name {
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--ink);
+            line-height: 1.35;
+        }
+        .price-row-amt {
+            flex-shrink: 0;
+            font-size: 13px;
+            font-weight: 800;
+            color: var(--ink);
+        }
+        .price-row.is-free .price-row-amt {
+            color: #0f766e;
+            background: var(--primary-light);
+            padding: 4px 8px;
+            border-radius: 8px;
+        }
+        .price-row.is-selected {
+            background: #f0fdfa;
+        }
+        .profile-more {
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            background: #fff;
+            padding: 4px 12px 10px;
+        }
+        .profile-more > summary {
+            cursor: pointer;
+            font-size: 13px;
+            font-weight: 800;
+            color: #475569;
+            padding: 10px 0;
+            list-style: none;
+        }
+        .profile-more > summary::-webkit-details-marker { display: none; }
+        .detail-order-bar {
+            flex-shrink: 0;
+            padding: 8px 12px 10px;
+            background: #fff;
+            border-top: 1px solid var(--border);
+        }
+        .profile-trust {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px 14px;
+            justify-content: center;
+            font-size: 12px;
+            font-weight: 700;
+            color: #64748b;
+            margin: 0 0 8px;
+        }
+        .btn-order-service {
+            width: 100%;
+            height: 48px;
+            border: none;
+            border-radius: 14px;
+            background: var(--primary);
+            color: #fff;
+            font-family: inherit;
+            font-size: 16px;
+            font-weight: 800;
+            cursor: pointer;
+        }
+        .btn-order-service:active { transform: scale(0.99); }
 
         .top-header {
             position: absolute; top: 12px; left: 12px; right: 12px; z-index: 10;
@@ -950,6 +1305,12 @@
             box-shadow: 0 2px 7px rgba(0,0,0,0.16);
         }
         .mapfix-marker-category i { line-height: 1; }
+        .mapfix-marker-category.is-selected,
+        .mapfix-marker-price.is-selected {
+            transform: scale(1.28);
+            box-shadow: 0 0 0 3px var(--primary), 0 4px 14px rgba(11, 13, 16, 0.28);
+            z-index: 2;
+        }
         .mapfix-marker-price {
             background: white;
             border: 2px solid var(--ink);
@@ -974,6 +1335,10 @@
             border-width: 5px 5px 0;
             border-style: solid;
             border-color: var(--ink) transparent;
+        }
+
+        #app-shell.showing-location .category-strip-wrap {
+            display: none;
         }
 
         /* Кластери (як hotline: один блок з кількістю) */
@@ -1116,9 +1481,16 @@
                 --sheet-h: 78vh;
             }
             #app-shell.sheet-dive {
-                --map-h: 22vh;
-                --sheet-h: 78vh;
+                --map-h: 16vh;
+                --sheet-h: 84vh;
             }
+            #app-shell.showing-location .category-strip-wrap {
+                display: none;
+            }
+            #app-shell.showing-location .pwa-install-banner {
+                display: none !important;
+            }
+            .detail-hero { display: none; }
 
             #map-container {
                 height: var(--map-h);
@@ -1339,6 +1711,10 @@
             .category-card { flex: 0 0 58px; min-width: 58px; }
             .category-card-icon { width: 34px; height: 34px; font-size: 14px; }
             .category-card-label { font-size: 8px; max-width: 56px; }
+            .detail-chip-icon { width: 42px; height: 42px; font-size: 16px; }
+            .detail-chip { font-size: 10px; }
+            .profile-avatar-wrap, .profile-avatar { width: 72px; height: 72px; }
+            .profile-name { font-size: 16px; }
         }
     </style>
 </head>
@@ -1466,8 +1842,10 @@
             </div>
 
             <div id="sidebar-detail-view" class="sidebar-view sheet-panel">
+                <div id="detailHeroContent" hidden></div>
                 <div class="detail-header" id="detailHeaderContent"></div>
                 <div class="detail-scroll-body" id="detailBodyContent"></div>
+                <div class="detail-order-bar" id="detailOrderBar" hidden></div>
             </div>
         </div>
     </aside>
@@ -1582,6 +1960,7 @@
                 // Wider radius at city zoom so the map stays readable before a category is chosen
                 maxClusterRadius: (zoom) => (zoom < 12 ? 80 : zoom < 14 ? 56 : 40),
                 spiderfyOnMaxZoom: true,
+                disableClusteringAtZoom: 16,
                 showCoverageOnHover: false,
                 zoomToBoundsOnClick: true,
                 chunkedLoading: true,
@@ -1746,9 +2125,18 @@
             }
 
             /** Display price: "1 200 грн", without kopeks. */
+            function isFreePrice(raw) {
+                const s = String(raw || '').trim();
+                if (!s) return false;
+                if (/безкоштовн|безплатн|\bfree\b/i.test(s)) return true;
+                const digits = s.replace(/[^\d]/g, '');
+                return digits !== '' && Number(digits) === 0;
+            }
+
             function formatDisplayPrice(raw) {
                 const s = String(raw || '').trim();
                 if (!s) return '';
+                if (isFreePrice(s)) return 'Безкоштовно';
                 if (/уточн/i.test(s) || /домовлен/i.test(s)) return s;
                 const compact = s.replace(/\s/g, '');
                 const m = compact.match(/(\d+)/);
@@ -1756,6 +2144,39 @@
                 const formatted = m[1].replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
                 const prefix = /^від\s*/i.test(s) ? 'від ' : '';
                 return `${prefix}${formatted} грн`;
+            }
+
+            function getTelegramUsername(loc) {
+                const raw =
+                    loc?.importMeta?.telegramUsername ||
+                    loc?.telegramUsername ||
+                    loc?.telegram ||
+                    '';
+                return String(raw).replace(/^@/, '').trim();
+            }
+
+            function ratingStarsHtml(score) {
+                const n = Math.max(0, Math.min(5, Math.round(Number(score) || 0)));
+                return (
+                    '<span class="profile-stars" aria-hidden="true">' +
+                    '★'.repeat(n) +
+                    '☆'.repeat(5 - n) +
+                    '</span>'
+                );
+            }
+
+            function defaultOrderServiceName(loc) {
+                if (State.service?.name) return State.service.name;
+                const keys = Object.keys(loc?.prices || {});
+                return keys[0] || '';
+            }
+
+            function getChatHref(loc) {
+                const tg = getTelegramUsername(loc);
+                if (tg) return 'https://t.me/' + encodeURIComponent(tg);
+                const phone = String(loc?.phone || '').replace(/\D/g, '');
+                if (phone) return 'https://t.me/+' + phone;
+                return '';
             }
 
             function findServicePrice(loc, serviceName) {
@@ -2364,6 +2785,7 @@
                 const detailView = document.getElementById('sidebar-detail-view');
                 detailView.classList.add('show', 'mode-dive');
                 detailView.classList.remove('mode-preview');
+                appShell.classList.add('showing-location');
                 if (isMobileLayout()) {
                     appShell.classList.add('sheet-expanded', 'sheet-dive');
                     appShell.classList.remove('sheet-browse');
@@ -2695,20 +3117,45 @@
                 syncUI();
             }
 
-            // Прев'ю (1-й клік) → провалювання в деталі (2-й тап / «Детальніше»)
+            function highlightSelectedMarker(locId) {
+                window.mockLocations.forEach((loc) => {
+                    const iconEl = loc.markerInstance && loc.markerInstance._icon;
+                    if (!iconEl) return;
+                    const inner = iconEl.querySelector('.mapfix-marker-category, .mapfix-marker-price');
+                    if (inner) inner.classList.toggle('is-selected', loc.id === locId);
+                    if (loc.markerInstance.setZIndexOffset) {
+                        loc.markerInstance.setZIndexOffset(loc.id === locId ? 1200 : 0);
+                    }
+                });
+            }
+
+            function renderLocationHero(loc) {
+                const heroBox = document.getElementById('detailHeroContent');
+                if (!heroBox) return;
+                heroBox.innerHTML = '';
+                heroBox.hidden = true;
+            }
+
+            function locationAvatarHtml(loc) {
+                const photos = Array.isArray(loc.photos) ? loc.photos.filter((p) => p && p.url) : [];
+                const iconClass = categoryIconClass(loc.cat);
+                if (photos[0]?.url) {
+                    return `<img src="${escapeHtml(photos[0].url)}" alt="">`;
+                }
+                return `<i class="fa-solid ${iconClass}" aria-hidden="true"></i>`;
+            }
+
+            // Тап по маркеру / картці одразу відкриває профіль локації
             window.openMasterDetail = function(locId, opts = {}) {
                 const loc = window.mockLocations.find(l => l.id === locId);
                 if (!loc) return;
 
                 const sameSelected = State.selectedLocation?.id === locId;
-                // Desktop has enough space — open full card immediately
-                let mode = opts.mode || (isMobileLayout() ? 'preview' : 'dive');
-                if (!opts.forceMode && sameSelected && State.detailMode === 'preview') {
-                    mode = 'dive';
-                }
+                const mode = opts.mode || 'dive';
                 if (!opts.forceMode && sameSelected && State.detailMode === 'dive' && opts.fromMarker) {
                     enterDetailDive();
                     map.panTo([loc.lat, loc.lng]);
+                    highlightSelectedMarker(locId);
                     return;
                 }
 
@@ -2720,23 +3167,14 @@
                     const j = await r.json().catch(() => ({}));
                     if (typeof j.views === 'number') loc.views = j.views;
                 }).catch(() => {});
-                
+
                 State.selectedLocation = loc;
                 State.detailMode = mode;
                 State.formRatingScore = 5;
-                
-                const isFav = State.favoriteIds.has(loc.id);
-                const hasCoords = Number.isFinite(Number(loc.lat)) && Number.isFinite(Number(loc.lng));
-                const hasAddress = Boolean(String(loc.address || '').trim());
-                const directionsBtn =
-                  hasCoords || hasAddress
-                    ? `<button type="button" class="action-btn btn-directions" onclick="event.stopPropagation(); openGoogleMapsDirections('${escapeHtml(loc.id)}')">🧭 Побудувати маршрут</button>`
-                    : '';
-                const diveBtn =
-                  mode === 'preview'
-                    ? `<button type="button" class="action-btn btn-dive" onclick="event.stopPropagation(); diveIntoSelectedDetail()">Детальніше</button>
-                       <p class="detail-preview-hint">Ще раз по маркеру або «Детальніше» — повна картка</p>`
-                    : '';
+
+                const catName = categoryLabel(
+                    window.masterCatalog?.[loc.cat]?.name || loc.cat || ''
+                );
                 const canOfferClaim = !loc.providerId;
                 const locPhoneDigits = String(loc.phone || '').replace(/\D/g, '');
                 const locHasClaimPhone = locPhoneDigits.length >= 10;
@@ -2753,45 +3191,67 @@
                         }</button>
                        </div>`
                     : '';
+
+                renderLocationHero(loc);
+
+                const providerName = typeof getProviderName === 'function' ? getProviderName(loc) : '';
+                const displayName =
+                    providerName && providerName !== loc.title
+                        ? `${loc.title} / ${providerName}`
+                        : loc.title;
+                const tgUser = getTelegramUsername(loc);
+                const chatHref = getChatHref(loc);
+                const specialty = State.service?.name || catName;
+                const ratingVal = Number(loc.rating || 0).toFixed(1);
+                const reviewsN = Number(loc.reviewsCount) || 0;
+                const phoneHref = loc.phone ? `tel:${escapeHtml(loc.phone)}` : '';
+
                 const headerBox = document.getElementById('detailHeaderContent');
                 headerBox.innerHTML = `
-                    <button class="back-btn" onclick="event.stopPropagation(); closeMasterDetail()">⬅️ Назад до списку</button>
-                    <div class="detail-title-row">
-                        <h2 class="detail-main-title">${escapeHtml(loc.title)}</h2>
-                        <div class="provider-meta detail-title-meta">
-                            <span class="status-badge ${loc.openStatus === 'open' ? 'open' : 'closed'}">${loc.openStatus === 'open' ? 'Відкрито' : 'Зачинено'}</span>
-                            <span class="rating-block"><span class="star-icon">★</span><b>${Number(loc.rating || 0).toFixed(1)}</b> <span class="reviews-count">(${Number(loc.reviewsCount) || 0})</span></span>
+                    <button class="back-btn" onclick="event.stopPropagation(); closeMasterDetail()">⬅️ Назад</button>
+                    <div class="profile-identity">
+                        <div class="profile-avatar-wrap">
+                            <div class="profile-avatar">${locationAvatarHtml(loc)}</div>
+                            ${loc.providerId ? '<span class="profile-verified-dot" title="Перевірено"><i class="fa-solid fa-check"></i></span>' : ''}
                         </div>
-                    </div>
-                    <div class="detail-actions">
-                        <div class="detail-actions-row">
-                            ${loc.phone ? `<a href="tel:${escapeHtml(loc.phone)}" class="action-btn btn-call" onclick="event.stopPropagation(); trackLocationClick('${escapeHtml(loc.id)}','call')">📞 Зателефонувати</a>` : ''}
-                            ${directionsBtn}
-                            <button type="button" class="action-btn btn-route" onclick="event.stopPropagation(); trackLocationClick('${escapeHtml(loc.id)}','map_focus'); panToMaster(${Number(loc.lat)}, ${Number(loc.lng)})">🗺️ На карті</button>
+                        <div class="profile-copy">
+                            <div class="profile-name-row">
+                                <h2 class="profile-name">${escapeHtml(displayName)}</h2>
+                                ${loc.providerId ? '<span class="profile-verified-pill"><i class="fa-solid fa-shield-halved"></i> Verified</span>' : ''}
+                            </div>
+                            ${tgUser ? `<p class="profile-handle">@${escapeHtml(tgUser)}</p>` : ''}
+                            <div class="profile-rating-row">
+                                <span>${ratingVal}</span>
+                                ${ratingStarsHtml(loc.rating)}
+                                <span class="reviews-count">(${reviewsN} відгуків)</span>
+                            </div>
+                            ${specialty ? `<p class="profile-specialty">${escapeHtml(specialty)}</p>` : ''}
                         </div>
-                        <div class="detail-actions-row">
-                            <button type="button" class="action-btn btn-share" onclick="event.stopPropagation(); shareLocation('${escapeHtml(loc.id)}')">↗ Поділитись</button>
-                            <button type="button" class="action-btn btn-fav-header ${isFav ? 'active' : ''}" onclick="event.stopPropagation(); toggleFavorite('${escapeHtml(loc.id)}')">${isFav ? '★ В обраному' : '☆ В обране'}</button>
-                            <button type="button" class="action-btn btn-report" onclick="event.stopPropagation(); reportLocation('${escapeHtml(loc.id)}')">⚑ Скарга</button>
-                            ${manageLocationBtnHtml(loc)}
+                        <div class="profile-quick-actions">
+                            ${phoneHref
+                                ? `<a href="${phoneHref}" class="profile-quick-btn" title="Зателефонувати" aria-label="Зателефонувати" onclick="event.stopPropagation(); trackLocationClick('${escapeHtml(loc.id)}','call')"><i class="fa-solid fa-phone"></i></a>`
+                                : `<span class="profile-quick-btn" aria-disabled="true" title="Немає телефону"><i class="fa-solid fa-phone"></i></span>`}
+                            ${chatHref
+                                ? `<a href="${escapeHtml(chatHref)}" target="_blank" rel="noopener" class="profile-quick-btn" title="Написати" aria-label="Написати" onclick="event.stopPropagation(); trackLocationClick('${escapeHtml(loc.id)}','chat')"><i class="fa-solid fa-comment"></i></a>`
+                                : `<span class="profile-quick-btn" aria-disabled="true" title="Немає чату"><i class="fa-solid fa-comment"></i></span>`}
                         </div>
-                        ${diveBtn}
                     </div>
                 `;
 
                 renderDetailBody(loc, { claimBannerHtml, mode });
 
                 const detailView = document.getElementById('sidebar-detail-view');
-                detailView.classList.add('show');
-                detailView.classList.toggle('mode-preview', mode === 'preview');
-                detailView.classList.toggle('mode-dive', mode === 'dive');
-
-                if (mode === 'dive') enterDetailDive();
-                else expandBottomSheet();
+                detailView.classList.add('show', 'mode-dive');
+                detailView.classList.remove('mode-preview');
+                enterDetailDive();
+                highlightSelectedMarker(loc.id);
 
                 map.panTo([loc.lat, loc.lng]);
-                // У preview не відкриваємо popup — zoomToShowLayer/кластери зривають 2-й тап на мобілці
-                if (mode === 'dive') openPopupForLocation(loc);
+                if (!opts.fromMarker && loc.markerInstance && typeof markersLayer.zoomToShowLayer === 'function') {
+                    markersLayer.zoomToShowLayer(loc.markerInstance, () => {
+                        highlightSelectedMarker(loc.id);
+                    });
+                }
                 refreshClaimButton(loc);
                 applyPageSeoFromState();
             };
@@ -2955,8 +3415,10 @@
 
             function renderDetailBody(loc, opts = {}) {
                 const bodyBox = document.getElementById('detailBodyContent');
+                const orderBar = document.getElementById('detailOrderBar');
                 const priceEntries = Object.entries(loc.prices || {});
-                const claimBannerHtml = opts.mode === 'preview' ? '' : (opts.claimBannerHtml || '');
+                const claimBannerHtml = opts.claimBannerHtml || '';
+                const selectedService = defaultOrderServiceName(loc);
 
                 let scheduleRowsHtml = '';
                 for (const [days, hours] of Object.entries(loc.schedule || {})) {
@@ -2986,26 +3448,16 @@
                     reviewsHtml = '<div style="font-size:12px; color:#94a3b8; padding:5px 0;">Відгуків ще немає. Будьте першим!</div>';
                 }
 
-                let photosHtml = '';
-                const photos = Array.isArray(loc.photos) ? loc.photos.filter((p) => p && p.url) : [];
-                if (photos.length) {
-                    photosHtml = `
-                    <div class="detail-section">
-                        <h4 class="section-title">📷 Фото</h4>
-                        <div class="detail-photos">
-                            ${photos
-                              .slice(0, 6)
-                              .map(
-                                (p) =>
-                                  `<a href="${escapeHtml(p.url)}" target="_blank" rel="noopener"><img src="${escapeHtml(p.url)}" alt="Фото закладу" loading="lazy" decoding="async"></a>`
-                              )
-                              .join('')}
-                        </div>
-                    </div>`;
-                }
-
                 const aboutText = String(loc.text || '').trim();
                 const providerName = typeof getProviderName === 'function' ? getProviderName(loc) : '';
+                const hasCoords = Number.isFinite(Number(loc.lat)) && Number.isFinite(Number(loc.lng));
+                const hasAddress = Boolean(String(loc.address || '').trim());
+                const isFav = State.favoriteIds.has(loc.id);
+                const distKm = Number.isFinite(loc.currentDistance)
+                    ? loc.currentDistance
+                    : calculateDistance(State.userCoords.lat, State.userCoords.lng, loc.lat, loc.lng);
+                const distLabel = Number.isFinite(distKm) ? `${distKm.toFixed(1)} км` : '';
+
                 const aboutHtml = `<div class="detail-about-inline">
                         <span class="detail-about-i" aria-hidden="true">i</span>
                         <div class="detail-about-copy">
@@ -3013,68 +3465,124 @@
                             ${providerName ? `<div class="info-item">👤 ${escapeHtml(providerName)}</div>` : ''}
                             <div class="info-item">🏢 ${escapeHtml(loc.address || 'Адресу не вказано')}</div>
                             <div class="info-item">📞 ${escapeHtml(loc.phone || 'Телефон не вказано')}</div>
+                            ${distLabel ? `<div class="info-item">📍 ${escapeHtml(distLabel)}</div>` : ''}
                             ${Number(loc.views) ? `<div class="info-item">👁 Переглядів: ${Number(loc.views)}</div>` : ''}
                         </div>
                     </div>`;
 
-                bodyBox.innerHTML = `
-                    ${photosHtml}
-                    ${aboutHtml}
-                    <div class="detail-section">
-                        <h4 class="section-title">🕒 Графік роботи</h4>
-                        <div class="schedule-table">${scheduleRowsHtml}</div>
-                    </div>
-                    <div class="detail-section">
-                        <h4 class="section-title">💰 Повний прайс-лист</h4>
-                        <div id="detailPriceList"></div>
-                    </div>
-                    
-                    <div class="detail-section" style="background: #fdfdfd; border-color: #cbd5e1;">
-                        <h4 class="section-title" style="color: var(--dark);">✍️ Залишити відгук</h4>
-                        <div class="review-form">
-                            <div class="rating-stars-input" id="formStarsContainer">
-                                <span data-score="1" class="active">★</span>
-                                <span data-score="2" class="active">★</span>
-                                <span data-score="3" class="active">★</span>
-                                <span data-score="4" class="active">★</span>
-                                <span data-score="5" class="active">★</span>
-                            </div>
-                            <textarea class="review-textarea" id="reviewTextarea" placeholder="Поділіться враженнями від послуги..."></textarea>
-                            <button class="submit-review-btn" onclick="addNewReviewClick('${escapeHtml(loc.id)}')">Надіслати відгук</button>
-                        </div>
-                    </div>
+                let priceRowsHtml = '';
+                if (!priceEntries.length) {
+                    priceRowsHtml = '<div style="font-size:13px;color:#94a3b8;padding:12px 14px;">Прайс ще не додано</div>';
+                } else {
+                    priceRowsHtml = priceEntries
+                        .map(([srvName, srvPrice]) => {
+                            const free = isFreePrice(srvPrice);
+                            const selected = srvName === selectedService ? ' is-selected' : '';
+                            const amt = formatDisplayPrice(srvPrice) || srvPrice;
+                            return `<button type="button" class="price-row${free ? ' is-free' : ''}${selected}" data-service="${escapeHtml(srvName)}">
+                                <span class="price-row-name"></span>
+                                <span class="price-row-amt"></span>
+                            </button>`;
+                        })
+                        .join('');
+                }
 
-                    <div class="detail-section">
-                        <h4 class="section-title">⭐ Відгуки користувачів (${Number(loc.reviewsCount) || 0})</h4>
-                        <div style="display:flex; flex-direction:column; gap:10px;">${reviewsHtml}</div>
+                bodyBox.innerHTML = `
+                    <div class="price-accordion" id="detailPriceAccordion">
+                        <button type="button" class="price-accordion-head" onclick="event.stopPropagation(); togglePriceAccordion(this)">
+                            <span>Детальний прайс-лист</span>
+                            <i class="fa-solid fa-chevron-up price-acc-chevron" aria-hidden="true"></i>
+                        </button>
+                        <div class="price-accordion-body" id="detailPriceList">${priceRowsHtml}</div>
                     </div>
-                    ${claimBannerHtml}
+                    <details class="profile-more">
+                        <summary>Адреса, графік і відгуки</summary>
+                        ${aboutHtml}
+                        <div class="detail-section" style="margin-top:8px">
+                            <h4 class="section-title">🕒 Графік роботи</h4>
+                            <div class="schedule-table">${scheduleRowsHtml}</div>
+                        </div>
+                        <div class="detail-section" style="background: #fdfdfd; border-color: #cbd5e1; margin-top:8px">
+                            <h4 class="section-title" style="color: var(--dark);">✍️ Залишити відгук</h4>
+                            <div class="review-form">
+                                <div class="rating-stars-input" id="formStarsContainer">
+                                    <span data-score="1" class="active">★</span>
+                                    <span data-score="2" class="active">★</span>
+                                    <span data-score="3" class="active">★</span>
+                                    <span data-score="4" class="active">★</span>
+                                    <span data-score="5" class="active">★</span>
+                                </div>
+                                <textarea class="review-textarea" id="reviewTextarea" placeholder="Поділіться враженнями від послуги..."></textarea>
+                                <button class="submit-review-btn" onclick="addNewReviewClick('${escapeHtml(loc.id)}')">Надіслати відгук</button>
+                            </div>
+                        </div>
+                        <div class="detail-section" style="margin-top:8px">
+                            <h4 class="section-title">⭐ Відгуки користувачів (${Number(loc.reviewsCount) || 0})</h4>
+                            <div style="display:flex; flex-direction:column; gap:10px;">${reviewsHtml}</div>
+                        </div>
+                        <div class="detail-secondary-row" style="margin-top:10px">
+                            <button type="button" class="action-btn" ${hasCoords || hasAddress ? '' : 'disabled'} onclick="event.stopPropagation(); openGoogleMapsDirections('${escapeHtml(loc.id)}')">🧭 Маршрут</button>
+                            <button type="button" class="action-btn" onclick="event.stopPropagation(); shareLocation('${escapeHtml(loc.id)}')">↗ Поділитись</button>
+                            <button type="button" class="action-btn btn-fav-header ${isFav ? 'active' : ''}" onclick="event.stopPropagation(); toggleFavorite('${escapeHtml(loc.id)}')">${isFav ? '★ Обране' : '☆ В обране'}</button>
+                            <button type="button" class="action-btn btn-report" onclick="event.stopPropagation(); reportLocation('${escapeHtml(loc.id)}')">⚑ Скарга</button>
+                            ${manageLocationBtnHtml(loc)}
+                        </div>
+                        ${claimBannerHtml}
+                    </details>
                 `;
 
                 const priceList = document.getElementById('detailPriceList');
-                if (priceList) {
-                    if (!priceEntries.length) {
-                        priceList.innerHTML = '<div style="font-size:12px;color:#94a3b8;">Прайс ще не додано</div>';
-                    } else {
-                        for (const [srvName, srvPrice] of priceEntries) {
-                            const row = document.createElement('div');
-                            row.className = 'detail-price-row';
-                            row.innerHTML = `
-                                <span></span>
-                                <div class="detail-price-actions">
-                                    <span class="detail-price-val"></span>
-                                    <button type="button" class="btn-order">Замовити</button>
-                                </div>`;
-                            row.querySelector('span').textContent = srvName;
-                            row.querySelector('.detail-price-val').textContent = formatDisplayPrice(srvPrice) || srvPrice;
-                            row.querySelector('.btn-order').onclick = () => placeOrder(loc.id, srvName);
-                            priceList.appendChild(row);
-                        }
-                    }
+                if (priceList && priceEntries.length) {
+                    priceList.querySelectorAll('.price-row').forEach((row, idx) => {
+                        const [srvName, srvPrice] = priceEntries[idx];
+                        row.querySelector('.price-row-name').textContent = srvName;
+                        row.querySelector('.price-row-amt').textContent = formatDisplayPrice(srvPrice) || srvPrice;
+                        row.addEventListener('click', (e) => {
+                            e.stopPropagation();
+                            selectPriceRow(row, loc.id, srvName);
+                        });
+                    });
+                }
+
+                if (orderBar) {
+                    orderBar.hidden = false;
+                    const trustBits = [];
+                    if (loc.providerId) trustBits.push('Гарантія на роботу');
+                    if (loc.openStatus === 'open') trustBits.push('Зараз працює');
+                    orderBar.innerHTML = `
+                        ${trustBits.length ? `<div class="profile-trust">${trustBits.map((t) => `<span>${escapeHtml(t)}</span>`).join('')}</div>` : ''}
+                        <button type="button" class="btn-order-service" onclick="event.stopPropagation(); orderSelectedService('${escapeHtml(loc.id)}')">Замовити послугу</button>
+                    `;
                 }
 
                 setupFormStars();
             }
+
+            window.togglePriceAccordion = function (btn) {
+                const acc = btn && btn.closest('.price-accordion');
+                if (acc) acc.classList.toggle('is-collapsed');
+            };
+
+            window.selectPriceRow = function (row, locId, serviceName) {
+                document.querySelectorAll('#detailPriceList .price-row').forEach((el) => {
+                    el.classList.toggle('is-selected', el === row);
+                });
+                const loc = window.mockLocations.find((l) => l.id === locId);
+                if (loc && serviceName) {
+                    loc._selectedService = serviceName;
+                }
+            };
+
+            window.orderSelectedService = function (locId) {
+                const loc = window.mockLocations.find((l) => l.id === locId);
+                if (!loc) return;
+                const selectedRow = document.querySelector('#detailPriceList .price-row.is-selected');
+                const name =
+                    (selectedRow && selectedRow.getAttribute('data-service')) ||
+                    loc._selectedService ||
+                    defaultOrderServiceName(loc);
+                placeOrder(locId, name);
+            };
 
             function setupFormStars() {
                 const stars = document.querySelectorAll('#formStarsContainer span');
@@ -3124,9 +3632,17 @@
             window.closeMasterDetail = function() {
                 const detailView = document.getElementById('sidebar-detail-view');
                 detailView.classList.remove('show', 'mode-preview', 'mode-dive');
-                appShell.classList.remove('sheet-dive');
+                appShell.classList.remove('sheet-dive', 'showing-location');
+                const heroBox = document.getElementById('detailHeroContent');
+                if (heroBox) heroBox.innerHTML = '';
+                const orderBar = document.getElementById('detailOrderBar');
+                if (orderBar) {
+                    orderBar.hidden = true;
+                    orderBar.innerHTML = '';
+                }
                 State.selectedLocation = null;
                 State.detailMode = null;
+                highlightSelectedMarker(null);
                 if (State.service || State.subcategory || State.category || State.locationSearchQuery) {
                     if (isMobileLayout()) browseBottomSheet();
                 }
@@ -3137,11 +3653,12 @@
                 applyPageSeoFromState();
             };
 
-            window.panToMaster = function(lat, lng) { 
-                map.setView([lat, lng], 14); 
-                // Якщо людина тисне "На карті" на мобілці, згортаємо шторку на половину, щоб звільнити огляд мапи
-                if (window.innerWidth <= 768) {
-                    document.getElementById('sidebar').className = 'half';
+            window.panToMaster = function(lat, lng) {
+                map.setView([lat, lng], 15);
+                if (isMobileLayout()) {
+                    appShell.classList.remove('sheet-dive', 'sheet-browse');
+                    appShell.classList.add('sheet-expanded');
+                    setTimeout(() => map.invalidateSize(), 400);
                 }
             };
 
@@ -3364,13 +3881,15 @@
             }
 
             function buildLocationIcon(loc) {
+                const selected = State.selectedLocation?.id === loc.id;
+                const selectedClass = selected ? ' is-selected' : '';
                 if (State.service) {
                     const raw = findServicePrice(loc, State.service.name);
                     const price = formatDisplayPrice(raw) || 'уточн.';
                     const width = Math.min(120, Math.max(52, price.length * 7 + 16));
                     return L.divIcon({
                         className: 'mapfix-marker-wrap',
-                        html: `<div class="mapfix-marker-price">${escapeHtml(price)}</div>`,
+                        html: `<div class="mapfix-marker-price${selectedClass}">${escapeHtml(price)}</div>`,
                         iconSize: [width, 32],
                         iconAnchor: [width / 2, 32],
                     });
@@ -3378,7 +3897,7 @@
                 const iconClass = categoryIconClass(loc.cat);
                 return L.divIcon({
                     className: 'mapfix-marker-wrap',
-                    html: `<div class="mapfix-marker-category"><i class="fa-solid ${iconClass}"></i></div>`,
+                    html: `<div class="mapfix-marker-category${selectedClass}"><i class="fa-solid ${iconClass}"></i></div>`,
                     iconSize: [22, 22],
                     iconAnchor: [11, 11],
                 });
@@ -3401,14 +3920,6 @@
                     });
                     loc.markerInstance.on('click', (e) => {
                         L.DomEvent.stopPropagation(e);
-                        // Другий тап по тому ж маркеру в preview → одразу dive
-                        if (
-                            State.selectedLocation?.id === loc.id &&
-                            State.detailMode === 'preview'
-                        ) {
-                            openMasterDetail(loc.id, { mode: 'dive', forceMode: true, fromMarker: true });
-                            return;
-                        }
                         openMasterDetail(loc.id, { fromMarker: true });
                     });
                     loc.markerInstance.on('dblclick', (e) => {
@@ -3421,6 +3932,7 @@
                 });
 
                 if (batch.length) markersLayer.addLayers(batch);
+                highlightSelectedMarker(State.selectedLocation?.id);
 
                 const shouldFit =
                     State.service ||

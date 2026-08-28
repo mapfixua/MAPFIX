@@ -798,6 +798,31 @@
       border: 1px solid #cbd5e1;
       z-index: 0;
     }
+    .region-import-map {
+      height: 380px;
+      width: 100%;
+      border-radius: 12px;
+      border: 1px solid #cbd5e1;
+      z-index: 0;
+      background: #e8eef5;
+    }
+    .region-import-map.is-drawing {
+      cursor: crosshair;
+    }
+    .region-import-map.is-drawing .leaflet-container {
+      cursor: crosshair;
+    }
+    .region-svc-list {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+      max-height: 180px;
+      overflow: auto;
+      padding: 4px;
+      border: 1px solid #bfdbfe;
+      border-radius: 8px;
+      background: #fff;
+    }
     .user-locs-map-wrap {
       position: relative;
       margin: 14px 0 4px;
@@ -1220,39 +1245,33 @@
           </div>
 
           <div id="adminPaneImport" class="admin-pane card">
-            <h2>Імпорт міста (Gemini + каталог Mapfix)</h2>
+            <h2>Імпорт з Google Maps (Gemini + каталог Mapfix)</h2>
             <p class="field-hint" style="margin-bottom:14px">
-              Лише для адміна. Вкажіть будь-яке українське місто/смт (Коцюбинське, Київ, Ірпінь…).
-              Система шукає точки на картах за <b>усіма категоріями й підкатегоріями</b> Mapfix,
-              Gemini пропонує категорію — у списку перевірки ви можете <b>змінити категорію/підкатегорію</b>,
-              потім підтверджуєте імпорт.
+              Лише для адміна. Натисніть <b>Виділити область</b> і протягніть прямокутник на карті.
+              Система шукає заклади Google Maps у цій зоні за <b>усіма категоріями, підкатегоріями та послугами</b> Mapfix.
+              Gemini пропонує класифікацію — у списку перевірки можна змінити категорію, підкатегорію й послуги, потім підтвердити імпорт.
             </p>
             <div class="field-block">
-              <label>Місто / смт України</label>
-              <input type="text" id="cityGeminiInput" list="cityGeminiSuggestions" placeholder="Наприклад: Коцюбинське" autocomplete="off">
-              <datalist id="cityGeminiSuggestions">
-                <option value="Коцюбинське"></option>
-                <option value="Київ"></option>
-                <option value="Ірпінь"></option>
-                <option value="Буча"></option>
-                <option value="Гостомель"></option>
-                <option value="Вишневе"></option>
-                <option value="Бровари"></option>
-                <option value="Бориспіль"></option>
-                <option value="Львів"></option>
-                <option value="Одеса"></option>
-                <option value="Харків"></option>
-                <option value="Дніпро"></option>
-              </datalist>
+              <label for="regionSearchInput">Перейти до місця</label>
+              <div style="display:flex;gap:8px;flex-wrap:wrap">
+                <input type="text" id="regionSearchInput" placeholder="Наприклад: Коцюбинське, Сирець, Львів" autocomplete="off" style="flex:1;min-width:200px">
+                <button type="button" id="regionSearchBtn" class="btn-secondary" style="width:auto">Знайти</button>
+              </div>
             </div>
-            <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">
+            <div id="regionImportMap" class="region-import-map"></div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;align-items:center">
+              <button type="button" id="regionDrawBtn" style="width:auto">Виділити область</button>
+              <button type="button" id="regionClearBtn" class="btn-secondary" style="width:auto">Скинути виділення</button>
+              <span id="regionBoundsHint" class="field-hint" style="margin:0">Область не виділено</span>
+            </div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px">
               <button type="button" id="cityGeminiPreviewBtn" class="btn-secondary" style="width:auto">Аналіз Gemini</button>
               <button type="button" id="cityGeminiWriteBtn" style="width:auto" disabled>Підтвердити імпорт</button>
             </div>
             <div id="cityGeminiResult" class="msg" style="display:none;margin-top:14px"></div>
             <div id="cityGeminiReviewBox" class="hidden" style="margin-top:16px;border:1px solid #e5e7eb;border-radius:12px;padding:12px;background:#fff">
               <div style="display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:10px">
-                <h3 style="margin:0;font-size:1rem">Кандидати міста <span id="cityGeminiReviewCount" class="list-item-meta"></span></h3>
+                <h3 style="margin:0;font-size:1rem">Кандидати області <span id="cityGeminiReviewCount" class="list-item-meta"></span></h3>
                 <div style="display:flex;gap:8px;flex-wrap:wrap">
                   <button type="button" id="cityGeminiSelectAllBtn" class="btn-secondary" style="width:auto">Обрати всі</button>
                   <button type="button" id="cityGeminiSelectNoneBtn" class="btn-secondary" style="width:auto">Зняти всі</button>
@@ -1345,6 +1364,43 @@
               <button type="button" id="adminExcelImportBtn" style="width:auto;margin-left:8px">Імпортувати файл</button>
             </div>
             <div id="adminExcelResult" class="msg" style="display:none;margin-top:10px"></div>
+
+            <hr style="margin:24px 0;border:none;border-top:1px solid #e5e7eb">
+
+            <h2>Імпорт з Telegram-груп</h2>
+            <p class="field-hint" style="margin-bottom:14px">
+              Бот Telegram <b>не читає довільні групи</b> — лише чати, куди його додано
+              (зробіть бота адміном і вимкніть Privacy Mode в @BotFather).
+              Найпростіший шлях: скопіюйте оголошення майстрів або завантажте JSON-експорт
+              з Telegram Desktop («Експорт історії чату» → <code>result.json</code>).
+              Вставлені оголошення розділяйте порожнім рядком. Gemini підбере категорію, підкатегорію й послуги Mapfix.
+            </p>
+            <div class="field-block">
+              <label for="tgAdsText">Оголошення (текст або JSON-експорт)</label>
+              <textarea id="tgAdsText" rows="8" placeholder="Сантехнік, Київ, +38067… роблю заміну труб&#10;&#10;Електрик Ірпінь @master …"></textarea>
+            </div>
+            <div class="field-block">
+              <label for="tgAdsJsonFile">Файл result.json (Telegram Desktop)</label>
+              <input type="file" id="tgAdsJsonFile" accept="application/json,.json">
+            </div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">
+              <button type="button" id="tgAdsPreviewBtn" class="btn-secondary" style="width:auto">Аналіз Gemini</button>
+              <button type="button" id="tgAdsInboxBtn" class="btn-secondary" style="width:auto">Черга бота</button>
+              <button type="button" id="tgAdsWriteBtn" style="width:auto" disabled>Підтвердити імпорт</button>
+              <button type="button" id="tgAdsClearInboxBtn" class="btn-secondary" style="width:auto">Очистити чергу</button>
+            </div>
+            <div id="tgAdsResult" class="msg" style="display:none;margin-top:14px"></div>
+            <div id="tgAdsReviewBox" class="hidden" style="margin-top:16px;border:1px solid #e5e7eb;border-radius:12px;padding:12px;background:#fff">
+              <div style="display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:10px">
+                <h3 style="margin:0;font-size:1rem">Кандидати з Telegram <span id="tgAdsReviewCount" class="list-item-meta"></span></h3>
+                <div style="display:flex;gap:8px;flex-wrap:wrap">
+                  <button type="button" id="tgAdsSelectAllBtn" class="btn-secondary" style="width:auto">Обрати всі</button>
+                  <button type="button" id="tgAdsSelectNoneBtn" class="btn-secondary" style="width:auto">Зняти всі</button>
+                  <button type="button" id="tgAdsSelectAddableBtn" class="btn-secondary" style="width:auto">Лише нові</button>
+                </div>
+              </div>
+              <div id="tgAdsReviewList" style="max-height:560px;overflow:auto;display:flex;flex-direction:column;gap:10px"></div>
+            </div>
           </div>
 
           <div id="adminPaneCatalog" class="admin-pane card">
@@ -1672,6 +1728,12 @@
     let entityLocsMap = null;
     let locGeocodeTimer = null;
     let locGeocodeSeq = 0;
+    let regionImportMap = null;
+    let regionRect = null;
+    let regionTempRect = null;
+    let regionBounds = null;
+    let regionDrawing = false;
+    let regionDrawStart = null;
 
     function setLocCoords(lat, lng) {
       document.getElementById('locLat').value = lat === '' ? '' : String(lat);
@@ -1780,6 +1842,203 @@
       setTimeout(() => locPickMap?.invalidateSize(), 200);
     }
 
+    function formatRegionHint(bounds) {
+      if (!bounds) return 'Область не виділено';
+      const wKm = (bounds.widthMeters / 1000).toFixed(1);
+      const hKm = (bounds.heightMeters / 1000).toFixed(1);
+      return `Область: ${wKm} × ${hKm} км`;
+    }
+
+    function regionLeafletBoundsToPayload(llb) {
+      if (!llb) return null;
+      const sw = llb.getSouthWest();
+      const ne = llb.getNorthEast();
+      const south = sw.lat;
+      const west = sw.lng;
+      const north = ne.lat;
+      const east = ne.lng;
+      const toRad = (d) => (d * Math.PI) / 180;
+      const hav = (aLat, aLng, bLat, bLng) => {
+        const dLat = toRad(bLat - aLat);
+        const dLng = toRad(bLng - aLng);
+        const h =
+          Math.sin(dLat / 2) ** 2 +
+          Math.cos(toRad(aLat)) * Math.cos(toRad(bLat)) * Math.sin(dLng / 2) ** 2;
+        return 2 * 6371000 * Math.asin(Math.sqrt(h));
+      };
+      return {
+        south,
+        west,
+        north,
+        east,
+        widthMeters: Math.round(hav(south, west, south, east)),
+        heightMeters: Math.round(hav(south, west, north, west)),
+      };
+    }
+
+    function setRegionBoundsFromLeaflet(llb) {
+      const hint = document.getElementById('regionBoundsHint');
+      if (!llb || !llb.isValid() || llb.getSouthWest().equals(llb.getNorthEast())) {
+        regionBounds = null;
+        if (hint) hint.textContent = 'Область не виділено';
+        return;
+      }
+      const payload = regionLeafletBoundsToPayload(llb);
+      if (payload.widthMeters < 120 || payload.heightMeters < 120) {
+        regionBounds = null;
+        if (regionRect && regionImportMap) {
+          regionImportMap.removeLayer(regionRect);
+          regionRect = null;
+        }
+        if (hint) hint.textContent = 'Область занадто мала — збільшіть прямокутник';
+        return;
+      }
+      if (payload.widthMeters > 40000 || payload.heightMeters > 40000) {
+        regionBounds = null;
+        if (regionRect && regionImportMap) {
+          regionImportMap.removeLayer(regionRect);
+          regionRect = null;
+        }
+        if (hint) hint.textContent = 'Область занадто велика (макс. ~40 км). Зменшіть виділення';
+        return;
+      }
+      regionBounds = payload;
+      if (regionRect) {
+        regionRect.setBounds(llb);
+      } else if (regionImportMap) {
+        regionRect = L.rectangle(llb, {
+          color: '#2563eb',
+          weight: 2,
+          fillColor: '#3b82f6',
+          fillOpacity: 0.18,
+        }).addTo(regionImportMap);
+      }
+      if (hint) hint.textContent = formatRegionHint(regionBounds);
+    }
+
+    function clearRegionSelection() {
+      regionBounds = null;
+      regionDrawStart = null;
+      if (regionTempRect && regionImportMap) {
+        regionImportMap.removeLayer(regionTempRect);
+        regionTempRect = null;
+      }
+      if (regionRect && regionImportMap) {
+        regionImportMap.removeLayer(regionRect);
+        regionRect = null;
+      }
+      const hint = document.getElementById('regionBoundsHint');
+      if (hint) hint.textContent = 'Область не виділено';
+    }
+
+    function setRegionDrawMode(on) {
+      regionDrawing = Boolean(on);
+      const mapEl = document.getElementById('regionImportMap');
+      const btn = document.getElementById('regionDrawBtn');
+      mapEl?.classList.toggle('is-drawing', regionDrawing);
+      if (btn) btn.textContent = regionDrawing ? 'Протягніть прямокутник…' : 'Виділити область';
+      if (!regionImportMap) return;
+      if (regionDrawing) {
+        regionImportMap.dragging.disable();
+        regionImportMap.boxZoom.disable();
+        regionImportMap.doubleClickZoom.disable();
+      } else {
+        regionImportMap.dragging.enable();
+        regionImportMap.boxZoom.enable();
+        regionImportMap.doubleClickZoom.enable();
+        regionDrawStart = null;
+        if (regionTempRect) {
+          regionImportMap.removeLayer(regionTempRect);
+          regionTempRect = null;
+        }
+      }
+    }
+
+    function initRegionImportMap() {
+      const el = document.getElementById('regionImportMap');
+      if (!el || typeof L === 'undefined') return null;
+      if (regionImportMap) {
+        setTimeout(() => regionImportMap.invalidateSize(), 200);
+        return regionImportMap;
+      }
+      regionImportMap = L.map('regionImportMap', {
+        zoomControl: true,
+        boxZoom: false,
+      }).setView(LOC_MAP_DEFAULT, 12);
+      L.tileLayer('https://{s}.google.com/vt/lyrs=m&x={x}&y={y}&z={z}', {
+        maxZoom: 20,
+        subdomains: ['mt0', 'mt1', 'mt2', 'mt3'],
+        attribution: '&copy; Google Maps',
+      }).addTo(regionImportMap);
+
+      let lastDrawLatLng = null;
+      const onMove = (e) => {
+        if (!regionDrawing || !regionDrawStart) return;
+        lastDrawLatLng = e.latlng;
+        const b = L.latLngBounds(regionDrawStart, e.latlng);
+        if (regionTempRect) regionTempRect.setBounds(b);
+        else {
+          regionTempRect = L.rectangle(b, {
+            color: '#1d4ed8',
+            weight: 2,
+            dashArray: '6 4',
+            fillOpacity: 0.12,
+          }).addTo(regionImportMap);
+        }
+      };
+      const onUp = (e) => {
+        if (!regionDrawing || !regionDrawStart) return;
+        const end = (e && e.latlng) || lastDrawLatLng || regionDrawStart;
+        const start = regionDrawStart;
+        regionDrawStart = null;
+        lastDrawLatLng = null;
+        const b = L.latLngBounds(start, end);
+        if (regionTempRect) {
+          regionImportMap.removeLayer(regionTempRect);
+          regionTempRect = null;
+        }
+        setRegionBoundsFromLeaflet(b);
+        setRegionDrawMode(false);
+      };
+
+      regionImportMap.on('mousedown', (e) => {
+        if (!regionDrawing) return;
+        L.DomEvent.stop(e);
+        regionDrawStart = e.latlng;
+        lastDrawLatLng = e.latlng;
+        if (regionRect) {
+          regionImportMap.removeLayer(regionRect);
+          regionRect = null;
+        }
+      });
+      regionImportMap.on('mousemove', onMove);
+      regionImportMap.on('mouseup', onUp);
+      document.addEventListener('mouseup', () => {
+        if (regionDrawing && regionDrawStart) onUp({ latlng: lastDrawLatLng || regionDrawStart });
+      });
+
+      setTimeout(() => regionImportMap.invalidateSize(), 250);
+      return regionImportMap;
+    }
+
+    async function panRegionImportMap(query) {
+      const q = String(query || '').trim();
+      if (q.length < 2) throw new Error('Вкажіть місце для пошуку');
+      const data = await apiFetch(`/api/geocode/search?q=${encodeURIComponent(q)}`);
+      initRegionImportMap();
+      if (Array.isArray(data.bbox) && data.bbox.length === 4) {
+        const [west, south, east, north] = data.bbox.map(Number);
+        if ([west, south, east, north].every(Number.isFinite)) {
+          regionImportMap.fitBounds([[south, west], [north, east]], { maxZoom: 15, padding: [24, 24] });
+          return data;
+        }
+      }
+      if (Number.isFinite(data.lat) && Number.isFinite(data.lng)) {
+        regionImportMap.setView([data.lat, data.lng], 14);
+      }
+      return data;
+    }
+
     let currentUser = null;
     let catalog = {};
     let providerData = null;
@@ -1885,6 +2144,9 @@
       if (name === 'reports') loadAdminReports();
       if (name === 'billing') loadAdminBilling();
       if (name === 'analytics') loadAdminAnalytics();
+      if (name === 'import') {
+        setTimeout(() => initRegionImportMap(), 50);
+      }
     }
 
     function locEngagementStripHtml(loc) {
@@ -3473,16 +3735,33 @@
           };
           (c.subcats || []).forEach((s) => {
             if (!s?.key) return;
-            cityGeminiCatalog[c.key].subcats[s.key] = { name: s.name || s.key };
+            cityGeminiCatalog[c.key].subcats[s.key] = {
+              name: s.name || s.key,
+              services: Array.isArray(s.services) ? s.services : [],
+            };
           });
         });
         return;
       }
       if (optionsOrCatalog && typeof optionsOrCatalog === 'object') {
-        cityGeminiCatalog = optionsOrCatalog;
+        cityGeminiCatalog = {};
+        Object.entries(optionsOrCatalog).forEach(([key, cat]) => {
+          cityGeminiCatalog[key] = {
+            name: cat?.name || key,
+            subcats: {},
+          };
+          Object.entries(cat?.subcats || {}).forEach(([sk, sub]) => {
+            cityGeminiCatalog[key].subcats[sk] = {
+              name: sub?.name || sk,
+              services: (sub.items || sub.services || []).map((item) =>
+                typeof item === 'string' ? { name: item } : { name: item.name, price: item.price || '' }
+              ),
+            };
+          });
+        });
         return;
       }
-      cityGeminiCatalog = adminCatalog || {};
+      setCityGeminiCatalog(adminCatalog || {});
     }
 
     function cityGeminiCatOptions(selectedCat) {
@@ -3512,6 +3791,66 @@
         .join('');
     }
 
+    function cityGeminiServiceNames(catKey, subKey) {
+      const raw = cityGeminiCatalog?.[catKey]?.subcats?.[subKey]?.services || [];
+      return raw
+        .map((item) => (typeof item === 'string' ? item : item?.name))
+        .filter(Boolean);
+    }
+
+    function cityGeminiServiceChecksHtml(idx, catKey, subKey, selectedNames) {
+      const names = cityGeminiServiceNames(catKey, subKey);
+      if (!names.length) {
+        return '<p class="list-item-meta" style="margin:0">Немає послуг у цій підкатегорії</p>';
+      }
+      const selected = new Set(selectedNames || []);
+      return `<div class="region-svc-list">${names
+        .map((name) => {
+          const checked = selected.has(name) ? 'checked' : '';
+          return `<label class="subcat-pick-row" style="margin:0;padding:6px">
+            <input type="checkbox" class="city-gemini-svc" data-idx="${idx}" value="${esc(name)}" ${checked} style="width:auto">
+            <span>${esc(name)}</span>
+          </label>`;
+        })
+        .join('')}</div>`;
+    }
+
+    function selectedServicesForIdx(idx) {
+      return [...document.querySelectorAll(`.city-gemini-svc[data-idx="${idx}"]:checked`)].map(
+        (cb) => cb.value
+      );
+    }
+
+    function applyCityGeminiItemCatalog(idx, catKey, subKey, services) {
+      const item = cityGeminiCandidates[idx];
+      if (!item) return;
+      item.cat = catKey;
+      item.subcats = subKey ? [subKey] : [];
+      item.categoryName = cityGeminiCatalog?.[catKey]?.name || catKey;
+      item.subcategoryName =
+        subKey && cityGeminiCatalog?.[catKey]?.subcats?.[subKey]
+          ? cityGeminiCatalog[catKey].subcats[subKey].name
+          : subKey;
+      if (Array.isArray(services)) item.services = services;
+      if (item._location) {
+        item._location.cat = catKey;
+        item._location.subcats = subKey ? [subKey] : [];
+      }
+    }
+
+    function refreshCityGeminiServices(idx, keepSelected) {
+      const wrap = document.getElementById(`cityGeminiSvcWrap_${idx}`);
+      const catKey = document.querySelector(`.city-gemini-cat[data-idx="${idx}"]`)?.value || '';
+      const subKey = document.querySelector(`.city-gemini-sub[data-idx="${idx}"]`)?.value || '';
+      const prev = keepSelected
+        ? selectedServicesForIdx(idx)
+        : cityGeminiCandidates[idx]?.services || [];
+      const allowed = new Set(cityGeminiServiceNames(catKey, subKey));
+      const selected = prev.filter((name) => allowed.has(name));
+      if (wrap) wrap.innerHTML = cityGeminiServiceChecksHtml(idx, catKey, subKey, selected);
+      applyCityGeminiItemCatalog(idx, catKey, subKey, selected);
+    }
+
     function syncCityGeminiSubSelect(idx) {
       const catSel = document.querySelector(`.city-gemini-cat[data-idx="${idx}"]`);
       const subSel = document.querySelector(`.city-gemini-sub[data-idx="${idx}"]`);
@@ -3521,19 +3860,8 @@
       const firstSub = Object.keys(cityGeminiCatalog?.[catKey]?.subcats || {})[0] || '';
       const keep = cityGeminiCatalog?.[catKey]?.subcats?.[prevSub] ? prevSub : firstSub;
       subSel.innerHTML = cityGeminiSubOptions(catKey, keep);
-      const item = cityGeminiCandidates[idx];
-      if (item) {
-        item.cat = catKey;
-        item.subcats = keep ? [keep] : [];
-        item.categoryName = cityGeminiCatalog?.[catKey]?.name || catKey;
-        item.subcategoryName = keep && cityGeminiCatalog?.[catKey]?.subcats?.[keep]
-          ? cityGeminiCatalog[catKey].subcats[keep].name
-          : keep;
-        if (item._location) {
-          item._location.cat = catKey;
-          item._location.subcats = keep ? [keep] : [];
-        }
-      }
+      applyCityGeminiItemCatalog(idx, catKey, keep, []);
+      refreshCityGeminiServices(idx, false);
     }
 
     function bindCityGeminiCatalogEditors() {
@@ -3543,20 +3871,9 @@
       document.querySelectorAll('.city-gemini-sub').forEach((sel) => {
         sel.onchange = () => {
           const idx = Number(sel.dataset.idx);
-          const item = cityGeminiCandidates[idx];
-          if (!item) return;
-          const catKey = document.querySelector(`.city-gemini-cat[data-idx="${idx}"]`)?.value || item.cat;
-          const sub = sel.value;
-          item.cat = catKey;
-          item.subcats = sub ? [sub] : [];
-          item.categoryName = cityGeminiCatalog?.[catKey]?.name || catKey;
-          item.subcategoryName = sub && cityGeminiCatalog?.[catKey]?.subcats?.[sub]
-            ? cityGeminiCatalog[catKey].subcats[sub].name
-            : sub;
-          if (item._location) {
-            item._location.cat = catKey;
-            item._location.subcats = sub ? [sub] : [];
-          }
+          const catKey = document.querySelector(`.city-gemini-cat[data-idx="${idx}"]`)?.value || '';
+          applyCityGeminiItemCatalog(idx, catKey, sel.value, []);
+          refreshCityGeminiServices(idx, false);
         };
       });
     }
@@ -3591,6 +3908,7 @@
               : null) ||
             subKeys[0] ||
             '';
+          const svcNames = Array.isArray(p.services) ? p.services : [];
           return `
             <div class="list-item" style="display:flex;gap:10px;align-items:flex-start;background:#fff">
               <input type="checkbox" class="city-gemini-cb" data-idx="${idx}" ${checked} style="width:auto;margin-top:4px;flex-shrink:0">
@@ -3599,7 +3917,7 @@
                 <div class="list-item-meta">${esc(p.address || 'без адреси')}${p.phone ? ' · ' + esc(p.phone) : ''}${skip}</div>
                 <div class="list-item-meta">${Number(p.lat).toFixed(5)}, ${Number(p.lng).toFixed(5)}</div>
                 <div style="margin-top:10px;padding:10px;border:1px solid #93c5fd;border-radius:10px;background:#eff6ff">
-                  <div style="font-size:0.78rem;font-weight:700;color:#1d4ed8;margin-bottom:8px">Змінити категорію Mapfix</div>
+                  <div style="font-size:0.78rem;font-weight:700;color:#1d4ed8;margin-bottom:8px">Категорія, підкатегорія і послуги Mapfix</div>
                   <div class="row2" style="margin:0">
                     <div class="field-block" style="margin:0">
                       <label for="cityGeminiCat_${idx}" style="margin-bottom:4px">Категорія</label>
@@ -3609,6 +3927,10 @@
                       <label for="cityGeminiSub_${idx}" style="margin-bottom:4px">Підкатегорія</label>
                       <select id="cityGeminiSub_${idx}" class="city-gemini-sub" data-idx="${idx}" style="margin-bottom:0">${cityGeminiSubOptions(catKey, subKey)}</select>
                     </div>
+                  </div>
+                  <div class="field-block" style="margin:10px 0 0">
+                    <label style="margin-bottom:4px">Послуги (Gemini)</label>
+                    <div id="cityGeminiSvcWrap_${idx}">${cityGeminiServiceChecksHtml(idx, catKey, subKey, svcNames)}</div>
                   </div>
                 </div>
               </div>
@@ -3630,11 +3952,13 @@
           const cat = catSel?.value || item.cat;
           const sub = subSel?.value || (item.subcats || [])[0] || '';
           if (!cat || !sub) return null;
+          const services = selectedServicesForIdx(idx);
           const loc = { ...(item._location || item) };
           delete loc._location;
           loc.cat = cat;
           loc.subcats = [sub];
-          loc.importSource = loc.importSource || 'city_gemini';
+          loc.services = services;
+          loc.importSource = loc.importSource || 'region_gemini';
           return loc;
         })
         .filter(Boolean);
@@ -3642,15 +3966,15 @@
 
     async function runCityGeminiImport(dryRun) {
       const resultEl = document.getElementById('cityGeminiResult');
-      const city = String(document.getElementById('cityGeminiInput')?.value || '').trim();
       resultEl.style.display = 'block';
       resultEl.className = 'msg';
-      if (dryRun && !city) {
-        resultEl.textContent = 'Вкажіть місто України';
+      if (dryRun && !regionBounds) {
+        resultEl.className = 'msg err';
+        resultEl.textContent = 'Виділіть область на карті: натисніть «Виділити область» і протягніть прямокутник';
         return;
       }
       resultEl.textContent = dryRun
-        ? 'Gemini аналізує точки міста за каталогом Mapfix… Це може зайняти 1–2 хв.'
+        ? 'Gemini аналізує заклади Google Maps у виділеній області за каталогом Mapfix… Це може зайняти 1–2 хв.'
         : 'Імпорт підтверджених точок…';
       try {
         if (!Object.keys(adminCatalog || {}).length) {
@@ -3661,8 +3985,15 @@
             /* ignore — catalogOptions from import response will fill it */
           }
         }
-        const body = { city, dryRun: Boolean(dryRun) };
-        if (!dryRun) {
+        const body = { dryRun: Boolean(dryRun) };
+        if (dryRun) {
+          body.bounds = {
+            south: regionBounds.south,
+            west: regionBounds.west,
+            north: regionBounds.north,
+            east: regionBounds.east,
+          };
+        } else {
           const selected = getSelectedCityGeminiCandidates();
           if (!selected.length) {
             throw new Error('Оберіть точки й укажіть категорію та підкатегорію для кожної');
@@ -3682,24 +4013,52 @@
           renderCityGeminiReview(data.candidates || []);
           resultEl.className = 'msg ok';
           resultEl.textContent =
-            `Місто: ${data.city?.name || city}. Переглянуто ${data.scanned || 0}, ` +
+            `Область переглянуто: ${data.scanned || 0} закладів, ` +
             `підходить під каталог ${data.matched || 0}, відхилено ${data.rejected || 0}. ` +
             `Джерело карт: ${data.source || '—'}. ` +
             (data.geminiConfigured ? 'Gemini: так. ' : 'Gemini: немає ключа (локальний фільтр). ') +
-            'У синьому блоці біля кожної точки змініть категорію/підкатегорію за потреби, потім «Підтвердити імпорт».';
+            'Перевірте категорію, підкатегорію й послуги, потім «Підтвердити імпорт».';
         } else {
           resultEl.className = 'msg ok';
           resultEl.textContent = `Імпортовано: додано ${data.added}, пропущено дублікатів ${data.skipped}`;
           cityGeminiCandidates = [];
           document.getElementById('cityGeminiReviewBox')?.classList.add('hidden');
           document.getElementById('cityGeminiWriteBtn').disabled = true;
+          notifyMapDataChanged();
         }
       } catch (err) {
         resultEl.className = 'msg err';
-        resultEl.textContent = err.message || 'Помилка імпорту міста';
+        resultEl.textContent = err.message || 'Помилка імпорту області';
       }
     }
 
+    document.getElementById('regionDrawBtn')?.addEventListener('click', () => {
+      initRegionImportMap();
+      setRegionDrawMode(!regionDrawing);
+    });
+    document.getElementById('regionClearBtn')?.addEventListener('click', () => {
+      setRegionDrawMode(false);
+      clearRegionSelection();
+    });
+    document.getElementById('regionSearchBtn')?.addEventListener('click', async () => {
+      const input = document.getElementById('regionSearchInput');
+      const resultEl = document.getElementById('cityGeminiResult');
+      try {
+        await panRegionImportMap(input?.value || '');
+      } catch (err) {
+        if (resultEl) {
+          resultEl.style.display = 'block';
+          resultEl.className = 'msg err';
+          resultEl.textContent = err.message || 'Місце не знайдено';
+        }
+      }
+    });
+    document.getElementById('regionSearchInput')?.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        document.getElementById('regionSearchBtn')?.click();
+      }
+    });
     document.getElementById('cityGeminiPreviewBtn')?.addEventListener('click', () => runCityGeminiImport(true));
     document.getElementById('cityGeminiWriteBtn')?.addEventListener('click', () => runCityGeminiImport(false));
     document.getElementById('cityGeminiSelectAllBtn')?.addEventListener('click', () => {
@@ -3987,6 +4346,403 @@
         resultEl.className = 'msg err';
         resultEl.textContent = err.message;
       }
+    });
+
+    let tgAdsCandidates = [];
+    let tgAdsCatalog = {};
+    let tgAdsFromInbox = false;
+
+    function setTgAdsCatalog(optionsOrCatalog) {
+      if (Array.isArray(optionsOrCatalog)) {
+        tgAdsCatalog = {};
+        optionsOrCatalog.forEach((c) => {
+          if (!c?.key) return;
+          tgAdsCatalog[c.key] = { name: c.name || c.key, subcats: {} };
+          (c.subcats || []).forEach((s) => {
+            if (!s?.key) return;
+            tgAdsCatalog[c.key].subcats[s.key] = {
+              name: s.name || s.key,
+              services: s.services || [],
+            };
+          });
+        });
+        return;
+      }
+      if (optionsOrCatalog && typeof optionsOrCatalog === 'object' && Object.keys(optionsOrCatalog).length) {
+        tgAdsCatalog = optionsOrCatalog;
+        return;
+      }
+      tgAdsCatalog = adminCatalog || {};
+    }
+
+    function tgAdsCatOptions(selectedCat) {
+      const entries = Object.entries(tgAdsCatalog || {});
+      if (!entries.length) return '<option value="">— каталог порожній —</option>';
+      return entries
+        .map(([key, cat]) => {
+          const sel = key === selectedCat ? ' selected' : '';
+          return `<option value="${esc(key)}"${sel}>${esc(cat.name || key)}</option>`;
+        })
+        .join('');
+    }
+
+    function tgAdsSubOptions(catKey, selectedSub) {
+      const entries = Object.entries(tgAdsCatalog?.[catKey]?.subcats || {});
+      if (!entries.length) return '<option value="">Немає підкатегорій</option>';
+      return entries
+        .map(([key, sub]) => {
+          const sel = key === selectedSub ? ' selected' : '';
+          return `<option value="${esc(key)}"${sel}>${esc(sub.name || key)}</option>`;
+        })
+        .join('');
+    }
+
+    function tgAdsServiceNames(catKey, subKey) {
+      const sub = tgAdsCatalog?.[catKey]?.subcats?.[subKey];
+      const fromOpt = sub?.services || [];
+      if (fromOpt.length) {
+        return fromOpt.map((item) => (typeof item === 'string' ? item : item?.name)).filter(Boolean);
+      }
+      const items = adminCatalog?.[catKey]?.subcats?.[subKey]?.items || [];
+      return items.map((item) => item?.name).filter(Boolean);
+    }
+
+    function tgAdsServiceChecksHtml(idx, catKey, subKey, selectedNames) {
+      const names = tgAdsServiceNames(catKey, subKey);
+      if (!names.length) {
+        return '<p class="list-item-meta" style="margin:0">Немає послуг у цій підкатегорії</p>';
+      }
+      const selected = new Set(selectedNames || []);
+      return `<div class="region-svc-list">${names
+        .map((name) => {
+          const checked = selected.has(name) ? 'checked' : '';
+          return `<label class="subcat-pick-row" style="margin:0;padding:6px">
+            <input type="checkbox" class="tg-ads-svc" data-idx="${idx}" value="${esc(name)}" ${checked} style="width:auto">
+            <span>${esc(name)}</span>
+          </label>`;
+        })
+        .join('')}</div>`;
+    }
+
+    function selectedTgAdsServices(idx) {
+      return [...document.querySelectorAll(`.tg-ads-svc[data-idx="${idx}"]:checked`)].map((cb) => cb.value);
+    }
+
+    function applyTgAdsItemCatalog(idx, catKey, subKey, services) {
+      const item = tgAdsCandidates[idx];
+      if (!item) return;
+      item.cat = catKey;
+      item.subcats = subKey ? [subKey] : [];
+      item.categoryName = tgAdsCatalog?.[catKey]?.name || catKey;
+      item.subcategoryName =
+        subKey && tgAdsCatalog?.[catKey]?.subcats?.[subKey]
+          ? tgAdsCatalog[catKey].subcats[subKey].name
+          : subKey;
+      if (Array.isArray(services)) item.services = services;
+      if (item._location) {
+        item._location.cat = catKey;
+        item._location.subcats = subKey ? [subKey] : [];
+        item._location.matchedServices = services || item._location.matchedServices || [];
+      }
+    }
+
+    function refreshTgAdsServices(idx, keepSelected) {
+      const wrap = document.getElementById(`tgAdsSvcWrap_${idx}`);
+      const catKey = document.querySelector(`.tg-ads-cat[data-idx="${idx}"]`)?.value || '';
+      const subKey = document.querySelector(`.tg-ads-sub[data-idx="${idx}"]`)?.value || '';
+      const prev = keepSelected ? selectedTgAdsServices(idx) : tgAdsCandidates[idx]?.services || [];
+      const allowed = new Set(tgAdsServiceNames(catKey, subKey));
+      const selected = prev.filter((name) => allowed.has(name));
+      if (wrap) wrap.innerHTML = tgAdsServiceChecksHtml(idx, catKey, subKey, selected);
+      applyTgAdsItemCatalog(idx, catKey, subKey, selected);
+    }
+
+    function syncTgAdsSubSelect(idx) {
+      const catSel = document.querySelector(`.tg-ads-cat[data-idx="${idx}"]`);
+      const subSel = document.querySelector(`.tg-ads-sub[data-idx="${idx}"]`);
+      if (!catSel || !subSel) return;
+      const catKey = catSel.value;
+      const prevSub = subSel.value;
+      const firstSub = Object.keys(tgAdsCatalog?.[catKey]?.subcats || {})[0] || '';
+      const keep = tgAdsCatalog?.[catKey]?.subcats?.[prevSub] ? prevSub : firstSub;
+      subSel.innerHTML = tgAdsSubOptions(catKey, keep);
+      applyTgAdsItemCatalog(idx, catKey, keep, []);
+      refreshTgAdsServices(idx, false);
+    }
+
+    function bindTgAdsCatalogEditors() {
+      document.querySelectorAll('.tg-ads-cat').forEach((sel) => {
+        sel.onchange = () => syncTgAdsSubSelect(Number(sel.dataset.idx));
+      });
+      document.querySelectorAll('.tg-ads-sub').forEach((sel) => {
+        sel.onchange = () => {
+          const idx = Number(sel.dataset.idx);
+          const catKey = document.querySelector(`.tg-ads-cat[data-idx="${idx}"]`)?.value || '';
+          applyTgAdsItemCatalog(idx, catKey, sel.value, []);
+          refreshTgAdsServices(idx, false);
+        };
+      });
+    }
+
+    function renderTgAdsReview(candidates) {
+      if (!Object.keys(tgAdsCatalog || {}).length) setTgAdsCatalog(adminCatalog);
+      tgAdsCandidates = Array.isArray(candidates) ? candidates : [];
+      const box = document.getElementById('tgAdsReviewBox');
+      const list = document.getElementById('tgAdsReviewList');
+      const countEl = document.getElementById('tgAdsReviewCount');
+      const writeBtn = document.getElementById('tgAdsWriteBtn');
+      if (!box || !list) return;
+      if (!tgAdsCandidates.length) {
+        box.classList.add('hidden');
+        if (writeBtn) writeBtn.disabled = true;
+        return;
+      }
+      box.classList.remove('hidden');
+      if (countEl) countEl.textContent = `(${tgAdsCandidates.length})`;
+      const catKeys = Object.keys(tgAdsCatalog || {});
+      list.innerHTML = tgAdsCandidates
+        .map((p, idx) => {
+          const skip = p.willSkip ? ' · вже на карті' : '';
+          const missing = p.needsCoords ? ' · немає координат' : '';
+          const checked = p.willAdd !== false && !p.willSkip && !p.needsCoords ? 'checked' : '';
+          const catKey = (p.cat && tgAdsCatalog[p.cat] ? p.cat : null) || catKeys[0] || '';
+          const subKeys = Object.keys(tgAdsCatalog?.[catKey]?.subcats || {});
+          const subKey =
+            (p.subcats && p.subcats[0] && tgAdsCatalog?.[catKey]?.subcats?.[p.subcats[0]]
+              ? p.subcats[0]
+              : null) ||
+            subKeys[0] ||
+            '';
+          const svcNames = Array.isArray(p.services) ? p.services : [];
+          const latVal = Number.isFinite(Number(p.lat)) ? Number(p.lat) : '';
+          const lngVal = Number.isFinite(Number(p.lng)) ? Number(p.lng) : '';
+          const snippet = String(p.text || '')
+            .replace(/\s+/g, ' ')
+            .slice(0, 220);
+          const tg = p.telegramUsername ? ` · @${p.telegramUsername}` : '';
+          return `
+            <div class="list-item" style="display:flex;gap:10px;align-items:flex-start;background:#fff">
+              <input type="checkbox" class="tg-ads-cb" data-idx="${idx}" ${checked} style="width:auto;margin-top:4px;flex-shrink:0">
+              <div style="min-width:0;flex:1">
+                <strong style="font-size:0.98rem">${esc(p.title || '—')}</strong>
+                <div class="list-item-meta">${esc(p.address || 'без адреси')}${p.phone ? ' · ' + esc(p.phone) : ''}${esc(tg)}${skip}${missing}</div>
+                <div class="list-item-meta">${esc(snippet)}${snippet.length >= 220 ? '…' : ''}</div>
+                <div class="row2" style="margin:8px 0 0">
+                  <div class="field-block" style="margin:0">
+                    <label for="tgAdsLat_${idx}" style="margin-bottom:4px">Широта</label>
+                    <input type="number" step="any" id="tgAdsLat_${idx}" class="tg-ads-lat" data-idx="${idx}" value="${esc(String(latVal))}" placeholder="50.45" style="margin-bottom:0">
+                  </div>
+                  <div class="field-block" style="margin:0">
+                    <label for="tgAdsLng_${idx}" style="margin-bottom:4px">Довгота</label>
+                    <input type="number" step="any" id="tgAdsLng_${idx}" class="tg-ads-lng" data-idx="${idx}" value="${esc(String(lngVal))}" placeholder="30.52" style="margin-bottom:0">
+                  </div>
+                </div>
+                <div style="margin-top:10px;padding:10px;border:1px solid #93c5fd;border-radius:10px;background:#eff6ff">
+                  <div style="font-size:0.78rem;font-weight:700;color:#1d4ed8;margin-bottom:8px">Категорія, підкатегорія і послуги Mapfix</div>
+                  <div class="row2" style="margin:0">
+                    <div class="field-block" style="margin:0">
+                      <label for="tgAdsCat_${idx}" style="margin-bottom:4px">Категорія</label>
+                      <select id="tgAdsCat_${idx}" class="tg-ads-cat" data-idx="${idx}" style="margin-bottom:0">${tgAdsCatOptions(catKey)}</select>
+                    </div>
+                    <div class="field-block" style="margin:0">
+                      <label for="tgAdsSub_${idx}" style="margin-bottom:4px">Підкатегорія</label>
+                      <select id="tgAdsSub_${idx}" class="tg-ads-sub" data-idx="${idx}" style="margin-bottom:0">${tgAdsSubOptions(catKey, subKey)}</select>
+                    </div>
+                  </div>
+                  <div class="field-block" style="margin:10px 0 0">
+                    <label style="margin-bottom:4px">Послуги</label>
+                    <div id="tgAdsSvcWrap_${idx}">${tgAdsServiceChecksHtml(idx, catKey, subKey, svcNames)}</div>
+                  </div>
+                </div>
+              </div>
+            </div>`;
+        })
+        .join('');
+      bindTgAdsCatalogEditors();
+      if (writeBtn) writeBtn.disabled = false;
+    }
+
+    function getSelectedTgAdsCandidates() {
+      return [...document.querySelectorAll('.tg-ads-cb:checked')]
+        .map((cb) => {
+          const idx = Number(cb.dataset.idx);
+          const item = tgAdsCandidates[idx];
+          if (!item) return null;
+          const catSel = document.querySelector(`.tg-ads-cat[data-idx="${idx}"]`);
+          const subSel = document.querySelector(`.tg-ads-sub[data-idx="${idx}"]`);
+          const latEl = document.querySelector(`.tg-ads-lat[data-idx="${idx}"]`);
+          const lngEl = document.querySelector(`.tg-ads-lng[data-idx="${idx}"]`);
+          const cat = catSel?.value || item.cat;
+          const sub = subSel?.value || (item.subcats || [])[0] || '';
+          if (!cat || !sub) return null;
+          const lat = Number(latEl?.value);
+          const lng = Number(lngEl?.value);
+          if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+          const services = selectedTgAdsServices(idx);
+          const loc = { ...(item._location || item) };
+          delete loc._location;
+          loc.cat = cat;
+          loc.subcats = [sub];
+          loc.lat = lat;
+          loc.lng = lng;
+          loc.matchedServices = services;
+          loc.prices = loc.prices && typeof loc.prices === 'object' ? loc.prices : {};
+          services.forEach((name) => {
+            if (!loc.prices[name]) loc.prices[name] = 'за домовленістю';
+          });
+          loc.importSource = 'telegram_ads';
+          loc.needsCoords = false;
+          return loc;
+        })
+        .filter(Boolean);
+    }
+
+    async function runTelegramAdsImport(dryRun, fromInbox) {
+      const resultEl = document.getElementById('tgAdsResult');
+      resultEl.style.display = 'block';
+      resultEl.className = 'msg';
+      const text = String(document.getElementById('tgAdsText')?.value || '').trim();
+      if (dryRun && !fromInbox && !text) {
+        resultEl.className = 'msg err';
+        resultEl.textContent = 'Вставте оголошення, завантажте JSON або відкрийте чергу бота';
+        return;
+      }
+      resultEl.textContent = dryRun
+        ? 'Розбираємо оголошення й класифікуємо за каталогом Mapfix…'
+        : 'Імпорт підтверджених оголошень…';
+      try {
+        if (!Object.keys(adminCatalog || {}).length) {
+          try {
+            const catRes = await apiFetch('/api/data');
+            adminCatalog = catRes.masterCatalog || {};
+          } catch (_) {
+            /* catalogOptions from response */
+          }
+        }
+        const body = { dryRun: Boolean(dryRun) };
+        if (dryRun) {
+          if (fromInbox) body.fromInbox = true;
+          else body.text = text;
+          tgAdsFromInbox = Boolean(fromInbox);
+        } else {
+          const selected = getSelectedTgAdsCandidates();
+          if (!selected.length) {
+            throw new Error('Оберіть оголошення з категорією, підкатегорією та координатами');
+          }
+          body.locations = selected;
+        }
+        const data = await apiFetch('/api/admin/import-telegram-ads', {
+          method: 'POST',
+          body: JSON.stringify(body),
+        });
+        if (dryRun) {
+          setTgAdsCatalog(
+            Array.isArray(data.catalogOptions) && data.catalogOptions.length
+              ? data.catalogOptions
+              : adminCatalog
+          );
+          renderTgAdsReview(data.candidates || []);
+          const botName = data.bot?.username ? `@${data.bot.username}` : 'не налаштований';
+          resultEl.className = 'msg ok';
+          resultEl.textContent =
+            `Переглянуто ${data.scanned || 0}, підходить під каталог ${data.matched || 0}, ` +
+            `відхилено ${data.rejected || 0}. Без координат: ${data.missingCoords || 0}. ` +
+            (data.geminiConfigured ? 'Gemini: так. ' : 'Gemini: немає ключа (локальний фільтр). ') +
+            `Бот: ${botName}. Перевірте категорію/послуги, за потреби вкажіть координати, потім «Підтвердити імпорт».`;
+        } else {
+          resultEl.className = 'msg ok';
+          resultEl.textContent = `Імпортовано: додано ${data.added}, пропущено дублікатів ${data.skipped}`;
+          tgAdsCandidates = [];
+          document.getElementById('tgAdsReviewBox')?.classList.add('hidden');
+          document.getElementById('tgAdsWriteBtn').disabled = true;
+          notifyMapDataChanged();
+          await initAdmin();
+        }
+      } catch (err) {
+        resultEl.className = 'msg err';
+        resultEl.textContent = err.message || 'Помилка імпорту з Telegram';
+      }
+    }
+
+    document.getElementById('tgAdsJsonFile')?.addEventListener('change', async (e) => {
+      const file = e.target.files?.[0];
+      const resultEl = document.getElementById('tgAdsResult');
+      if (!file) return;
+      try {
+        const text = await file.text();
+        document.getElementById('tgAdsText').value = text;
+        if (resultEl) {
+          resultEl.style.display = 'block';
+          resultEl.className = 'msg ok';
+          resultEl.textContent = `Файл «${file.name}» завантажено. Натисніть «Аналіз Gemini».`;
+        }
+      } catch (err) {
+        if (resultEl) {
+          resultEl.style.display = 'block';
+          resultEl.className = 'msg err';
+          resultEl.textContent = err.message || 'Не вдалося прочитати JSON';
+        }
+      }
+    });
+
+    document.getElementById('tgAdsPreviewBtn')?.addEventListener('click', () => runTelegramAdsImport(true, false));
+    document.getElementById('tgAdsWriteBtn')?.addEventListener('click', () => runTelegramAdsImport(false, tgAdsFromInbox));
+    document.getElementById('tgAdsInboxBtn')?.addEventListener('click', async () => {
+      const resultEl = document.getElementById('tgAdsResult');
+      resultEl.style.display = 'block';
+      resultEl.className = 'msg';
+      resultEl.textContent = 'Читаємо чергу бота…';
+      try {
+        const data = await apiFetch('/api/admin/import-telegram-ads/inbox');
+        const items = data.items || [];
+        if (!items.length) {
+          const botName = data.bot?.username ? `@${data.bot.username}` : 'бот не налаштований';
+          resultEl.className = 'msg err';
+          resultEl.textContent =
+            `Черга порожня (${botName}). Додайте бота в групу як адміна, вимкніть Privacy Mode в @BotFather, ` +
+            `або вставте оголошення / JSON-експорт.`;
+          return;
+        }
+        document.getElementById('tgAdsText').value = items
+          .map((item) => {
+            const who = item.username ? `@${item.username}` : item.from || '';
+            const head = [item.chatTitle, who].filter(Boolean).join(' · ');
+            return (head ? `${head}\n` : '') + (item.text || '');
+          })
+          .join('\n\n');
+        await runTelegramAdsImport(true, true);
+      } catch (err) {
+        resultEl.className = 'msg err';
+        resultEl.textContent = err.message || 'Не вдалося прочитати чергу бота';
+      }
+    });
+    document.getElementById('tgAdsClearInboxBtn')?.addEventListener('click', async () => {
+      const resultEl = document.getElementById('tgAdsResult');
+      resultEl.style.display = 'block';
+      try {
+        await apiFetch('/api/admin/import-telegram-ads/inbox', { method: 'DELETE' });
+        resultEl.className = 'msg ok';
+        resultEl.textContent = 'Чергу бота очищено';
+      } catch (err) {
+        resultEl.className = 'msg err';
+        resultEl.textContent = err.message || 'Не вдалося очистити чергу';
+      }
+    });
+    document.getElementById('tgAdsSelectAllBtn')?.addEventListener('click', () => {
+      document.querySelectorAll('.tg-ads-cb').forEach((cb) => {
+        cb.checked = true;
+      });
+    });
+    document.getElementById('tgAdsSelectNoneBtn')?.addEventListener('click', () => {
+      document.querySelectorAll('.tg-ads-cb').forEach((cb) => {
+        cb.checked = false;
+      });
+    });
+    document.getElementById('tgAdsSelectAddableBtn')?.addEventListener('click', () => {
+      document.querySelectorAll('.tg-ads-cb').forEach((cb) => {
+        const item = tgAdsCandidates[Number(cb.dataset.idx)];
+        cb.checked = Boolean(item && item.willAdd !== false && !item.willSkip && !item.needsCoords);
+      });
     });
 
     function fillBulkTrashFilters(catalog) {

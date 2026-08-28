@@ -6,6 +6,7 @@ const {
   normalizePhone,
 } = require('./telegram-auth.js');
 const { supabaseClient, USERS_TABLE } = require('./supabaseClient.js');
+const { ingestGroupMessage } = require('./telegram-ads-import.js');
 
 const WEBHOOK_PATH = '/api/telegram/webhook';
 
@@ -146,8 +147,23 @@ function buildBot() {
         '/start — інструкція або підключення акаунта',
         '',
         'Підключення: на сайті Mapfix відкрийте «Підключити Telegram».',
+        '',
+        'Оголошення майстрів: додайте бота в групу (адмін, Privacy Mode вимкнено в @BotFather) — повідомлення з телефоном потраплять у чергу імпорту адміна.',
       ].join('\n')
     );
+  });
+
+  bot.on('message', async (ctx, next) => {
+    const chatType = ctx.chat?.type;
+    if (chatType === 'group' || chatType === 'supergroup') {
+      try {
+        ingestGroupMessage(ctx);
+      } catch (err) {
+        console.warn('[telegram] group ingest:', err.message);
+      }
+      return;
+    }
+    return next();
   });
 
   bot.catch((err, ctx) => {

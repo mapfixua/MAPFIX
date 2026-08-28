@@ -199,6 +199,41 @@ function compactCatalogForPrompt(masterCatalog) {
   return out;
 }
 
+function matchCatalogServices(masterCatalog, category, subcategory, rawServices) {
+  const items = masterCatalog?.[category]?.subcats?.[subcategory]?.items || [];
+  if (!items.length) return [];
+  const incoming = Array.isArray(rawServices)
+    ? rawServices
+    : rawServices
+      ? [rawServices]
+      : [];
+  const found = [];
+  const seen = new Set();
+  for (const raw of incoming) {
+    const name = String(raw || '').trim();
+    if (!name) continue;
+    const exact = items.find((i) => i.name === name);
+    const fuzzy = exact || items.find((i) => String(i.name).toLowerCase() === name.toLowerCase());
+    if (fuzzy && !seen.has(fuzzy.name)) {
+      seen.add(fuzzy.name);
+      found.push(fuzzy.name);
+    }
+  }
+  return found.slice(0, 8);
+}
+
+function classificationFromMatch(validated, services, source, confidence) {
+  if (!validated.category || !validated.subcategory) return null;
+  return {
+    category: validated.category,
+    subcategory: validated.subcategory,
+    service: services[0] || validated.service || null,
+    services,
+    confidence,
+    source,
+  };
+}
+
 function validateResult(result, masterCatalog) {
   if (!result?.category || !masterCatalog[result.category]) {
     return { category: null, subcategory: null, service: null };
@@ -463,13 +498,18 @@ async function classifyPlacesForImport(places, masterCatalog, options = {}) {
       .join(' — ');
     const local = localParseSearch(query, masterCatalog);
     if (local.category && local.subcategory && local.confidence >= 6) {
-      out[i] = {
-        category: local.category,
-        subcategory: local.subcategory,
-        service: local.service || null,
-        confidence: local.confidence,
-        source: 'local',
-      };
+      const services = matchCatalogServices(
+        masterCatalog,
+        local.category,
+        local.subcategory,
+        local.service ? [local.service] : []
+      );
+      out[i] = classificationFromMatch(
+        { category: local.category, subcategory: local.subcategory, service: local.service || null },
+        services,
+        'local',
+        local.confidence
+      );
     } else {
       needGemini.push({ i, place, query, local });
     }
@@ -478,31 +518,37 @@ async function classifyPlacesForImport(places, masterCatalog, options = {}) {
   const apiKey = options.geminiApiKey;
   if (apiKey && needGemini.length) {
     const catalog = compactCatalogForPrompt(masterCatalog);
-    const chunkSize = 12;
+    const chunkSize = 10;
     for (let offset = 0; offset < needGemini.length; offset += chunkSize) {
       const chunk = needGemini.slice(offset, offset + chunkSize);
       const lines = chunk
-        .map(
-          (row, idx) =>
-            `${idx}. ${row.place?.title || '—'} | ${row.place?.address || ''} | ${(row.place?.types || []).slice(0, 4).join(', ')}`
-        )
+        .map((row, idx) => {
+          const hint =
+            row.place?.hintCat || row.place?.hintSub
+              ? `hint:${row.place.hintCat || ''}/${row.place.hintSub || ''}`
+              : '';
+          return `${idx}. ${row.place?.title || '—'} | ${row.place?.address || ''} | ${(row.place?.types || []).slice(0, 4).join(', ')} | ${hint}`;
+        })
         .join('\n');
       const prompt = `Ти класифікатор закладів для українського каталогу послуг Mapfix.
-Каталог (лише ці ключі category/subcategory):
+Каталог (ключі category/subcategory і точні назви services):
 ${JSON.stringify(catalog)}
 
 Заклади:
 ${lines}
 
 Поверни ТІЛЬКИ JSON:
-{"matches":[{"i":0,"category":"ключ_або_null","subcategory":"ключ_або_null"}]}
+{"matches":[{"i":0,"category":"ключ_або_null","subcategory":"ключ_або_null","services":["точна_назва"]}]}
 
 Правила:
 - i — індекс рядка в списку вище (0..${chunk.length - 1})
 - category/subcategory — ТІЛЬКИ ключі з каталогу
+- services — масив ТОЧНИХ назв послуг з цієї підкатегорії (0–6 найрелевантніших для закладу)
+- якщо не впевнений у конкретних послугах — порожній масив (точку все одно приймаємо за category+subcategory)
 - якщо заклад НЕ надає послуг з каталогу (магазин продуктів, аптека, банк, АЗС без СТО, кафе/ресторан, школа загальна без курсів тощо) — category: null
 - якщо впевнений у категорії, але не в підкатегорії — subcategory: null (такі відсіємо)
-- потрібна і category, і subcategory для прийняття`;
+- потрібна і category, і subcategory для прийняття
+- hint: можна врахувати як підказку пошуку, але не копіюй сліпо, якщо тип закладу інший`;
 
       try {
         const controller = new AbortController();
@@ -519,7 +565,7 @@ ${lines}
                 contents: [{ parts: [{ text: prompt }] }],
                 generationConfig: {
                   temperature: 0.1,
-                  maxOutputTokens: 1200,
+                  maxOutputTokens: 2000,
                   responseMimeType: 'application/json',
                 },
               }),
@@ -545,29 +591,35 @@ ${lines}
             masterCatalog
           );
           const globalIdx = chunk[idxInChunk].i;
-          if (validated.category && validated.subcategory) {
-            out[globalIdx] = {
-              ...validated,
-              confidence: 10,
-              source: 'gemini',
-            };
-          } else {
-            out[globalIdx] = null;
-          }
+          const services = matchCatalogServices(
+            masterCatalog,
+            validated.category,
+            validated.subcategory,
+            m.services || m.service
+          );
+          out[globalIdx] = classificationFromMatch(validated, services, 'gemini', 10);
         }
       } catch (err) {
         console.warn('[search-ai] classifyPlacesForImport chunk:', err.message);
-        // Fallback: accept strong local matches from this chunk
         for (const row of chunk) {
           if (out[row.i]) continue;
           if (row.local?.category && row.local?.subcategory && row.local.confidence >= 4) {
-            out[row.i] = {
-              category: row.local.category,
-              subcategory: row.local.subcategory,
-              service: row.local.service || null,
-              confidence: row.local.confidence,
-              source: 'local_fallback',
-            };
+            const services = matchCatalogServices(
+              masterCatalog,
+              row.local.category,
+              row.local.subcategory,
+              row.local.service ? [row.local.service] : []
+            );
+            out[row.i] = classificationFromMatch(
+              {
+                category: row.local.category,
+                subcategory: row.local.subcategory,
+                service: row.local.service || null,
+              },
+              services,
+              'local_fallback',
+              row.local.confidence
+            );
           }
         }
       }
@@ -575,13 +627,22 @@ ${lines}
   } else {
     for (const row of needGemini) {
       if (row.local?.category && row.local?.subcategory && row.local.confidence >= 4) {
-        out[row.i] = {
-          category: row.local.category,
-          subcategory: row.local.subcategory,
-          service: row.local.service || null,
-          confidence: row.local.confidence,
-          source: 'local',
-        };
+        const services = matchCatalogServices(
+          masterCatalog,
+          row.local.category,
+          row.local.subcategory,
+          row.local.service ? [row.local.service] : []
+        );
+        out[row.i] = classificationFromMatch(
+          {
+            category: row.local.category,
+            subcategory: row.local.subcategory,
+            service: row.local.service || null,
+          },
+          services,
+          'local',
+          row.local.confidence
+        );
       }
     }
   }
