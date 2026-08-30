@@ -83,6 +83,8 @@ const {
   buildRegionImportCandidates,
   geocodeCityUkraine,
   pricesFromCatalogServices,
+  locationNeedsGoogleReviews,
+  enrichLocationGoogleReviews,
 } = require('./places-import.js');
 const {
   fetchLocationsFromSupabase,
@@ -2503,6 +2505,66 @@ app.post('/api/admin/import-city-gemini', requireAuth, requireAdmin, async (req,
   } catch (err) {
     console.error('[POST /api/admin/import-city-gemini]', err);
     res.status(500).json({ error: err.message || 'Помилка імпорту області' });
+  }
+});
+
+app.post('/api/admin/locations/refresh-google-reviews', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const key = process.env.GOOGLE_PLACES_API_KEY || process.env.GOOGLE_MAPS_API_KEY;
+    if (!key) {
+      return res.status(503).json({ error: 'Не задано GOOGLE_PLACES_API_KEY' });
+    }
+    const limit = Math.min(20, Math.max(1, Number(req.body?.limit) || 8));
+    const force = Boolean(req.body?.force);
+    const ids = Array.isArray(req.body?.ids)
+      ? req.body.ids.map((id) => String(id || '').trim()).filter(Boolean)
+      : null;
+    const data = await readData();
+    const pool = activeLocations(data.mockLocations).filter((loc) => {
+      if (ids && ids.length && !ids.includes(loc.id)) return false;
+      return force || locationNeedsGoogleReviews(loc);
+    });
+    const batch = pool.slice(0, limit);
+    const remaining = Math.max(0, pool.length - batch.length);
+    const updated = [];
+    const skipped = [];
+    const errors = [];
+    for (const loc of batch) {
+      const result = await enrichLocationGoogleReviews(loc, { apiKey: key, force });
+      if (result.ok && !result.skipped) {
+        updated.push({
+          id: loc.id,
+          title: loc.title,
+          reviewCount: result.reviewCount,
+          reviewsCount: loc.reviewsCount || 0,
+        });
+      } else if (result.error) {
+        errors.push({ id: loc.id, title: loc.title, error: result.error });
+      } else {
+        skipped.push({ id: loc.id, title: loc.title, reason: result.reason || 'skip' });
+      }
+      await new Promise((resolve) => setTimeout(resolve, 120));
+    }
+    if (updated.length) {
+      const changed = batch.filter((loc) => updated.some((u) => u.id === loc.id));
+      await persistLocationsPatch(data, changed);
+    }
+    res.json({
+      ok: true,
+      queued: pool.length,
+      processed: batch.length,
+      updated: updated.length,
+      skipped: skipped.length,
+      failed: errors.length,
+      remaining,
+      items: updated,
+      skippedItems: skipped.slice(0, 20),
+      errors: errors.slice(0, 20),
+      note: 'Google Places віддає до 5 текстів відгуків на заклад — так само, як при імпорті з посилання.',
+    });
+  } catch (err) {
+    console.error('[refresh-google-reviews]', err);
+    res.status(500).json({ error: err.message || 'Не вдалося підтягнути відгуки' });
   }
 });
 

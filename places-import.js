@@ -837,7 +837,15 @@ function mergeLocations(existing, incoming, { updateExisting = false } = {}) {
   return { locations: result, added, skipped, updated };
 }
 
-async function searchGooglePlacesText({ query, apiKey, lat, lng, bounds, maxResultCount = 8 }) {
+async function searchGooglePlacesText({
+  query,
+  apiKey,
+  lat,
+  lng,
+  bounds,
+  maxResultCount = 8,
+  radiusMeters,
+} = {}) {
   const key = apiKey || process.env.GOOGLE_PLACES_API_KEY || process.env.GOOGLE_MAPS_API_KEY;
   if (!key) throw new Error('GOOGLE_PLACES_API_KEY is not set');
   const q = String(query || '').trim();
@@ -857,10 +865,11 @@ async function searchGooglePlacesText({ query, apiKey, lat, lng, bounds, maxResu
       },
     };
   } else if (Number.isFinite(lat) && Number.isFinite(lng)) {
+    const radius = Math.min(50000, Math.max(50, Number(radiusMeters) || 25000));
     body.locationBias = {
       circle: {
         center: { latitude: lat, longitude: lng },
-        radius: 25000,
+        radius,
       },
     };
   }
@@ -937,6 +946,7 @@ const GOOGLE_DAY_TO_SHORT = {
   середа: 'Ср',
   четвер: 'Чт',
   "п'ятниця": 'Пт',
+  "пʼятниця": 'Пт',
   пятниця: 'Пт',
   субота: 'Сб',
   неділя: 'Нд',
@@ -1032,6 +1042,140 @@ async function fetchGooglePlaceDetails({ placeId, apiKey }) {
       summary ||
       (types.length ? `Тип: ${types.slice(0, 4).join(', ')}` : 'Імпортовано з Google Maps'),
   };
+}
+
+const BULK_GOOGLE_IMPORT_SOURCES = new Set(['city_gemini', 'region_gemini', 'google_places']);
+
+function foldPlaceTitle(raw) {
+  return String(raw || '')
+    .toLowerCase()
+    .replace(/[^a-zа-яіїєґё0-9]+/gi, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function hasGoogleReviewTexts(loc) {
+  return (Array.isArray(loc?.reviews) ? loc.reviews : []).some(
+    (r) => r && r.source === 'google_maps' && String(r.text || '').trim()
+  );
+}
+
+function locationNeedsGoogleReviews(loc) {
+  if (!loc || loc.deletedAt) return false;
+  if (hasGoogleReviewTexts(loc)) return false;
+  const src = String(loc.importSource || loc.importMeta?.source || '');
+  if (BULK_GOOGLE_IMPORT_SOURCES.has(src)) return true;
+  if (src === 'google_maps_url' || src === 'telegram_ads') return false;
+  if (String(loc.id || '').startsWith('loc-imp-')) return true;
+  return Number(loc.reviewsCount) > 0 && !(Array.isArray(loc.reviews) && loc.reviews.length);
+}
+
+function storedGooglePlaceId(loc) {
+  const raw = String(loc?.importMeta?.placeId || loc?.googlePlaceId || '').trim();
+  if (!raw || raw.includes('|') || raw.startsWith('osm:')) return '';
+  if (/^places\//.test(raw)) return raw.slice('places/'.length);
+  if (raw.length < 10) return '';
+  return raw;
+}
+
+function scoreGooglePlaceCandidate(loc, place) {
+  const dist = haversineMeters(
+    { lat: Number(loc.lat), lng: Number(loc.lng) },
+    { lat: Number(place.lat), lng: Number(place.lng) }
+  );
+  if (!Number.isFinite(dist) || dist > 450) return -1;
+  const tLoc = foldPlaceTitle(loc.title);
+  const tPlace = foldPlaceTitle(place.title);
+  let score = 0;
+  if (tLoc && tPlace) {
+    if (tLoc === tPlace) score += 80;
+    else if (tLoc.includes(tPlace) || tPlace.includes(tLoc)) score += 55;
+    else {
+      const a = new Set(tLoc.split(' ').filter((w) => w.length > 2));
+      const b = new Set(tPlace.split(' ').filter((w) => w.length > 2));
+      let hit = 0;
+      for (const w of a) if (b.has(w)) hit += 1;
+      const den = Math.max(1, Math.min(a.size, b.size));
+      score += (hit / den) * 40;
+    }
+  }
+  const locPhone = normalizePhone(loc.phone || '');
+  const placePhone = normalizePhone(place.phone || '');
+  if (locPhone && placePhone && locPhone === placePhone) score += 50;
+  score += Math.max(0, 25 - dist / 18);
+  return score;
+}
+
+function applyGoogleDetailsToLocation(loc, details) {
+  const native = (Array.isArray(loc.reviews) ? loc.reviews : []).filter(
+    (r) => r && r.source !== 'google_maps'
+  );
+  const google = Array.isArray(details.reviews) ? details.reviews : [];
+  loc.reviews = [...google, ...native].slice(0, 40);
+  if (Number(details.rating) > 0) loc.rating = details.rating;
+  if (Number(details.reviewsCount) > 0) loc.reviewsCount = details.reviewsCount;
+  else if (google.length && !Number(loc.reviewsCount)) loc.reviewsCount = google.length;
+  if (details.phone && !loc.phone) loc.phone = details.phone;
+  if (details.address && !loc.address) loc.address = details.address;
+  if (details.workingHours && !loc.workingHours) loc.workingHours = details.workingHours;
+  if (details.schedule && Object.keys(details.schedule).length) {
+    if (!loc.schedule || !Object.keys(loc.schedule).length) loc.schedule = details.schedule;
+  }
+  if (!loc.importMeta || typeof loc.importMeta !== 'object') loc.importMeta = {};
+  if (details.placeId) {
+    loc.importMeta.placeId = details.placeId;
+    loc.googlePlaceId = details.placeId;
+  }
+  if (details.mapsUrl) loc.importMeta.mapsUrl = details.mapsUrl;
+  return loc;
+}
+
+async function resolveGooglePlaceIdForLocation(loc, apiKey) {
+  const stored = storedGooglePlaceId(loc);
+  if (stored) return stored;
+  const query = [loc.title, loc.address].filter(Boolean).join(', ');
+  if (query.length < 2) return '';
+  const found = await searchGooglePlacesText({
+    query,
+    apiKey,
+    lat: loc.lat,
+    lng: loc.lng,
+    maxResultCount: 8,
+    radiusMeters: 800,
+  });
+  let best = null;
+  let bestScore = 42;
+  for (const place of found) {
+    const score = scoreGooglePlaceCandidate(loc, place);
+    if (score > bestScore) {
+      bestScore = score;
+      best = place;
+    }
+  }
+  return best?.placeId || '';
+}
+
+async function enrichLocationGoogleReviews(loc, { apiKey, force = false } = {}) {
+  if (!loc) return { ok: false, skipped: true, reason: 'missing' };
+  if (loc.deletedAt) return { ok: false, skipped: true, reason: 'trashed' };
+  if (!force && hasGoogleReviewTexts(loc)) {
+    return { ok: true, skipped: true, reason: 'already_has_reviews' };
+  }
+  try {
+    const placeId = await resolveGooglePlaceIdForLocation(loc, apiKey);
+    if (!placeId) return { ok: false, skipped: true, reason: 'place_not_found' };
+    const details = await fetchGooglePlaceDetails({ placeId, apiKey });
+    applyGoogleDetailsToLocation(loc, details);
+    return {
+      ok: true,
+      skipped: false,
+      placeId,
+      reviewCount: (details.reviews || []).length,
+      reviewsCount: loc.reviewsCount || 0,
+    };
+  } catch (err) {
+    return { ok: false, skipped: false, error: err.message || 'places_failed' };
+  }
 }
 
 function googlePlaceToLocation(place, { providerId, cat, subcategory, subcategories, prices } = {}) {
@@ -1766,7 +1910,20 @@ async function buildRegionImportCandidates({
       rejected += 1;
       continue;
     }
-    locations.push(attachCatalogMatchToLocation(place, match, masterCatalog, scan));
+    let detailed = place;
+    if (place.placeId && scan.source !== 'osm') {
+      try {
+        const extra = await fetchGooglePlaceDetails({
+          placeId: place.placeId,
+          apiKey: placesApiKey,
+        });
+        detailed = { ...place, ...extra, reviews: extra.reviews || [] };
+        await sleep(80);
+      } catch (err) {
+        console.warn('[buildRegionImportCandidates] details skip:', place.title, err.message);
+      }
+    }
+    locations.push(attachCatalogMatchToLocation(detailed, match, masterCatalog, scan));
     if (locations.length >= maxCandidates) break;
   }
 
@@ -1891,6 +2048,9 @@ module.exports = {
   buildRegionImportCandidates,
   normalizeRegionBounds,
   pricesFromCatalogServices,
+  locationNeedsGoogleReviews,
+  enrichLocationGoogleReviews,
+  hasGoogleReviewTexts,
   PROVIDER_IMPORT_COLUMNS,
   PROVIDER_IMPORT_TEMPLATE_CSV,
 };

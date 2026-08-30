@@ -1269,6 +1269,15 @@
               <button type="button" id="cityGeminiWriteBtn" style="width:auto" disabled>Підтвердити імпорт</button>
             </div>
             <div id="cityGeminiResult" class="msg" style="display:none;margin-top:14px"></div>
+            <div style="border:1px solid #e5e7eb;border-radius:12px;padding:14px;margin:16px 0 0;background:#f8fafc">
+              <h3 style="margin:0 0 8px;font-size:1rem">Підтягнути відгуки Google</h3>
+              <p class="field-hint" style="margin:0 0 10px">
+                Для точок, затягнутих областю / населеним пунктом, є рейтинг, але тексти відгуків часто порожні.
+                Кнопка методично знаходить кожен заклад у Google Maps і записує відгуки (Places API віддає до 5 текстів на точку — як при імпорті з посилання).
+              </p>
+              <button type="button" id="refreshGoogleReviewsBtn" class="btn-secondary" style="width:auto">Підтягнути відгуки з Google</button>
+              <div id="refreshGoogleReviewsResult" class="msg" style="display:none;margin-top:10px"></div>
+            </div>
             <div id="cityGeminiReviewBox" class="hidden" style="margin-top:16px;border:1px solid #e5e7eb;border-radius:12px;padding:12px;background:#fff">
               <div style="display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:10px">
                 <h3 style="margin:0;font-size:1rem">Кандидати області <span id="cityGeminiReviewCount" class="list-item-meta"></span></h3>
@@ -4075,6 +4084,43 @@
     });
     document.getElementById('cityGeminiPreviewBtn')?.addEventListener('click', () => runCityGeminiImport(true));
     document.getElementById('cityGeminiWriteBtn')?.addEventListener('click', () => runCityGeminiImport(false));
+    document.getElementById('refreshGoogleReviewsBtn')?.addEventListener('click', async () => {
+      const btn = document.getElementById('refreshGoogleReviewsBtn');
+      const out = document.getElementById('refreshGoogleReviewsResult');
+      if (!btn || !out) return;
+      btn.disabled = true;
+      out.style.display = 'block';
+      out.className = 'msg';
+      let updated = 0;
+      let skipped = 0;
+      let failed = 0;
+      let remaining = 1;
+      let round = 0;
+      try {
+        while (remaining > 0 && round < 40) {
+          round += 1;
+          out.textContent = `Підтягую відгуки… пакет ${round}. Оновлено ${updated}, пропущено ${skipped}.`;
+          const data = await apiFetch('/api/admin/locations/refresh-google-reviews', {
+            method: 'POST',
+            body: JSON.stringify({ limit: 8 }),
+          });
+          updated += Number(data.updated) || 0;
+          skipped += Number(data.skipped) || 0;
+          failed += Number(data.failed) || 0;
+          remaining = Number(data.remaining) || 0;
+          if (!data.processed) break;
+        }
+        out.className = 'msg ok';
+        out.textContent =
+          `Готово. Оновлено ${updated} точок, пропущено ${skipped}, помилок ${failed}.` +
+          (remaining ? ` Ще лишилось ${remaining} — натисніть ще раз.` : '');
+      } catch (err) {
+        out.className = 'msg err';
+        out.textContent = err.message || 'Не вдалося підтягнути відгуки';
+      } finally {
+        btn.disabled = false;
+      }
+    });
     document.getElementById('cityGeminiSelectAllBtn')?.addEventListener('click', () => {
       document.querySelectorAll('.city-gemini-cb').forEach((cb) => {
         cb.checked = true;
