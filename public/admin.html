@@ -1570,7 +1570,7 @@
           <div id="providerPaneClaim" class="admin-pane card">
             <h2>Забрати заклад з карти</h2>
             <p class="field-hint">
-              Знайдіть імпортовану точку за номером з вивіски. Підтвердження — код у Telegram на цей самий телефон.
+              Знайдіть імпортовану точку за номером з вивіски. Якщо номер збігається з карткою — заклад одразу ваш, без коду в Telegram.
             </p>
             <label for="providerClaimPhone">Номер телефону на картці</label>
             <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:stretch;margin-bottom:12px">
@@ -3079,6 +3079,7 @@
             <div class="inline-actions">
               <button type="submit" class="btn-primary" style="width:auto" id="locDetailSaveBtn">Зберегти зміни</button>
               <a class="btn-secondary" style="width:auto;display:inline-flex;align-items:center;text-decoration:none;padding:10px 16px;border-radius:8px;background:#64748b;color:#fff;font-weight:600" href="/?loc=${encodeURIComponent(l.id)}" target="_blank" rel="noopener">Відкрити на карті</a>
+              ${!l.providerId ? `<button type="button" class="btn-secondary" style="width:auto" id="locCopyInviteBtn">Скопіювати запрошення</button>` : ''}
               ${l.provider ? `<button type="button" class="btn-secondary" style="width:auto" id="goProvFromLoc">Картка провайдера</button>` : ''}
               <button type="button" class="btn-danger" style="width:auto" id="delLocBtn">У кошик</button>
             </div>
@@ -3153,6 +3154,19 @@
           goProv.onclick = () => {
             showAdminPane('providers');
             openProviderDetail(l.provider.id);
+          };
+        }
+        const copyInviteBtn = document.getElementById('locCopyInviteBtn');
+        if (copyInviteBtn) {
+          copyInviteBtn.onclick = async () => {
+            const inviteUrl = `${location.origin}/?loc=${encodeURIComponent(l.id)}&claim=1`;
+            const text = `Це ваш заклад на Mapfix? Відкрийте посилання й введіть телефон з картки — заклад одразу ваш:\n${inviteUrl}`;
+            try {
+              await navigator.clipboard.writeText(text);
+              showMessage('Запрошення скопійовано');
+            } catch (_) {
+              prompt('Скопіюйте запрошення:', text);
+            }
           };
         }
 
@@ -6794,10 +6808,8 @@
         if (phoneInput && !typed && data.phone) phoneInput.value = data.phone;
         if (statusEl) {
           statusEl.innerHTML = data.phone
-            ? `Телефон акаунта: <b>${esc(data.phone)}</b>. Telegram: ${
-                data.telegramLinked ? 'підключено ✓' : 'не підключено — <a href="/link-telegram.html">підключити</a>'
-              }`
-            : 'У профілі немає телефону — введіть номер з вивіски вище. Після claim цей номер збережеться в акаунт.';
+            ? `Телефон акаунта: <b>${esc(data.phone)}</b>`
+            : 'У профілі немає телефону — введіть номер з вивіски вище. Після claim цей номер збережеться в акаунт, якщо він вільний.';
         }
         const locs = data.locations || [];
         if (!locs.length) {
@@ -6806,7 +6818,7 @@
           return;
         }
         listEl.innerHTML =
-          `<label class="subcat-pick-row" style="margin-bottom:10px"><input type="checkbox" id="claimAllSamePhone"> <span>Забрати всі точки з цим телефоном за один код</span></label>` +
+          `<label class="subcat-pick-row" style="margin-bottom:10px"><input type="checkbox" id="claimAllSamePhone" checked> <span>Забрати всі точки з цим телефоном</span></label>` +
           locs
             .map(
               (l) => `
@@ -6828,32 +6840,27 @@
     async function startClaimFlow(locationId) {
       try {
         const claimAll = Boolean(document.getElementById('claimAllSamePhone')?.checked);
-        const req = await fetch(`/api/provider/locations/${encodeURIComponent(locationId)}/claim/request`, {
-          method: 'POST',
-          credentials: 'same-origin',
-          headers: { 'Content-Type': 'application/json' },
-        });
-        const reqData = await req.json();
-        if (!req.ok) {
-          if (reqData.needsTelegramLink) {
-            if (confirm(reqData.error + '\nВідкрити підключення Telegram?')) {
-              location.href = '/link-telegram.html';
-            }
-            return;
-          }
-          throw new Error(reqData.error || 'Помилка');
+        const phone = String(document.getElementById('providerClaimPhone')?.value || '').trim();
+        if (!phone) {
+          throw new Error('Вкажіть телефон з картки');
         }
-        const code = prompt(`Код з Telegram для ${reqData.phone}:`);
-        if (!code) return;
-        const conf = await fetch(`/api/provider/locations/${encodeURIComponent(locationId)}/claim/confirm`, {
+        const req = await fetch(`/api/locations/${encodeURIComponent(locationId)}/claim-by-phone`, {
           method: 'POST',
           credentials: 'same-origin',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ code: code.trim(), claimAll }),
+          body: JSON.stringify({ phone, claimAll }),
         });
-        const confData = await conf.json();
-        if (!conf.ok) throw new Error(confData.error || 'Не підтверджено');
-        showMessage(`Готово: забрано точок — ${confData.claimedCount}`);
+        const data = await req.json();
+        if (!req.ok) throw new Error(data.error || 'Помилка');
+        if (data.needsRegister && data.registerUrl) {
+          location.href = data.registerUrl;
+          return;
+        }
+        showMessage(
+          data.alreadyOwned
+            ? 'Ця точка вже ваша'
+            : `Готово: забрано точок — ${data.claimedCount}`
+        );
         await reloadProvider();
         renderMyLocations();
         loadProviderClaim();

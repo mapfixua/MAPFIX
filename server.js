@@ -173,6 +173,7 @@ const ADMIN_PANEL_ROLES = ['provider', 'admin'];
 const ALL_KNOWN_ROLES = ['client', 'provider', 'admin'];
 const ORDER_STATUSES = ['Очікує', 'В роботі', 'Виконано'];
 const authRateLimit = createRateLimiter({ windowMs: 15 * 60 * 1000, max: 40 });
+const claimRateLimit = createRateLimiter({ windowMs: 15 * 60 * 1000, max: 12 });
 const searchRateLimit = createRateLimiter({ windowMs: 60 * 1000, max: 20 });
 
 app.use(express.json({ limit: '7mb' }));
@@ -643,6 +644,73 @@ function isClaimableLocation(loc) {
   return phone.replace(/\D/g, '').length >= 10;
 }
 
+async function promoteClientToProvider(user, { companyName, phone } = {}) {
+  if (!user || user.role === 'provider' || user.role === 'admin') return user;
+  const { error } = await supabaseClient
+    .from(USERS_TABLE)
+    .update({ role: 'provider' })
+    .eq('id', user.id);
+  if (error) {
+    throw new Error(error.message || 'Не вдалося змінити роль на майстра');
+  }
+  const profilePhone = formatLocationPhone(phone || user.phone || '');
+  try {
+    await upsertProviderProfile(user.id, {
+      companyName: String(companyName || 'Майстер').trim() || 'Майстер',
+      phone: profilePhone,
+      serviceCategories: [],
+      serviceSubcategories: [],
+      customSubcategories: [],
+      createdAt: new Date().toISOString(),
+    });
+  } catch (profileErr) {
+    console.warn('[claim] provider profile skip:', profileErr.message);
+  }
+  return { ...user, role: 'provider', phone: profilePhone || user.phone };
+}
+
+async function claimMatchingLocations(userId, phone, { locationId = null, claimAll = true } = {}) {
+  const data = await readData();
+  const matchPhone = formatLocationPhone(phone);
+  if (!matchPhone || matchPhone.replace(/\D/g, '').length < 10) {
+    return { ok: false, status: 400, error: 'Вкажіть коректний номер телефону' };
+  }
+  let pool = activeLocations(data.mockLocations).filter(
+    (loc) => isClaimableLocation(loc) && phonesMatch(matchPhone, loc.phone)
+  );
+  if (locationId) {
+    const primary = findLocation(data, locationId);
+    if (!primary || isLocationTrashed(primary)) {
+      return { ok: false, status: 404, error: 'Локацію не знайдено' };
+    }
+    if (primary.providerId && primary.providerId !== userId) {
+      return { ok: false, status: 409, error: 'Точку вже забрав інший майстер' };
+    }
+    if (primary.providerId === userId) {
+      return { ok: true, claimed: [primary], alreadyOwned: true };
+    }
+    if (!phonesMatch(matchPhone, primary.phone)) {
+      return { ok: false, status: 403, error: 'Номер не збігається з телефоном на картці' };
+    }
+    pool = claimAll ? pool : pool.filter((loc) => loc.id === locationId);
+    if (!pool.some((loc) => loc.id === locationId) && isClaimableLocation(primary)) {
+      pool = [primary, ...pool.filter((loc) => loc.id !== locationId)];
+    }
+  }
+  if (!pool.length) {
+    return { ok: false, status: 409, error: 'Немає вільних точок з цим телефоном' };
+  }
+  const now = new Date().toISOString();
+  const claimed = [];
+  for (const loc of pool) {
+    loc.providerId = userId;
+    loc.claimedAt = now;
+    claimed.push(loc);
+  }
+  await persistLocationsPatch(data, claimed);
+  return { ok: true, claimed };
+}
+
 function publicClaimPreview(loc) {
   return {
     id: loc.id,
@@ -996,6 +1064,16 @@ app.post('/api/register', async (req, res) => {
     setSessionUser(res, newUser);
     analytics.bumpTotal('registers').catch(() => {});
 
+    let claimedOnRegister = [];
+    if (role === 'provider' && normalizedPhone) {
+      try {
+        const claimed = await claimMatchingLocations(newUser.id, normalizedPhone, { claimAll: true });
+        if (claimed.ok) claimedOnRegister = claimed.claimed || [];
+      } catch (claimErr) {
+        console.warn('[register] auto-claim skip:', claimErr.message);
+      }
+    }
+
     let telegramLink = null;
     if (normalizedPhone && isTelegramConfigured() && process.env.TELEGRAM_BOT_USERNAME) {
       try {
@@ -1025,9 +1103,12 @@ app.post('/api/register', async (req, res) => {
       nextStep: telegramLink
         ? 'open_telegram'
         : 'done',
-      message: telegramLink
-        ? 'Акаунт створено. Відкрийте Telegram-бота, щоб отримувати коди входу.'
-        : 'Акаунт створено. Можна входити логіном і паролем.',
+      claimedCount: claimedOnRegister.length,
+      message: claimedOnRegister.length
+        ? `Акаунт створено. Закладів на ваше імʼя: ${claimedOnRegister.length}.`
+        : telegramLink
+          ? 'Акаунт створено. Відкрийте Telegram-бота, щоб отримувати коди входу.'
+          : 'Акаунт створено. Можна входити логіном і паролем.',
     });
   } catch (err) {
     console.error(err);
@@ -3842,11 +3923,6 @@ app.get('/api/provider/claimable', requireAuth, requireProvider, async (req, res
     const fullUser = (await readUsers()).find((u) => u.id === user.id) || user;
     const accountPhone = formatLocationPhone(fullUser.phone || '');
     const queryPhone = formatLocationPhone(req.query.phone || '');
-    if (accountPhone && queryPhone && !phonesMatch(accountPhone, queryPhone)) {
-      return res.status(403).json({
-        error: `Телефон у профілі (${accountPhone}) не збігається з пошуком (${queryPhone}). Змініть телефон у профілі або шукайте свій номер.`,
-      });
-    }
     const matchPhone = queryPhone || accountPhone;
     const data = await readData();
     const claimable = matchPhone
@@ -3896,6 +3972,111 @@ app.get('/api/provider/locations/:id/claim-info', requireAuth, requireProvider, 
   } catch (err) {
     console.error('[claim-info]', err);
     res.status(500).json({ error: 'Помилка' });
+  }
+});
+
+function claimReturnPath(locationId) {
+  return `/?loc=${encodeURIComponent(locationId)}&claim=1`;
+}
+
+function claimRegisterPath(locationId, phone) {
+  let url =
+    '/register.html?role=provider&next=' + encodeURIComponent(claimReturnPath(locationId));
+  const formatted = formatLocationPhone(phone);
+  if (formatted) url += '&phone=' + encodeURIComponent(formatted);
+  return url;
+}
+
+async function adoptListingPhoneIfEmpty(user, listingPhone) {
+  const accountPhone = formatLocationPhone(user.phone || '');
+  if (accountPhone) return { user, changed: false };
+  const conflict = (await readUsers()).find(
+    (u) => u.id !== user.id && phonesMatch(u.phone, listingPhone)
+  );
+  if (conflict) return { user, changed: false };
+  const updErr = await updateUserPhone(user.id, listingPhone);
+  if (updErr) {
+    console.warn('[claim] set phone skip:', updErr.message);
+    return { user, changed: false };
+  }
+  return { user: { ...user, phone: listingPhone }, changed: true };
+}
+
+app.post('/api/locations/:id/claim-by-phone', claimRateLimit, async (req, res) => {
+  try {
+    const locationId = String(req.params.id || '').trim();
+    const submittedPhone = formatLocationPhone(req.body?.phone || '');
+    const claimAll = req.body?.claimAll !== false;
+    const data = await readData();
+    const loc = findLocation(data, locationId);
+    if (!loc || isLocationTrashed(loc)) {
+      return res.status(404).json({ error: 'Локацію не знайдено' });
+    }
+    const locPhone = formatLocationPhone(loc.phone);
+    if (!locPhone || locPhone.replace(/\D/g, '').length < 10) {
+      return res.status(400).json({
+        error:
+          'У точки немає телефону для підтвердження. Напишіть через «Повідомити про помилку».',
+        needsFeedback: true,
+      });
+    }
+    if (!submittedPhone || submittedPhone.replace(/\D/g, '').length < 10) {
+      return res.status(400).json({ error: 'Вкажіть коректний номер телефону' });
+    }
+    if (!phonesMatch(submittedPhone, loc.phone)) {
+      return res.status(403).json({ error: 'Номер не збігається з телефоном на картці' });
+    }
+
+    let user = getSessionUser(req);
+    if (!user) {
+      return res.json({
+        ok: true,
+        needsRegister: true,
+        registerUrl: claimRegisterPath(locationId, submittedPhone),
+        loginUrl: '/login.html?next=' + encodeURIComponent(claimReturnPath(locationId)),
+        message: 'Номер збігся. Створіть акаунт майстра — заклад одразу стане вашим.',
+      });
+    }
+    if (user.role === 'admin') {
+      return res.status(403).json({
+        error: 'Адмін не забирає точки з карти. Призначте власника в адмінці.',
+        adminUrl: '/admin?pane=locations&loc=' + encodeURIComponent(locationId),
+      });
+    }
+
+    const fullUser = (await readUsers()).find((u) => u.id === user.id) || user;
+    if (user.role === 'client') {
+      user = await promoteClientToProvider(fullUser, {
+        companyName: fullUser.login || 'Майстер',
+        phone: formatLocationPhone(fullUser.phone) || submittedPhone,
+      });
+      setSessionUser(res, user);
+    } else {
+      user = fullUser;
+    }
+
+    const adopted = await adoptListingPhoneIfEmpty(user, submittedPhone);
+    user = adopted.user;
+    if (adopted.changed) setSessionUser(res, user);
+
+    const result = await claimMatchingLocations(user.id, submittedPhone, {
+      locationId,
+      claimAll,
+    });
+    if (!result.ok) {
+      return res.status(result.status || 400).json({ error: result.error });
+    }
+
+    res.json({
+      ok: true,
+      claimedCount: (result.claimed || []).length,
+      alreadyOwned: Boolean(result.alreadyOwned),
+      locations: (result.claimed || []).map(publicClaimPreview),
+      role: user.role,
+    });
+  } catch (err) {
+    console.error('[claim-by-phone]', err);
+    res.status(500).json({ error: err.message || 'Не вдалося забрати заклад' });
   }
 });
 

@@ -57,7 +57,7 @@
 
         <label class="mf-label" for="phone">Телефон</label>
         <input id="phone" type="tel" inputmode="tel" autocomplete="tel" placeholder="+380111111111">
-        <p class="mf-hint">Потрібен для кодів у Telegram (після привʼязки бота)</p>
+        <p class="mf-hint">Якщо номер збігається з карткою закладу — після реєстрації точка одразу ваша.</p>
 
         <label class="mf-label" for="email">Email (необовʼязково)</label>
         <input id="email" type="email" autocomplete="email" placeholder="you@gmail.com">
@@ -120,8 +120,11 @@
       setRole('provider');
       const sub = document.getElementById('registerSub');
       if (sub) {
+        if (nextRaw.includes('claim=1')) {
+          document.getElementById('phone').required = true;
+        }
         sub.textContent = nextRaw.includes('claim=1')
-          ? 'Створіть акаунт майстра. Важливо: телефон має збігатися з телефоном на картці закладу.'
+          ? 'Створіть акаунт майстра. Введіть той самий телефон, що на картці закладу — заклад одразу стане вашим.'
           : 'Створіть акаунт майстра — потім зможете додати свій заклад на карту.';
       }
     } else {
@@ -380,7 +383,7 @@
         const data = await res.json().catch(() => ({}));
         if (!res.ok) throw new Error(data.error || 'Помилка реєстрації');
         pendingRedirectRole = data.user?.role || body.role;
-        if (data.telegramLink?.botUrl) {
+        if (data.telegramLink?.botUrl && !(Number(data.claimedCount) > 0 && nextRaw.includes('claim=1'))) {
           registerForm.classList.add('mf-hidden');
           document.getElementById('oauthBlock').classList.add('mf-hidden');
           document.getElementById('oauthOr').classList.add('mf-hidden');

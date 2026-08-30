@@ -467,6 +467,57 @@
             height: 40px;
             margin: 0;
         }
+        .claim-phone-form {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+        .claim-phone-form input[type="tel"] {
+            height: 40px;
+            border-radius: 8px;
+            border: 1.5px solid var(--ink);
+            padding: 0 12px;
+            font: inherit;
+            font-size: 15px;
+            background: #fff;
+        }
+        .claim-phone-error {
+            margin: 0;
+            font-size: 12px;
+            font-weight: 700;
+            color: #b91c1c;
+        }
+        .claim-phone-login {
+            font-size: 12px;
+            font-weight: 600;
+            color: var(--muted);
+        }
+        .claim-phone-login a { color: var(--ink); }
+        .masters-home-cta {
+            margin: 4px 12px 8px;
+            padding: 12px 14px;
+            border-radius: 12px;
+            border: 1.5px solid var(--ink);
+            background: var(--primary-light);
+            text-align: left;
+            cursor: pointer;
+            font-family: inherit;
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+            width: calc(100% - 24px);
+        }
+        .masters-home-cta strong {
+            font-size: 14px;
+            font-weight: 800;
+            color: var(--ink);
+        }
+        .masters-home-cta span {
+            font-size: 12px;
+            font-weight: 600;
+            color: var(--muted);
+            line-height: 1.35;
+        }
         .detail-preview-hint {
             font-size: 12px;
             font-weight: 600;
@@ -851,6 +902,9 @@
             gap: 8px;
             margin-top: 2px;
         }
+        .profile-quick-actions.single {
+            grid-template-columns: 1fr;
+        }
         .profile-quick-btn {
             width: auto;
             height: 40px;
@@ -1120,6 +1174,7 @@
         }
         .add-business-btn:hover { filter: brightness(0.96); }
         .add-business-btn .btn-label { margin-right: 0; }
+        .add-business-btn .btn-label-short { display: none; }
         .install-app-btn {
             padding: 0 14px; color: var(--ink); background: #fff; white-space: nowrap; gap: 6px;
             border: 1.5px solid #d7dde7;
@@ -1596,7 +1651,8 @@
                 gap: 4px;
                 min-width: 0;
             }
-            .add-business-btn .btn-label { font-size: 12px; }
+            .add-business-btn .btn-label-full { display: none; }
+            .add-business-btn .btn-label-short { display: inline; font-size: 12px; }
             .add-business-btn i { font-size: 12px; }
             .install-app-btn {
                 padding: 0 10px;
@@ -1772,7 +1828,8 @@
             .brand-chip-name { display: none; }
             .brand-chip { padding: 5px; min-width: 44px; justify-content: center; }
             .add-business-btn { padding: 0 10px; }
-            .add-business-btn span.btn-label { display: none; }
+            .add-business-btn .btn-label-full { display: none; }
+            .add-business-btn .btn-label-short { display: inline; }
             .login-btn { min-width: 70px; padding: 0 12px; }
             .category-card { flex: 0 0 58px; min-width: 58px; }
             .category-card-icon { width: 34px; height: 34px; font-size: 14px; }
@@ -1807,7 +1864,7 @@
                     </div>
                 </div>
                 <div class="top-header-end">
-                    <button type="button" class="header-btn add-business-btn" id="addBusinessBtn" title="Додати заклад"><span class="btn-label">Додати</span><i class="fa-solid fa-plus" aria-hidden="true"></i></button>
+                    <button type="button" class="header-btn add-business-btn" id="addBusinessBtn" title="Додати свій бізнес безкоштовно"><span class="btn-label btn-label-full">Додати бізнес безкоштовно</span><span class="btn-label btn-label-short">Бізнес</span><i class="fa-solid fa-plus" aria-hidden="true"></i></button>
                     <button type="button" class="header-btn install-app-btn" id="installAppHeaderBtn" title="Встановити додаток Mapfix" aria-label="Встановити додаток"><i class="fa-solid fa-download" aria-hidden="true"></i><span class="btn-label">Додаток</span></button>
                     <a class="header-btn login-btn" id="loginHeaderBtn" href="/login.html"><i class="fa-solid fa-right-to-bracket" aria-hidden="true"></i><span>Вхід</span></a>
                     <div class="profile-wrap">
@@ -2462,21 +2519,21 @@
             });
 
             document.getElementById('addBusinessBtn').addEventListener('click', () => {
+                window.startAddBusinessFlow();
+            });
+
+            window.startAddBusinessFlow = function() {
                 const u = State.currentUser;
                 if (!u) {
-                    if (confirm('Щоб додати місце на карту, зареєструйтесь як майстер — це безкоштовно.\n\nПерейти до реєстрації?')) {
-                        window.location.href = '/register.html?role=provider&next=' + encodeURIComponent('/?add=1');
-                    }
+                    window.location.href = '/register.html?role=provider&next=' + encodeURIComponent('/?add=1');
                     return;
                 }
                 if (u.role === 'client') {
-                    if (confirm('Додавати місця можуть майстри. Зареєструватись як майстер?')) {
-                        window.location.href = '/register.html?role=provider&next=' + encodeURIComponent('/?add=1');
-                    }
+                    window.location.href = '/register.html?role=provider&next=' + encodeURIComponent('/?add=1');
                     return;
                 }
                 openGoogleImport();
-            });
+            };
 
             document.getElementById('brandHomeBtn')?.addEventListener('click', () => {
                 resetToHome();
@@ -2500,12 +2557,8 @@
             }
             if (urlParams.get('claim') === '1' && urlLoc) {
                 setTimeout(() => {
-                    const u = State.currentUser;
-                    if (u && u.role === 'provider') {
-                        const loc = (window.mockLocations || []).find((l) => l.id === urlLoc);
-                        if (loc && !loc.providerId) claimLocationFromMap(urlLoc);
-                    }
-                }, 900);
+                    document.getElementById('claimPhoneInput')?.focus();
+                }, 700);
             }
             if (urlParams.get('feedback') === '1') {
                 setTimeout(() => openSiteFeedbackModal(), 450);
@@ -3086,7 +3139,11 @@
                         <p class="nav-hint">
                             <i class="fa-solid fa-hand-pointer" style="color:var(--primary);margin-right:6px"></i>
                             Проведіть стрічкою категорій і торкніться потрібної іконки
-                        </p>`;
+                        </p>
+                        <button type="button" class="masters-home-cta" id="homeAddBusinessCta" onclick="window.startAddBusinessFlow && window.startAddBusinessFlow()">
+                            <strong>Додати свій бізнес безкоштовно</strong>
+                            <span>Без комісій. Якщо заклад уже на карті — введіть телефон на картці.</span>
+                        </button>`;
                     renderAiSuggestionsInto(catalogNav);
                     syncMapMarkers();
                     return;
@@ -3244,17 +3301,25 @@
                 const canOfferClaim = !loc.providerId;
                 const locPhoneDigits = String(loc.phone || '').replace(/\D/g, '');
                 const locHasClaimPhone = locPhoneDigits.length >= 10;
+                const locIdEsc = escapeHtml(loc.id);
                 const claimBannerHtml = canOfferClaim
-                    ? `<div class="claim-owner-banner" id="claimOwnerBanner">
-                        <strong>Це ваш заклад? Заберіть за 2 хв</strong>
+                    ? `<div class="claim-owner-banner" id="claimOwnerBanner" onclick="event.stopPropagation()">
+                        <strong>Це ваш заклад?</strong>
                         <p>${
                           locHasClaimPhone
-                            ? 'Зареєструйтесь як майстер із телефоном закладу — підтвердите код у Telegram і точка стане вашою.'
-                            : 'У точки немає телефону для автопідтвердження. Напишіть нам через «Повідомити про помилку» — призначимо вручну.'
+                            ? 'Введіть телефон з картки. Якщо збігається — заклад одразу ваш.'
+                            : 'У точки немає телефону для підтвердження. Напишіть нам через «Повідомити про помилку» — призначимо вручну.'
                         }</p>
-                        <button type="button" class="action-btn btn-claim" id="claimLocBtn" onclick="event.stopPropagation(); claimLocationFromMap('${escapeHtml(loc.id)}')">${
-                          locHasClaimPhone ? 'Забрати заклад' : 'Повідомити, що це мій заклад'
-                        }</button>
+                        ${
+                          locHasClaimPhone
+                            ? `<form class="claim-phone-form" id="claimByPhoneForm" onsubmit="event.preventDefault(); event.stopPropagation(); submitClaimByPhone(event, '${locIdEsc}')">
+                                <input type="tel" id="claimPhoneInput" inputmode="tel" autocomplete="tel" placeholder="+380XXXXXXXXX" required>
+                                <p class="claim-phone-error" id="claimPhoneError" hidden></p>
+                                <button type="submit" class="action-btn btn-claim" id="claimLocBtn">Забрати заклад</button>
+                                <p class="claim-phone-login">Уже є акаунт? <a href="${escapeHtml(claimLoginUrl(loc.id))}">Увійти</a></p>
+                               </form>`
+                            : `<button type="button" class="action-btn btn-claim" id="claimLocBtn" onclick="event.stopPropagation(); submitClaimByPhone(event, '${locIdEsc}')">Повідомити, що це мій заклад</button>`
+                        }
                        </div>`
                     : '';
 
@@ -3271,6 +3336,16 @@
                 const ratingVal = Number(loc.rating || 0).toFixed(1);
                 const reviewsN = Number(loc.reviewsCount) || 0;
                 const phoneHref = loc.phone ? `tel:${escapeHtml(loc.phone)}` : '';
+
+                const callBtn = phoneHref
+                    ? `<a href="${phoneHref}" class="profile-quick-btn" title="Подзвонити" aria-label="Подзвонити" onclick="event.stopPropagation(); trackLocationClick('${escapeHtml(loc.id)}','call')"><i class="fa-solid fa-phone"></i> Подзвонити</a>`
+                    : '';
+                const chatBtn = chatHref
+                    ? `<a href="${escapeHtml(chatHref)}" target="_blank" rel="noopener" class="profile-quick-btn" title="Написати" aria-label="Написати" onclick="event.stopPropagation(); trackLocationClick('${escapeHtml(loc.id)}','chat')"><i class="fa-solid fa-comment"></i> Написати</a>`
+                    : '';
+                const quickActionsHtml = callBtn || chatBtn
+                    ? `<div class="profile-quick-actions${callBtn && chatBtn ? '' : ' single'}">${callBtn}${chatBtn}</div>`
+                    : '';
 
                 const headerBox = document.getElementById('detailHeaderContent');
                 headerBox.innerHTML = `
@@ -3294,14 +3369,7 @@
                             ${specialty ? `<p class="profile-specialty">${escapeHtml(specialty)}</p>` : ''}
                         </div>
                     </div>
-                    <div class="profile-quick-actions">
-                        ${phoneHref
-                            ? `<a href="${phoneHref}" class="profile-quick-btn" title="Подзвонити" aria-label="Подзвонити" onclick="event.stopPropagation(); trackLocationClick('${escapeHtml(loc.id)}','call')"><i class="fa-solid fa-phone"></i> Подзвонити</a>`
-                            : `<span class="profile-quick-btn" aria-disabled="true" title="Немає телефону"><i class="fa-solid fa-phone"></i> Подзвонити</span>`}
-                        ${chatHref
-                            ? `<a href="${escapeHtml(chatHref)}" target="_blank" rel="noopener" class="profile-quick-btn" title="Написати" aria-label="Написати" onclick="event.stopPropagation(); trackLocationClick('${escapeHtml(loc.id)}','chat')"><i class="fa-solid fa-comment"></i> Написати</a>`
-                            : `<span class="profile-quick-btn" aria-disabled="true" title="Немає чату"><i class="fa-solid fa-comment"></i> Написати</span>`}
-                    </div>
+                    ${quickActionsHtml}
                 `;
 
                 renderDetailBody(loc, { claimBannerHtml, mode });
@@ -3322,49 +3390,14 @@
                 applyPageSeoFromState();
             };
 
-            async function refreshClaimButton(loc) {
+            function refreshClaimButton(loc) {
                 const banner = document.getElementById('claimOwnerBanner');
-                const btn = document.getElementById('claimLocBtn');
-                if (!banner || !btn) return;
-                if (loc.providerId) {
-                    banner.style.display = 'none';
-                    return;
-                }
-                banner.style.display = '';
-                const u = State.currentUser;
-                if (!u || u.role !== 'provider') {
-                    btn.textContent = 'Забрати заклад';
-                    return;
-                }
-                try {
-                    const res = await fetch(
-                      `/api/provider/locations/${encodeURIComponent(loc.id)}/claim-info`,
-                      { credentials: 'same-origin' }
-                    );
-                    const data = await res.json();
-                    if (!res.ok) return;
-                    if (data.claimable) {
-                        btn.textContent = 'Підтвердити й забрати';
-                    } else if (data.locationHasPhone && !data.hasOwner) {
-                        btn.textContent = 'Забрати (перевірка телефону)';
-                    } else {
-                        btn.textContent = 'Забрати заклад';
-                    }
-                } catch (_) {}
+                if (!banner) return;
+                banner.style.display = loc.providerId ? 'none' : '';
             }
 
             function claimReturnUrl(locationId) {
                 return '/?loc=' + encodeURIComponent(locationId) + '&claim=1';
-            }
-
-            function claimRegisterUrl(locationId) {
-                const loc = (window.mockLocations || []).find((l) => l.id === locationId);
-                const back = claimReturnUrl(locationId);
-                let url =
-                    '/register.html?role=provider&next=' + encodeURIComponent(back);
-                const phone = String(loc?.phone || '').trim();
-                if (phone) url += '&phone=' + encodeURIComponent(phone);
-                return url;
             }
 
             function claimLoginUrl(locationId) {
@@ -3376,72 +3409,67 @@
                 return String(loc?.phone || '').replace(/\D/g, '').length >= 10;
             }
 
-            window.claimLocationFromMap = async function(locationId) {
+            function setClaimPhoneError(message) {
+                const errEl = document.getElementById('claimPhoneError');
+                if (!errEl) {
+                    if (message) alert(message);
+                    return;
+                }
+                if (!message) {
+                    errEl.hidden = true;
+                    errEl.textContent = '';
+                    return;
+                }
+                errEl.hidden = false;
+                errEl.textContent = message;
+            }
+
+            window.submitClaimByPhone = async function(event, locationId) {
+                if (event) {
+                    event.preventDefault?.();
+                    event.stopPropagation?.();
+                }
                 trackLocationClick(locationId, 'claim');
-                const u = State.currentUser;
                 if (!locationHasClaimPhone(locationId)) {
-                    if (confirm('У цього закладу немає телефону для автопідтвердження.\n\nВідкрити форму «Повідомити про помилку», щоб ми призначили вас власником?')) {
+                    if (confirm('У цього закладу немає телефону для підтвердження.\n\nВідкрити форму «Повідомити про помилку», щоб ми призначили вас власником?')) {
                         openSiteFeedbackModal();
                     }
                     return;
                 }
-                if (!u) {
-                    if (confirm('Це ваш заклад? Заберіть за ~2 хв.\n\nOK — реєстрація майстра (безкоштовно)\nСкасувати — увійти, якщо акаунт уже є')) {
-                        location.href = claimRegisterUrl(locationId);
-                    } else if (confirm('Увійти в акаунт майстра?')) {
-                        location.href = claimLoginUrl(locationId);
-                    }
-                    return;
-                }
-                if (u.role === 'client') {
-                    if (confirm('Забирати заклад можуть майстри. Зареєструватись як майстер?')) {
-                        location.href = claimRegisterUrl(locationId);
-                    }
-                    return;
-                }
-                if (u.role === 'admin') {
-                    if (confirm('Ви в акаунті адміна. Відкрити картку в адмінці, щоб призначити власника?\n\nЩоб пройти claim як майстер (код на телефон у Telegram) — вийдіть і зайдіть як провайдер.')) {
+                const u = State.currentUser;
+                if (u?.role === 'admin') {
+                    if (confirm('Ви в акаунті адміна. Відкрити картку в адмінці, щоб призначити власника?')) {
                         location.href = '/admin?pane=locations&loc=' + encodeURIComponent(locationId);
                     }
                     return;
                 }
-                if (u.role !== 'provider') {
-                    alert('Потрібен акаунт майстра, щоб забрати заклад.');
+                const phone = String(document.getElementById('claimPhoneInput')?.value || '').trim();
+                if (!phone) {
+                    setClaimPhoneError('Введіть телефон з картки');
+                    document.getElementById('claimPhoneInput')?.focus();
                     return;
                 }
+                const btn = document.getElementById('claimLocBtn');
+                if (btn) btn.disabled = true;
+                setClaimPhoneError('');
                 try {
-                    const req = await fetch(
-                      `/api/provider/locations/${encodeURIComponent(locationId)}/claim/request`,
-                      {
-                        method: 'POST',
-                        credentials: 'same-origin',
-                        headers: { 'Content-Type': 'application/json' },
-                      }
-                    );
-                    const reqData = await req.json();
-                    if (!req.ok) {
-                        if (reqData.needsTelegramLink) {
-                            if (confirm(reqData.error + '\nВідкрити Telegram?')) {
-                                location.href = '/link-telegram.html';
-                            }
-                            return;
+                    const res = await fetch(
+                        '/api/locations/' + encodeURIComponent(locationId) + '/claim-by-phone',
+                        {
+                            method: 'POST',
+                            credentials: 'same-origin',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ phone, claimAll: true }),
                         }
-                        throw new Error(reqData.error || 'Помилка');
-                    }
-                    const code = prompt(`Код з Telegram (${reqData.phone}):`);
-                    if (!code) return;
-                    const conf = await fetch(
-                      `/api/provider/locations/${encodeURIComponent(locationId)}/claim/confirm`,
-                      {
-                        method: 'POST',
-                        credentials: 'same-origin',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ code: code.trim(), claimAll: false }),
-                      }
                     );
-                    const confData = await conf.json();
-                    if (!conf.ok) throw new Error(confData.error || 'Не підтверджено');
-                    alert(`Заклад ваш! Забрано точок: ${confData.claimedCount}`);
+                    const data = await res.json().catch(() => ({}));
+                    if (!res.ok) throw new Error(data.error || 'Не вдалося забрати заклад');
+                    if (data.needsRegister && data.registerUrl) {
+                        location.href = data.registerUrl;
+                        return;
+                    }
+                    await loadSession();
+                    updateHeaderAuthUI();
                     try {
                         const clean = new URL(window.location.href);
                         clean.searchParams.delete('claim');
@@ -3449,9 +3477,21 @@
                     } catch (_) {}
                     await refreshMapData();
                     openMasterDetail(locationId, { mode: 'dive', forceMode: true });
+                    const n = Number(data.claimedCount) || 0;
+                    if (data.alreadyOwned) {
+                        alert('Цей заклад уже ваш.');
+                    } else {
+                        alert(n > 1 ? `Готово. Закладів на ваше імʼя: ${n}.` : 'Заклад ваш.');
+                    }
                 } catch (err) {
-                    alert(err.message);
+                    setClaimPhoneError(err.message || 'Помилка');
+                } finally {
+                    if (btn) btn.disabled = false;
                 }
+            };
+
+            window.claimLocationFromMap = function(locationId) {
+                return window.submitClaimByPhone(null, locationId);
             };
 
             function manageLocationBtnHtml(loc) {
