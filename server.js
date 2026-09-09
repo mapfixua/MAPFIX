@@ -17,13 +17,18 @@ const {
 const { attachAuth, setAuthCookie, clearAuthCookie } = require('./auth-jwt.js');
 const { resolveProjectRoot, resolvePublicDir } = require('./paths.js');
 const {
-  seoForHome,
-  seoForCategory,
-  seoForLocation,
   injectSeoIntoHtml,
   robotsTxt,
   sitemapXml,
   stripHeadingDecor,
+  parseLanding,
+  canonicalPath,
+  keepTrackingQuery,
+  shouldRedirectLegacy,
+  buildSeo,
+  jsonLdGraph,
+  crawlerHtml,
+  landingBootScript,
 } = require('./seo.js');
 const {
   supabaseClient,
@@ -792,33 +797,60 @@ function sendPublicPage(res, filename) {
   });
 }
 
-app.get('/', async (req, res) => {
+async function serveMapPage(req, res) {
   try {
+    const data = await readData();
+    const landing = parseLanding({
+      pathname: req.path,
+      query: req.query,
+      catalog: data.masterCatalog,
+    });
+    if (shouldRedirectLegacy(req.path, req.query)) {
+      const keep = keepTrackingQuery(req.query);
+      return res.redirect(301, canonicalPath(landing) + (keep ? `?${keep}` : ''));
+    }
+    if (req.path === '/kyiv' || req.path === '/kiev') {
+      const keep = keepTrackingQuery(req.query);
+      return res.redirect(301, '/' + (keep ? `?${keep}` : ''));
+    }
+    const seo = buildSeo(landing, {
+      masterCatalog: data.masterCatalog,
+      mockLocations: activeLocations(data.mockLocations),
+    });
     const filePath = path.resolve(PUBLIC_DIR, 'index.html');
     let html = await fsPromises.readFile(filePath, 'utf8');
-    let seo = seoForHome();
-    const locId = String(req.query.loc || '').trim();
-    const catKey = String(req.query.cat || '').trim();
-    if (locId || catKey) {
-      const data = await readData();
-      if (locId) {
-        const loc = activeLocations(data.mockLocations).find((l) => l.id === locId);
-        if (loc) {
-          const catName = data.masterCatalog?.[loc.cat]?.name || loc.cat;
-          seo = seoForLocation(loc, catName);
-        }
-      } else if (catKey && data.masterCatalog?.[catKey]) {
-        seo = seoForCategory(catKey, data.masterCatalog[catKey].name);
-      }
-    }
-    html = injectSeoIntoHtml(html, seo);
+    html = injectSeoIntoHtml(html, seo, {
+      jsonLd: jsonLdGraph(seo, landing, {
+        masterCatalog: data.masterCatalog,
+        mockLocations: activeLocations(data.mockLocations),
+      }),
+      bootScript: landingBootScript(landing),
+      crawlerHtml: crawlerHtml(seo, landing, {
+        masterCatalog: data.masterCatalog,
+        mockLocations: activeLocations(data.mockLocations),
+      }),
+    });
     res.set('Cache-Control', 'no-store');
     res.set('Content-Type', 'text/html; charset=utf-8');
     res.send(html);
   } catch (err) {
-    console.error('[GET /] seo index', err);
+    console.error('[serveMapPage]', err);
     sendPublicPage(res, 'index.html');
   }
+}
+
+app.get('/', serveMapPage);
+app.get('/kyiv', serveMapPage);
+app.get('/kiev', serveMapPage);
+app.get('/kyiv/:seg1', serveMapPage);
+app.get('/kyiv/:seg1/:seg2', serveMapPage);
+app.get('/kiev/:seg1', serveMapPage);
+app.get('/kiev/:seg1/:seg2', serveMapPage);
+app.get('/p/:id', serveMapPage);
+app.get('/index.html', (req, res) => {
+  const landing = parseLanding({ pathname: '/', query: req.query });
+  const keep = keepTrackingQuery(req.query);
+  res.redirect(301, canonicalPath(landing) + (keep ? `?${keep}` : ''));
 });
 
 app.get('/robots.txt', (_req, res) => {
@@ -1372,6 +1404,7 @@ app.post('/api/analytics/page', async (req, res) => {
       path: req.body?.path,
       sid: req.body?.sid,
       role: user?.role || 'guest',
+      utm: req.body?.utm,
     });
     res.json({ ok: true });
   } catch (err) {
@@ -4038,7 +4071,7 @@ app.get('/api/provider/locations/:id/claim-info', requireAuth, requireProvider, 
 });
 
 function claimReturnPath(locationId) {
-  return `/?loc=${encodeURIComponent(locationId)}&claim=1`;
+  return `/p/${encodeURIComponent(locationId)}?claim=1`;
 }
 
 function claimRegisterPath(locationId, phone) {

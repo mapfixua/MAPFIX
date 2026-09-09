@@ -11,6 +11,7 @@ const PRESENCE_TTL_MS = 90 * 1000;
 const MAX_RECENT_SEARCHES = 300;
 const MAX_SEARCH_KEYS = 400;
 const MAX_PAGE_KEYS = 80;
+const MAX_UTM_KEYS = 40;
 const MAX_DAILY = 60;
 
 function todayKey(d = new Date()) {
@@ -57,6 +58,7 @@ function emptyState() {
   return {
     pageViews: {},
     searchCounts: {},
+    utmSources: {},
     recentSearches: [],
     presence: {},
     totals: {
@@ -90,6 +92,7 @@ function normalizeState(raw) {
   return {
     pageViews: raw.pageViews && typeof raw.pageViews === 'object' ? raw.pageViews : {},
     searchCounts: raw.searchCounts && typeof raw.searchCounts === 'object' ? raw.searchCounts : {},
+    utmSources: raw.utmSources && typeof raw.utmSources === 'object' ? raw.utmSources : {},
     recentSearches: Array.isArray(raw.recentSearches) ? raw.recentSearches : [],
     presence: raw.presence && typeof raw.presence === 'object' ? raw.presence : {},
     totals: { ...base.totals, ...(raw.totals || {}) },
@@ -172,12 +175,28 @@ function trimCounts(map, maxKeys) {
   return out;
 }
 
+function sanitizeUtmPart(value) {
+  return String(value || '')
+    .trim()
+    .slice(0, 48)
+    .replace(/[^\w.\-/]/g, '');
+}
+
+function utmKey(utm) {
+  if (!utm || typeof utm !== 'object') return '';
+  const source = sanitizeUtmPart(utm.source || utm.utm_source);
+  if (!source) return '';
+  const medium = sanitizeUtmPart(utm.medium || utm.utm_medium);
+  const campaign = sanitizeUtmPart(utm.campaign || utm.utm_campaign);
+  return [source, medium, campaign].filter(Boolean).join(' / ').slice(0, 80);
+}
+
 function normalizePath(path) {
   let p = String(path || '/').trim() || '/';
   if (!p.startsWith('/')) p = '/' + p;
   p = p.split('?')[0].split('#')[0];
   if (p.length > 120) p = p.slice(0, 120);
-  const allowedPrefixes = ['/', '/admin', '/client', '/login', '/register', '/link-telegram', '/privacy', '/terms', '/cookies'];
+  const allowedPrefixes = ['/', '/admin', '/client', '/login', '/register', '/link-telegram', '/privacy', '/terms', '/cookies', '/kyiv', '/kiev', '/p'];
   const ok = allowedPrefixes.some((a) => p === a || p === a + '.html' || p.startsWith(a + '/') || (a !== '/' && p.startsWith(a)));
   if (!ok && p !== '/') {
     if (p.endsWith('.html')) return p;
@@ -186,12 +205,17 @@ function normalizePath(path) {
   return p;
 }
 
-async function trackPageView({ path, sid, role }) {
+async function trackPageView({ path, sid, role, utm }) {
   const state = await readState();
   const p = normalizePath(path);
   state.pageViews[p] = (Number(state.pageViews[p]) || 0) + 1;
   state.pageViews = trimCounts(state.pageViews, MAX_PAGE_KEYS);
   state.totals.pageViews = (Number(state.totals.pageViews) || 0) + 1;
+  const sourceKey = utmKey(utm);
+  if (sourceKey) {
+    state.utmSources[sourceKey] = (Number(state.utmSources[sourceKey]) || 0) + 1;
+    state.utmSources = trimCounts(state.utmSources, MAX_UTM_KEYS);
+  }
   const day = bumpDaily(state, 'pageViews');
   if (sid) day.uniqueSessions[String(sid).slice(0, 64)] = true;
   if (p === '/' || p === '/index.html') {
@@ -482,6 +506,7 @@ async function buildAdminReport({
       directionsClicksToday: today.directionsClicks,
     },
     pages: topEntries(state.pageViews, 30),
+    utmSources: topEntries(state.utmSources, 20),
     searchesTop: topEntries(state.searchCounts, 40),
     recentSearches: (state.recentSearches || []).slice(0, 50),
     catalogFunnel: funnel,

@@ -297,7 +297,7 @@
           <div class="item">
             <div class="item-title">${escapeHtml(f.title)}</div>
             <div class="item-meta">${escapeHtml(f.address)}</div>
-            <a class="btn-link btn-outline" href="/?loc=${encodeURIComponent(f.id)}">Відкрити на карті</a>
+            <a class="btn-link btn-outline" href="/p/${encodeURIComponent(f.id)}">Відкрити на карті</a>
             <button type="button" class="btn-secondary" data-unfav="${f.id}">Прибрати</button>
           </div>`
           )

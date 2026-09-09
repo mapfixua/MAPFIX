@@ -35,10 +35,34 @@
       return window.location.pathname || '/';
     }
 
+    function readUtm() {
+      try {
+        var params = new URLSearchParams(window.location.search);
+        var source = (params.get('utm_source') || '').trim();
+        if (source) {
+          var utm = {
+            source: source.slice(0, 48),
+            medium: (params.get('utm_medium') || '').trim().slice(0, 48),
+            campaign: (params.get('utm_campaign') || '').trim().slice(0, 48),
+            content: (params.get('utm_content') || '').trim().slice(0, 48),
+            term: (params.get('utm_term') || '').trim().slice(0, 48),
+          };
+          sessionStorage.setItem('mf_utm', JSON.stringify(utm));
+          return utm;
+        }
+        var stored = sessionStorage.getItem('mf_utm');
+        return stored ? JSON.parse(stored) : null;
+      } catch (_) {
+        return null;
+      }
+    }
+
+    var utm = readUtm();
+
     window.MapfixAnalytics = {
       sid: sid,
       page: function (path) {
-        post('/api/analytics/page', { path: path || pathNow(), sid: sid });
+        post('/api/analytics/page', { path: path || pathNow(), sid: sid, utm: utm });
       },
       search: function (query, source, matched) {
         post('/api/analytics/search', {

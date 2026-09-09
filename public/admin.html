@@ -1017,6 +1017,10 @@
             <h3 style="font-size:1rem;margin:16px 0 8px">Куди заходять (сторінки)</h3>
             <div id="analyticsPages"><p class="list-item-meta">Завантаження…</p></div>
 
+            <h3 style="font-size:1rem;margin:16px 0 8px">Звідки прийшли (UTM)</h3>
+            <p class="field-hint" style="margin:0 0 6px">utm_source / medium / campaign з рекламних посилань, наприклад <code>/?area=borshchahivka&amp;cat=home&amp;utm_source=meta</code></p>
+            <div id="analyticsUtms"><p class="list-item-meta">—</p></div>
+
             <h3 style="font-size:1rem;margin:16px 0 8px">Категорії (кліки)</h3>
             <p class="field-hint" style="margin:0 0 6px">Подвійний клік — відкрити в каталозі</p>
             <div id="analyticsCats"><p class="list-item-meta">—</p></div>
@@ -1201,6 +1205,9 @@
                 </div>
               </div>
               <p class="admin-list-count" id="locationsListCount"></p>
+              <div style="display:flex;gap:8px;flex-wrap:wrap;margin:0 0 14px">
+                <button type="button" class="btn-secondary" style="width:auto" id="locCopyFilteredInvitesBtn">Скопіювати запрошення (видимий список)</button>
+              </div>
               <div style="border:1px solid #e5e7eb;border-radius:12px;padding:12px;margin-bottom:14px;background:#fafafa">
                 <h3 style="margin:0 0 8px;font-size:0.95rem">Масове видалення в кошик</h3>
                 <p class="field-hint">Спочатку в кошик (можна відновити). Остаточне видалення — у розділі «Кошик».</p>
@@ -2516,6 +2523,14 @@
           'Ще немає переглядів сторінок',
           (x) => `<code>${esc(x.key)}</code>`
         );
+        const utmsEl = document.getElementById('analyticsUtms');
+        if (utmsEl) {
+          utmsEl.innerHTML = rankingListHtml(
+            data.utmSources,
+            'UTM ще немає — з’являться після переходів з ?utm_source=',
+            (x) => esc(x.key)
+          );
+        }
         document.getElementById('analyticsCats').innerHTML = rankingListHtml(
           funnel.categories,
           data.catalogClicksMissing
@@ -2628,6 +2643,7 @@
     document.getElementById('providersSubFilter')?.addEventListener('change', () => renderAdminProvidersList());
     document.getElementById('locationsSearch')?.addEventListener('input', () => renderAdminLocationsList());
     document.getElementById('locationsImportFilter')?.addEventListener('change', () => renderAdminLocationsList());
+    document.getElementById('locCopyFilteredInvitesBtn')?.addEventListener('click', () => copyFilteredLocationInvites());
     document.getElementById('locationsCatFilter')?.addEventListener('change', () => {
       refillAdminSubFilter('locationsCatFilter', 'locationsSubFilter');
       renderAdminLocationsList();
@@ -2820,7 +2836,7 @@
                 <option value="rejected"${r.status === 'rejected' ? ' selected' : ''}>Відхилено</option>
               </select>
               <button type="button" class="btn-secondary" style="width:auto" data-report-save="${esc(r.id)}">Зберегти</button>
-              ${r.locationId ? `<a class="btn-secondary" style="width:auto;text-decoration:none;padding:8px 12px" href="/?loc=${encodeURIComponent(r.locationId)}" target="_blank">На карті</a>` : ''}
+              ${r.locationId ? `<a class="btn-secondary" style="width:auto;text-decoration:none;padding:8px 12px" href="/p/${encodeURIComponent(r.locationId)}" target="_blank">На карті</a>` : ''}
             </div>
           </div>`;
           })
@@ -3087,7 +3103,7 @@
             </div>
             <div class="inline-actions">
               <button type="submit" class="btn-primary" style="width:auto" id="locDetailSaveBtn">Зберегти зміни</button>
-              <a class="btn-secondary" style="width:auto;display:inline-flex;align-items:center;text-decoration:none;padding:10px 16px;border-radius:8px;background:#64748b;color:#fff;font-weight:600" href="/?loc=${encodeURIComponent(l.id)}" target="_blank" rel="noopener">Відкрити на карті</a>
+              <a class="btn-secondary" style="width:auto;display:inline-flex;align-items:center;text-decoration:none;padding:10px 16px;border-radius:8px;background:#64748b;color:#fff;font-weight:600" href="/p/${encodeURIComponent(l.id)}" target="_blank" rel="noopener">Відкрити на карті</a>
               ${!l.providerId ? `<button type="button" class="btn-secondary" style="width:auto" id="locCopyInviteBtn">Скопіювати запрошення</button>` : ''}
               ${l.provider ? `<button type="button" class="btn-secondary" style="width:auto" id="goProvFromLoc">Картка провайдера</button>` : ''}
               <button type="button" class="btn-danger" style="width:auto" id="delLocBtn">У кошик</button>
@@ -3168,8 +3184,8 @@
         const copyInviteBtn = document.getElementById('locCopyInviteBtn');
         if (copyInviteBtn) {
           copyInviteBtn.onclick = async () => {
-            const inviteUrl = `${location.origin}/?loc=${encodeURIComponent(l.id)}&claim=1`;
-            const text = `Це ваш заклад на Mapfix? Відкрийте посилання й введіть телефон з картки — заклад одразу ваш:\n${inviteUrl}`;
+            const inviteUrl = `${location.origin}/p/${encodeURIComponent(l.id)}?claim=1`;
+            const text = locationInviteText(l, inviteUrl);
             try {
               await navigator.clipboard.writeText(text);
               showMessage('Запрошення скопійовано');
@@ -3425,17 +3441,20 @@
       });
     }
 
-    function renderAdminLocationsList() {
+    function locationInviteText(l, inviteUrl) {
+      const url = inviteUrl || `${location.origin}/p/${encodeURIComponent(l.id)}?claim=1`;
+      const name = String(l.title || 'ваш сервіс').trim();
+      return `Вітаю! Я додав «${name}» на карту Mapfix. Ваші клієнти вже шукають тут без комісій. Заберіть доступ за 1 хвилину — введіть телефон з картки:\n${url}`;
+    }
+
+    function filteredAdminLocations() {
       const data = adminOverviewCache || {};
-      const locEl = document.getElementById('adminLocationsList');
-      const countEl = document.getElementById('locationsListCount');
-      if (!locEl) return;
       const q = adminNormQ(document.getElementById('locationsSearch')?.value);
       const src = document.getElementById('locationsImportFilter')?.value || '';
       const cat = document.getElementById('locationsCatFilter')?.value || '';
       const sub = document.getElementById('locationsSubFilter')?.value || '';
       const all = data.locations || [];
-      const filtered = all.filter((l) => {
+      return all.filter((l) => {
         if (src === 'imported' && !l.imported) return false;
         if (src === 'claimed' && !l.providerId) return false;
         if (src === 'unowned' && l.providerId) return false;
@@ -3443,6 +3462,41 @@
         if (sub && !(l.subcats || []).includes(sub)) return false;
         return adminMatchesQ(q, l.title, l.address, l.phone);
       });
+    }
+
+    async function copyFilteredLocationInvites() {
+      const rows = filteredAdminLocations().filter((l) => !l.providerId);
+      if (!rows.length) {
+        showMessage('У видимому списку немає точок без власника', true);
+        return;
+      }
+      const max = 40;
+      const slice = rows.slice(0, max);
+      const text = slice
+        .map((l, i) => {
+          const phone = String(l.phone || '').trim();
+          const head = `${i + 1}. ${l.title || 'Без назви'}${phone ? ' · ' + phone : ''}${l.address ? '\n' + l.address : ''}`;
+          return `${head}\n${locationInviteText(l)}`;
+        })
+        .join('\n\n');
+      try {
+        await navigator.clipboard.writeText(text);
+        showMessage(
+          slice.length < rows.length
+            ? `Скопійовано ${slice.length} з ${rows.length} запрошень (ліміт ${max})`
+            : `Скопійовано ${slice.length} запрошень`
+        );
+      } catch (_) {
+        prompt('Скопіюйте запрошення:', text);
+      }
+    }
+
+    function renderAdminLocationsList() {
+      const locEl = document.getElementById('adminLocationsList');
+      const countEl = document.getElementById('locationsListCount');
+      if (!locEl) return;
+      const all = (adminOverviewCache || {}).locations || [];
+      const filtered = filteredAdminLocations();
       if (countEl) {
         countEl.textContent = all.length ? `Показано ${filtered.length} з ${all.length}` : '';
       }
