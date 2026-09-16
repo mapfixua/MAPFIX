@@ -18,6 +18,7 @@
     <meta name="twitter:card" content="summary">
     <meta name="twitter:title" content="Mapfix — майстер додому, сантехнік Київ, ремонт поруч">
     <meta name="twitter:description" content="Карта майстрів у Києві: сантехнік, ремонт квартири, майстер додому.">
+    <meta name="twitter:image" content="https://mapfix-wine.vercel.app/icon-512.png">
     <meta name="theme-color" content="#12c4b5">
     <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-capable" content="yes">
@@ -2132,6 +2133,9 @@
                 borshchahivka: { key: 'borshchahivka', name: 'Борщагівка', on: 'Борщагівці', lat: 50.4378, lng: 30.338, zoom: 13 },
                 borschagivka: { key: 'borshchahivka', name: 'Борщагівка', on: 'Борщагівці', lat: 50.4378, lng: 30.338, zoom: 13 },
                 akademmistechko: { key: 'akademmistechko', name: 'Академмістечко', on: 'Академмістечку', lat: 50.4655, lng: 30.355, zoom: 14 },
+                kotsiubynske: { key: 'kotsiubynske', name: 'Коцюбинське', on: 'Коцюбинському', lat: 50.4906, lng: 30.3347, zoom: 14 },
+                kotsyubynske: { key: 'kotsiubynske', name: 'Коцюбинське', on: 'Коцюбинському', lat: 50.4906, lng: 30.3347, zoom: 14 },
+                kotsiubinske: { key: 'kotsiubynske', name: 'Коцюбинське', on: 'Коцюбинському', lat: 50.4906, lng: 30.3347, zoom: 14 },
             };
 
             const State = { 
@@ -2613,32 +2617,68 @@
 
             function parseClientLanding() {
                 const boot = window.__MAPFIX_LANDING;
-                if (boot && (boot.cat || boot.area || boot.loc)) return boot;
+                if (boot && (boot.cat || boot.area || boot.loc || boot.sub)) return boot;
                 const parts = window.location.pathname.split('/').filter(Boolean).map((p) => {
                     try { return decodeURIComponent(p); } catch { return p; }
                 });
                 const q = new URLSearchParams(window.location.search);
                 const cats = window.masterCatalog || {};
+                const aliases = {
+                    santekhnik: { cat: 'home', sub: 'plumber' },
+                    santehnik: { cat: 'home', sub: 'plumber' },
+                    elektrik: { cat: 'home', sub: 'electrician' },
+                    elektryk: { cat: 'home', sub: 'electrician' },
+                    'majster-dodomu': { cat: 'home', sub: 'handyman' },
+                    shynomontazh: { cat: 'auto', sub: 'tyres' },
+                    sto: { cat: 'auto' },
+                    avtoservis: { cat: 'auto' },
+                    manikiur: { cat: 'beauty' },
+                    barbershop: { cat: 'beauty' },
+                    'salon-krasy': { cat: 'beauty' },
+                    'remont-tehniky': { cat: 'repair' },
+                };
                 let loc = q.get('loc');
                 let cat = q.get('cat');
                 let area = resolveMapArea(q.get('area'))?.key || null;
+                let sub = q.get('sub');
                 if (parts[0] === 'p' && parts[1]) loc = parts[1];
                 if (parts[0] === 'kyiv' || parts[0] === 'kiev') {
-                    const a = parts[1];
-                    const b = parts[2];
+                    const a = (parts[1] || '').toLowerCase();
+                    const b = (parts[2] || '').toLowerCase();
+                    const c = (parts[3] || '').toLowerCase();
                     const areaA = resolveMapArea(a);
+                    const aliasA = aliases[a];
+                    const aliasB = aliases[b];
                     if (areaA) {
                         area = areaA.key;
-                        if (b && cats[b]) cat = b;
-                    } else if (a && cats[a]) cat = a;
+                        if (b && cats[b]) {
+                            cat = b;
+                            if (c) sub = c;
+                        } else if (aliasB) {
+                            cat = aliasB.cat;
+                            sub = aliasB.sub || sub;
+                        }
+                    } else if (aliasA) {
+                        cat = aliasA.cat;
+                        sub = aliasA.sub || sub;
+                    } else if (a && cats[a]) {
+                        cat = a;
+                        if (b) sub = b;
+                    }
                 }
-                return { loc, cat, area, sub: q.get('sub') };
+                return { loc, cat, area, sub };
             }
 
             function sharePathFromState() {
                 if (State.selectedLocation) return '/p/' + encodeURIComponent(State.selectedLocation.id);
+                if (State.area && State.category && State.subcategory) {
+                    return '/kyiv/' + encodeURIComponent(State.area) + '/' + encodeURIComponent(State.category) + '/' + encodeURIComponent(State.subcategory);
+                }
                 if (State.area && State.category) return '/kyiv/' + encodeURIComponent(State.area) + '/' + encodeURIComponent(State.category);
                 if (State.area) return '/kyiv/' + encodeURIComponent(State.area);
+                if (State.category && State.subcategory) {
+                    return '/kyiv/' + encodeURIComponent(State.category) + '/' + encodeURIComponent(State.subcategory);
+                }
                 if (State.category) return '/kyiv/' + encodeURIComponent(State.category);
                 return '/';
             }
@@ -2653,13 +2693,19 @@
             const landing = parseClientLanding();
             const urlLoc = landing.loc || urlParams.get('loc');
             const urlCat = landing.cat || urlParams.get('cat');
+            const urlSub = landing.sub || urlParams.get('sub');
             if (landing.area) {
                 const area = resolveMapArea(landing.area);
                 if (area) applyMapArea(area);
             }
             if (!urlLoc && urlCat && window.masterCatalog?.[urlCat]) {
                 State.category = urlCat;
+                if (urlSub && window.masterCatalog[urlCat]?.subcats?.[urlSub]) {
+                    State.subcategory = urlSub;
+                }
             }
+            const qSearch = (urlParams.get('q') || '').trim();
+            if (qSearch) State.locationSearchQuery = qSearch;
             if (urlLoc) {
                 setTimeout(() => openMasterDetail(urlLoc, { mode: 'dive', forceMode: true }), 400);
             }
@@ -2896,7 +2942,7 @@
             }
 
             function categoryLabel(name) {
-                return String(name || '').replace(/^[\p{Extended_Pictographic}\p{Emoji_Presentation}\s]+/u, '').trim() || name;
+                return String(name || '').replace(/^[^\p{L}\p{N}]+/u, '').trim() || name;
             }
 
             function isMobileLayout() {
@@ -3253,6 +3299,15 @@
                     const dirLinks = Object.entries(window.masterCatalog || {})
                         .map(([key, cat]) => `<li><a href="${categoryHref(key)}">${escapeHtml(categoryLabel(cat.name))}</a></li>`)
                         .join('');
+                    const intentLinks = [
+                        ['/kyiv/home/plumber', 'Сантехнік'],
+                        ['/kyiv/home/electrician', 'Електрик'],
+                        ['/kyiv/home/handyman', 'Майстер на годину'],
+                        ['/kyiv/auto/tyres', 'Шиномонтаж'],
+                        ['/kyiv/borshchahivka/home', 'Борщагівка'],
+                        ['/kyiv/sviatoshyn', 'Святошин'],
+                        ['/kyiv/kotsiubynske', 'Коцюбинське'],
+                    ].map(([href, label]) => `<li><a href="${href}">${label}</a></li>`).join('');
                     catalogNav.innerHTML = `
                         <p class="nav-hint">
                             <i class="fa-solid fa-hand-pointer" style="color:var(--primary);margin-right:6px"></i>
@@ -3262,7 +3317,7 @@
                             <strong>Додати свій бізнес безкоштовно</strong>
                             <span>Без комісій${areaPlaceName() ? ' · ' + areaPlaceName() : ''}. Якщо заклад уже на карті — введіть телефон на картці.</span>
                         </button>
-                        <ul class="seo-dir">${dirLinks}</ul>`;
+                        <ul class="seo-dir">${intentLinks}${dirLinks}</ul>`;
                     catalogNav.querySelectorAll('.seo-dir a').forEach((a) => {
                         a.addEventListener('click', (e) => {
                             const href = a.getAttribute('href') || '';
@@ -4095,21 +4150,45 @@
                     const catName = categoryLabel(
                         window.masterCatalog?.[loc.cat]?.name || loc.cat || 'майстер'
                     );
+                    const shortTitle = String(loc.title || 'Майстер').replace(/\s+/g, ' ').trim().slice(0, 58);
                     applyPageSeo({
-                        title: `${loc.title} — ${catName} Київ, майстер додому | Mapfix`,
-                        description: `${loc.title}: ${loc.address || 'Київ'}. Ремонт, сантехнік, майстер додому. Телефон, маршрут і відгуки на карті Mapfix.`,
-                        keywords: `${loc.title}, ${catName}, майстер додому, сантехнік Київ, ремонт, Mapfix`,
+                        title: `${shortTitle} — ${catName} | Mapfix`,
+                        description: `${shortTitle}: ${loc.address || 'Київ'}. Телефон, маршрут і відгуки на карті Mapfix.`,
+                        keywords: `${shortTitle}, ${catName}, майстер додому, Київ, Mapfix`,
                         url,
                     });
                 } else if (State.category) {
                     const cat = window.masterCatalog?.[State.category];
                     const name = categoryLabel(cat?.name || State.category);
-                    const homeNiche = State.category === 'home';
+                    const subKey = State.subcategory;
+                    const subCopy = {
+                        'home/plumber': {
+                            title: `Сантехнік${placeBit} — виклик майстра | Mapfix`,
+                            description: `Сантехнік${placeBit}: засмічення, змішувач, унітаз. Телефонуйте майстру з карти Mapfix без комісії.`,
+                        },
+                        'home/electrician': {
+                            title: `Електрик${placeBit} — розетка, щиток, люстра | Mapfix`,
+                            description: `Електрик${placeBit}: розетка, люстра, проводка. Порівняйте майстрів на карті Mapfix.`,
+                        },
+                        'home/handyman': {
+                            title: `Майстер на годину${placeBit} — дрібний ремонт | Mapfix`,
+                            description: `Чоловік на годину${placeBit}: полиця, телевізор, дрібний ремонт. Без комісій на Mapfix.`,
+                        },
+                        'auto/tyres': {
+                            title: `Шиномонтаж${placeBit} — заміна шин | Mapfix`,
+                            description: `Шиномонтаж${placeBit}: сезонна заміна і балансування. Оберіть сервіс на карті Mapfix.`,
+                        },
+                    }[State.category + '/' + subKey];
+                    const homeNiche = State.category === 'home' && !subKey;
                     applyPageSeo({
-                        title: homeNiche
+                        title: subCopy
+                            ? subCopy.title
+                            : homeNiche
                             ? `Сантехнік і майстер додому${placeBit} | Mapfix`
                             : `${name}${placeBit} — майстри поруч | Mapfix`,
-                        description: homeNiche
+                        description: subCopy
+                            ? subCopy.description
+                            : homeNiche
                             ? `Сантехнік, електрик і майстер додому${placeBit}. Без комісій — оберіть виконавця на карті Mapfix.`
                             : `${name}${placeBit}. Майстер додому, ремонт — оберіть виконавця на карті Mapfix.`,
                         keywords: `${name}, ${place || 'Київ'}, майстер додому, сантехнік Київ, ремонт, Mapfix`,
@@ -4564,6 +4643,9 @@
                 }
                 if (!landing.loc && landing.cat && window.masterCatalog?.[landing.cat]) {
                     State.category = landing.cat;
+                    if (landing.sub && window.masterCatalog[landing.cat]?.subcats?.[landing.sub]) {
+                        State.subcategory = landing.sub;
+                    }
                     browseBottomSheet();
                 }
             })();
@@ -4572,7 +4654,9 @@
                 const landing = parseClientLanding();
                 State.area = landing.area || null;
                 State.category = landing.cat && window.masterCatalog?.[landing.cat] ? landing.cat : null;
-                State.subcategory = null;
+                State.subcategory = State.category && landing.sub && window.masterCatalog[State.category]?.subcats?.[landing.sub]
+                    ? landing.sub
+                    : null;
                 State.service = null;
                 if (landing.area) {
                     const area = resolveMapArea(landing.area);

@@ -20,15 +20,16 @@ const {
   injectSeoIntoHtml,
   robotsTxt,
   sitemapXml,
-  stripHeadingDecor,
   parseLanding,
   canonicalPath,
   keepTrackingQuery,
   shouldRedirectLegacy,
+  shouldRedirectAlias,
   buildSeo,
   jsonLdGraph,
   crawlerHtml,
   landingBootScript,
+  SITEMAP_AREAS,
 } = require('./seo.js');
 const {
   supabaseClient,
@@ -93,6 +94,7 @@ const {
 } = require('./places-import.js');
 const {
   fetchLocationsFromSupabase,
+  fetchLocationSitemapRows,
   syncAllLocationsToSupabase,
   upsertLocationsToSupabase,
   deleteLocationsFromSupabase,
@@ -805,7 +807,7 @@ async function serveMapPage(req, res) {
       query: req.query,
       catalog: data.masterCatalog,
     });
-    if (shouldRedirectLegacy(req.path, req.query)) {
+    if (shouldRedirectLegacy(req.path, req.query) || shouldRedirectAlias(req.path, landing)) {
       const keep = keepTrackingQuery(req.query);
       return res.redirect(301, canonicalPath(landing) + (keep ? `?${keep}` : ''));
     }
@@ -830,7 +832,7 @@ async function serveMapPage(req, res) {
         mockLocations: activeLocations(data.mockLocations),
       }),
     });
-    res.set('Cache-Control', 'no-store');
+    res.set('Cache-Control', 'public, s-maxage=180, stale-while-revalidate=600, max-age=0');
     res.set('Content-Type', 'text/html; charset=utf-8');
     res.send(html);
   } catch (err) {
@@ -844,8 +846,10 @@ app.get('/kyiv', serveMapPage);
 app.get('/kiev', serveMapPage);
 app.get('/kyiv/:seg1', serveMapPage);
 app.get('/kyiv/:seg1/:seg2', serveMapPage);
+app.get('/kyiv/:seg1/:seg2/:seg3', serveMapPage);
 app.get('/kiev/:seg1', serveMapPage);
 app.get('/kiev/:seg1/:seg2', serveMapPage);
+app.get('/kiev/:seg1/:seg2/:seg3', serveMapPage);
 app.get('/p/:id', serveMapPage);
 app.get('/index.html', (req, res) => {
   const landing = parseLanding({ pathname: '/', query: req.query });
@@ -865,21 +869,40 @@ app.get('/google8adca38c98f2ae5a.html', (_req, res) => {
 
 app.get('/sitemap.xml', async (_req, res) => {
   try {
-    const data = await readData();
-    const catalog = data.masterCatalog || {};
-    const categories = Object.entries(catalog).map(([key, cat]) => ({
-      key,
-      name: stripHeadingDecor(cat?.name || key),
-    }));
-    const locations = activeLocations(data.mockLocations)
-      .filter((loc) => loc && loc.id)
-      .slice(0, 2000)
-      .map((loc) => ({
-        id: loc.id,
-        lastmod: String(loc.updatedAt || loc.claimedAt || loc.createdAt || '').slice(0, 10),
-      }));
+    let categories = [];
+    try {
+      const raw = await fsPromises.readFile(DATA_FILE, 'utf8');
+      const fileData = JSON.parse(raw);
+      categories = Object.keys(fileData.masterCatalog || {}).map((key) => ({ key }));
+    } catch (err) {
+      console.warn('[GET /sitemap.xml] catalog file skip:', err.message);
+    }
+
+    let locations = [];
+    const light = await fetchLocationSitemapRows().catch((err) => {
+      console.warn('[GET /sitemap.xml] light rows skip:', err.message);
+      return { ok: false, rows: [] };
+    });
+    if (light.ok && light.rows.length) {
+      locations = light.rows
+        .filter((row) => row && row.id && !row.deletedAt)
+        .slice(0, 2000)
+        .map((row) => ({ id: row.id, lastmod: row.lastmod }));
+    } else {
+      const data = await readData();
+      if (!categories.length) {
+        categories = Object.keys(data.masterCatalog || {}).map((key) => ({ key }));
+      }
+      locations = activeLocations(data.mockLocations)
+        .filter((loc) => loc && loc.id)
+        .slice(0, 2000)
+        .map((loc) => ({
+          id: loc.id,
+          lastmod: String(loc.updatedAt || loc.claimedAt || loc.createdAt || '').slice(0, 10),
+        }));
+    }
     res.set('Cache-Control', 'public, max-age=1800');
-    res.type('application/xml').send(sitemapXml({ categories, locations }));
+    res.type('application/xml').send(sitemapXml({ categories, locations, areas: SITEMAP_AREAS }));
   } catch (err) {
     console.error('[GET /sitemap.xml]', err);
     res.status(500).type('text/plain').send('sitemap error');
@@ -1340,9 +1363,14 @@ app.get('/api/data', async (req, res) => {
       }),
     ]);
     const catalogClicks = clicksRes.ok ? clicksRes.clicks || {} : {};
+    const locations = activeLocations(data.mockLocations).map((loc) => {
+      const reviews = Array.isArray(loc.reviews) ? loc.reviews : [];
+      if (reviews.length <= 2) return loc;
+      return { ...loc, reviews: reviews.slice(0, 2) };
+    });
     res.json({
       ...data,
-      mockLocations: activeLocations(data.mockLocations),
+      mockLocations: locations,
       catalogClicks,
     });
   } catch (err) {

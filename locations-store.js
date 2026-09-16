@@ -61,6 +61,8 @@ function fromDbRow(row) {
     claimedAt: row.claimed_at || null,
     deletedAt: row.deleted_at || null,
     deletedReason: row.deleted_reason || null,
+    updatedAt: row.updated_at || null,
+    createdAt: row.created_at || null,
   };
 }
 
@@ -75,6 +77,27 @@ async function fetchLocationsFromSupabase() {
   return {
     ok: true,
     locations: (data || []).map(fromDbRow).filter(Boolean),
+  };
+}
+
+async function fetchLocationSitemapRows() {
+  let { data, error } = await supabaseClient
+    .from(LOCATIONS_TABLE)
+    .select('id,updated_at,deleted_at')
+    .limit(5000);
+  if (error && /updated_at|deleted_at/i.test(String(error.message || ''))) {
+    ({ data, error } = await supabaseClient.from(LOCATIONS_TABLE).select('id').limit(5000));
+  }
+  if (error) return { ok: false, rows: [], error };
+  return {
+    ok: true,
+    rows: (data || [])
+      .map((row) => ({
+        id: row.id,
+        lastmod: String(row.updated_at || '').slice(0, 10),
+        deletedAt: row.deleted_at || null,
+      }))
+      .filter((row) => row.id),
   };
 }
 
@@ -133,6 +156,7 @@ async function syncAllLocationsToSupabase(locations) {
 module.exports = {
   LOCATIONS_TABLE,
   fetchLocationsFromSupabase,
+  fetchLocationSitemapRows,
   upsertLocationsToSupabase,
   deleteLocationsFromSupabase,
   syncAllLocationsToSupabase,

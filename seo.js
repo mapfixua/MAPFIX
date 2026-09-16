@@ -6,8 +6,16 @@ function siteBaseUrl() {
 
 function stripHeadingDecor(name) {
   return String(name || '')
-    .replace(/^[\p{Extended_Pictographic}\p{Emoji_Presentation}\s]+/u, '')
+    .replace(/^[^\p{L}\p{N}]+/u, '')
     .trim();
+}
+
+function clipMeta(text, max) {
+  const s = String(text || '')
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (s.length <= max) return s;
+  return s.slice(0, Math.max(1, max - 1)).replace(/\s+\S*$/, '').trim() + '…';
 }
 
 function escapeHtmlAttr(value) {
@@ -55,7 +63,36 @@ const SEO_AREAS = {
   borshchahivka: { key: 'borshchahivka', name: 'Борщагівка', on: 'Борщагівці', lat: 50.4378, lng: 30.338 },
   borschagivka: { key: 'borshchahivka', name: 'Борщагівка', on: 'Борщагівці', lat: 50.4378, lng: 30.338 },
   akademmistechko: { key: 'akademmistechko', name: 'Академмістечко', on: 'Академмістечку', lat: 50.4655, lng: 30.355 },
+  kotsiubynske: { key: 'kotsiubynske', name: 'Коцюбинське', on: 'Коцюбинському', lat: 50.4906, lng: 30.3347 },
+  kotsyubynske: { key: 'kotsiubynske', name: 'Коцюбинське', on: 'Коцюбинському', lat: 50.4906, lng: 30.3347 },
+  kotsiubinske: { key: 'kotsiubynske', name: 'Коцюбинське', on: 'Коцюбинському', lat: 50.4906, lng: 30.3347 },
 };
+
+const SITEMAP_AREAS = ['sviatoshyn', 'borshchahivka', 'akademmistechko', 'kotsiubynske'];
+
+const PATH_ALIASES = {
+  santekhnik: { cat: 'home', sub: 'plumber' },
+  santehnik: { cat: 'home', sub: 'plumber' },
+  elektrik: { cat: 'home', sub: 'electrician' },
+  elektryk: { cat: 'home', sub: 'electrician' },
+  'majster-dodomu': { cat: 'home', sub: 'handyman' },
+  'cholovik-na-godynu': { cat: 'home', sub: 'handyman' },
+  shynomontazh: { cat: 'auto', sub: 'tyres' },
+  shinmontazh: { cat: 'auto', sub: 'tyres' },
+  sto: { cat: 'auto' },
+  avtoservis: { cat: 'auto' },
+  manikiur: { cat: 'beauty' },
+  barbershop: { cat: 'beauty' },
+  'salon-krasy': { cat: 'beauty' },
+  'remont-tehniky': { cat: 'repair' },
+};
+
+const PRIORITY_SUBS = [
+  { cat: 'home', sub: 'plumber' },
+  { cat: 'home', sub: 'electrician' },
+  { cat: 'home', sub: 'handyman' },
+  { cat: 'auto', sub: 'tyres' },
+];
 
 const CAT_COPY = {
   home: {
@@ -86,6 +123,79 @@ const CAT_COPY = {
       `Манікюр, барбершоп і салони краси${p}. Оберіть майстра на карті Mapfix без комісій.`,
     keywords: 'манікюр Київ, барбершоп, салон краси, перукар, Mapfix',
   },
+  pets: {
+    h1: (p) => `Грумінг і ветеринар${p}`,
+    title: (p) => `Грумінг, ветклініка${p} | Mapfix`,
+    description: (p) => `Грумінг і ветеринарні послуги${p}. Оберіть майстра на карті Mapfix без комісій.`,
+    keywords: 'грумінг Київ, ветеринар, стрижка собак, Mapfix',
+  },
+  education: {
+    h1: (p) => `Репетитори та школи${p}`,
+    title: (p) => `Репетитори, курси${p} | Mapfix`,
+    description: (p) => `Репетитори, курси й школи${p}. Порівняйте на карті Mapfix і зателефонуйте напряму.`,
+    keywords: 'репетитор Київ, курси, школа, Mapfix',
+  },
+  sport: {
+    h1: (p) => `Спорт і тренери${p}`,
+    title: (p) => `Спортзал, тренер${p} | Mapfix`,
+    description: (p) => `Спортзали, тренери й секції${p}. Знайдіть поруч на карті Mapfix.`,
+    keywords: 'спортзал Київ, тренер, фітнес, Mapfix',
+  },
+  rental: {
+    h1: (p) => `Оренда інструменту${p}`,
+    title: (p) => `Оренда інструменту${p} | Mapfix`,
+    description: (p) => `Оренда інструменту та техніки${p}. Дивіться на карті Mapfix і телефонуйте без комісії.`,
+    keywords: 'оренда інструменту Київ, прокат, Mapfix',
+  },
+  medical: {
+    h1: (p) => `Медичні послуги${p}`,
+    title: (p) => `Масаж, медпослуги${p} | Mapfix`,
+    description: (p) => `Масаж і медичні послуги${p}. Оберіть фахівця на карті Mapfix.`,
+    keywords: 'масаж Київ, медичні послуги, Mapfix',
+  },
+  food: {
+    h1: (p) => `Їжа поруч${p}`,
+    title: (p) => `Їжа та заклади${p} | Mapfix`,
+    description: (p) => `Заклади харчування${p} на карті Mapfix. Телефонуйте напряму, без комісій.`,
+    keywords: 'їжа Київ, кафе, Mapfix',
+  },
+  furniture: {
+    h1: (p) => `Меблі на замовлення${p}`,
+    title: (p) => `Меблі, збірка меблів${p} | Mapfix`,
+    description: (p) => `Збірка й виготовлення меблів${p}. Майстри на карті Mapfix без комісії посередника.`,
+    keywords: 'збірка меблів Київ, меблі на замовлення, Mapfix',
+  },
+};
+
+const SUB_COPY = {
+  'home/plumber': {
+    h1: (p) => `Сантехнік${p}`,
+    title: (p) => `Сантехнік${p} — виклик майстра | Mapfix`,
+    description: (p) =>
+      `Сантехнік${p}: засмічення, змішувач, унітаз, підключення техніки. Дивіться майстрів на карті й телефонуйте без комісії.`,
+    keywords: 'сантехнік Київ, виклик сантехніка, засмічення, сантехнік поруч',
+  },
+  'home/electrician': {
+    h1: (p) => `Електрик${p}`,
+    title: (p) => `Електрик${p} — розетка, щиток, люстра | Mapfix`,
+    description: (p) =>
+      `Електрик${p}: розетка, люстра, проводка, електрощит. Порівняйте майстрів на карті Mapfix і зателефонуйте напряму.`,
+    keywords: 'електрик Київ, виклик електрика, розетка, проводка',
+  },
+  'home/handyman': {
+    h1: (p) => `Майстер на годину${p}`,
+    title: (p) => `Майстер на годину${p} — дрібний ремонт | Mapfix`,
+    description: (p) =>
+      `Чоловік на годину${p}: полиця, телевізор, дрібний ремонт. Без комісій — телефонуйте майстру з карти Mapfix.`,
+    keywords: 'майстер на годину Київ, дрібний ремонт, чоловік на годину',
+  },
+  'auto/tyres': {
+    h1: (p) => `Шиномонтаж${p}`,
+    title: (p) => `Шиномонтаж${p} — заміна шин | Mapfix`,
+    description: (p) =>
+      `Шиномонтаж${p}: сезонна заміна, балансування. Оберіть сервіс на карті Mapfix і запишіться без комісії.`,
+    keywords: 'шиномонтаж Київ, заміна шин, балансування, шиномонтаж поруч',
+  },
 };
 
 const DEFAULT_SEO = {
@@ -107,6 +217,10 @@ function placeBit(areaKey) {
 function resolveAreaKey(raw) {
   const hit = SEO_AREAS[String(raw || '').toLowerCase().trim()];
   return hit ? hit.key : '';
+}
+
+function resolvePathAlias(raw) {
+  return PATH_ALIASES[String(raw || '').toLowerCase().trim()] || null;
 }
 
 function areaName(key) {
@@ -141,12 +255,24 @@ function parseLanding({ pathname, query, catalog } = {}) {
 
   if (parts[0] === 'p' && parts[1]) loc = parts[1];
   if (parts[0] === 'kyiv' || parts[0] === 'kiev') {
-    const a = parts[1] || '';
-    const b = parts[2] || '';
+    const a = (parts[1] || '').toLowerCase();
+    const b = (parts[2] || '').toLowerCase();
+    const c = (parts[3] || '').toLowerCase();
     const areaA = resolveAreaKey(a);
+    const aliasA = resolvePathAlias(a);
+    const aliasB = resolvePathAlias(b);
     if (areaA) {
       area = areaA;
-      if (b && cats.has(b)) cat = b;
+      if (b && cats.has(b)) {
+        cat = b;
+        if (c) sub = c;
+      } else if (aliasB) {
+        cat = aliasB.cat;
+        sub = aliasB.sub || sub;
+      }
+    } else if (aliasA) {
+      cat = aliasA.cat;
+      sub = aliasA.sub || sub;
     } else if (a && cats.has(a)) {
       cat = a;
       if (b) sub = b;
@@ -159,11 +285,20 @@ function parseLanding({ pathname, query, catalog } = {}) {
 
 function canonicalPath({ loc, cat, area, sub } = {}) {
   if (loc) return `/p/${encodeURIComponent(loc)}`;
+  if (area && cat && sub) {
+    return `/kyiv/${encodeURIComponent(area)}/${encodeURIComponent(cat)}/${encodeURIComponent(sub)}`;
+  }
   if (area && cat) return `/kyiv/${encodeURIComponent(area)}/${encodeURIComponent(cat)}`;
   if (area) return `/kyiv/${encodeURIComponent(area)}`;
   if (cat && sub) return `/kyiv/${encodeURIComponent(cat)}/${encodeURIComponent(sub)}`;
   if (cat) return `/kyiv/${encodeURIComponent(cat)}`;
   return '/';
+}
+
+function normalizePath(pathname) {
+  const path = String(pathname || '/') || '/';
+  if (path.length > 1 && path.endsWith('/')) return path.slice(0, -1);
+  return path;
 }
 
 function canonicalUrl(landing, extraQuery) {
@@ -175,7 +310,7 @@ function canonicalUrl(landing, extraQuery) {
 function keepTrackingQuery(query) {
   const q = query || {};
   const next = new URLSearchParams();
-  for (const k of ['claim', 'add', 'feedback', 'utm_source', 'utm_medium', 'utm_campaign', 'utm_content', 'utm_term']) {
+  for (const k of ['claim', 'add', 'feedback', 'q', 'utm_source', 'utm_medium', 'utm_campaign', 'utm_content', 'utm_term']) {
     if (q[k]) next.set(k, String(q[k]));
   }
   return next.toString();
@@ -185,7 +320,16 @@ function shouldRedirectLegacy(pathname, query) {
   const path = String(pathname || '/') || '/';
   if (path !== '/' && path !== '/index.html' && path !== '/kyiv' && path !== '/kiev') return false;
   const q = query || {};
-  return Boolean(q.loc || q.cat || q.area);
+  return Boolean(q.loc || q.cat || q.area || q.sub);
+}
+
+function shouldRedirectAlias(pathname, landing) {
+  const path = normalizePath(pathname);
+  if (path === '/' || path === '/index.html') return false;
+  if (path === '/kyiv' || path === '/kiev') return false;
+  const canon = canonicalPath(landing);
+  if (path.startsWith('/kiev')) return Boolean(landing.loc || landing.cat || landing.area || landing.sub);
+  return path !== canon && Boolean(landing.loc || landing.cat || landing.area || landing.sub);
 }
 
 function seoForHome(areaKey) {
@@ -205,12 +349,13 @@ function seoForHome(areaKey) {
   return { ...DEFAULT_SEO, url, image: siteBaseUrl() + '/icon-512.png' };
 }
 
-function seoForCategory(catKey, catName, areaKey) {
+function seoForCategory(catKey, catName, areaKey, subKey, subName) {
   const place = areaName(areaKey);
   const p = placeBit(areaKey);
-  const copy = CAT_COPY[catKey];
-  const name = stripHeadingDecor(catName) || catKey || 'Послуги';
-  const url = canonicalUrl({ cat: catKey, area: areaKey || '' });
+  const subCopy = subKey ? SUB_COPY[`${catKey}/${subKey}`] : null;
+  const copy = subCopy || CAT_COPY[catKey];
+  const name = stripHeadingDecor(subName || catName) || catKey || 'Послуги';
+  const url = canonicalUrl({ cat: catKey, area: areaKey || '', sub: subKey || '' });
   if (copy) {
     return {
       h1: copy.h1(p),
@@ -232,15 +377,19 @@ function seoForCategory(catKey, catName, areaKey) {
 }
 
 function seoForLocation(loc, catName) {
-  const title = String(loc?.title || 'Майстер').trim() || 'Майстер';
+  const rawTitle = stripHeadingDecor(String(loc?.title || 'Майстер').trim()) || 'Майстер';
+  const title = clipMeta(rawTitle, 58);
   const cat = stripHeadingDecor(catName) || 'майстер';
   const address = String(loc?.address || 'Київ').trim() || 'Київ';
   const url = canonicalUrl({ loc: loc?.id || '' });
   return {
-    h1: title,
-    title: `${title} — ${cat} Київ, майстер додому | Mapfix`,
-    description: `${title}: ${address}. Ремонт, сантехнік, майстер додому. Телефон, маршрут і відгуки на карті Mapfix.`,
-    keywords: `${title}, ${cat}, майстер додому, сантехнік Київ, ремонт, ${address}, Mapfix`,
+    h1: rawTitle,
+    title: `${title} — ${clipMeta(cat, 28)} | Mapfix`,
+    description: clipMeta(
+      `${rawTitle}: ${address}. Телефон, маршрут і відгуки на карті Mapfix. Без комісії посередника.`,
+      160
+    ),
+    keywords: `${clipMeta(rawTitle, 40)}, ${cat}, майстер додому, Київ, Mapfix`,
     url,
     image: siteBaseUrl() + '/icon-512.png',
   };
@@ -255,7 +404,8 @@ function buildSeo(landing, data) {
     }
   }
   if (landing.cat && catalog[landing.cat]) {
-    return seoForCategory(landing.cat, catalog[landing.cat].name, landing.area);
+    const subName = landing.sub ? catalog[landing.cat]?.subcats?.[landing.sub]?.name : '';
+    return seoForCategory(landing.cat, catalog[landing.cat].name, landing.area, landing.sub, subName);
   }
   return seoForHome(landing.area);
 }
@@ -280,6 +430,11 @@ function jsonLdGraph(seo, landing, data) {
       name: 'Mapfix',
       inLanguage: 'uk-UA',
       publisher: { '@id': `${base}/#org` },
+      potentialAction: {
+        '@type': 'SearchAction',
+        target: `${base}/?q={search_term_string}`,
+        'query-input': 'required name=search_term_string',
+      },
     },
   ];
 
@@ -337,9 +492,15 @@ function jsonLdGraph(seo, landing, data) {
         name: areaName(landing.area),
         item: base + canonicalPath({ area: landing.area }),
       });
-      crumbs.push({ '@type': 'ListItem', position: 3, name, item: seo.url });
+      crumbs.push({ '@type': 'ListItem', position: 3, name, item: base + canonicalPath({ cat: landing.cat, area: landing.area }) });
+      if (landing.sub) {
+        crumbs.push({ '@type': 'ListItem', position: 4, name: seo.h1, item: seo.url });
+      }
     } else {
-      crumbs.push({ '@type': 'ListItem', position: 2, name, item: seo.url });
+      crumbs.push({ '@type': 'ListItem', position: 2, name, item: base + canonicalPath({ cat: landing.cat }) });
+      if (landing.sub) {
+        crumbs.push({ '@type': 'ListItem', position: 3, name: seo.h1, item: seo.url });
+      }
     }
     graph.push({ '@type': 'BreadcrumbList', itemListElement: crumbs });
     graph.push({
@@ -394,15 +555,23 @@ function crawlerHtml(seo, landing, data) {
       return `<li><a href="${escapeHtmlAttr(href)}">${escapeHtml(label)}${landing.area ? ' на ' + escapeHtml(areaName(landing.area)) : ' у Києві'}</a></li>`;
     })
     .join('');
-  const areaLinks = ['sviatoshyn', 'borshchahivka', 'akademmistechko']
-    .map((key) => {
-      const href = canonicalPath({ area: key, cat: landing.cat || '' });
-      return `<li><a href="${escapeHtmlAttr(href)}">${escapeHtml(areaName(key))}</a></li>`;
-    })
-    .join('');
+  const areaLinks = SITEMAP_AREAS.map((key) => {
+    const href = canonicalPath({ area: key, cat: landing.cat || '' });
+    return `<li><a href="${escapeHtmlAttr(href)}">${escapeHtml(areaName(key))}</a></li>`;
+  }).join('');
+  const intentLinks = PRIORITY_SUBS.map((row) => {
+    const href = canonicalPath({ cat: row.cat, sub: row.sub, area: landing.area || '' });
+    const copy = SUB_COPY[`${row.cat}/${row.sub}`];
+    const label = copy ? copy.h1(placeBit(landing.area)) : `${row.cat}/${row.sub}`;
+    return `<li><a href="${escapeHtmlAttr(href)}">${escapeHtml(label)}</a></li>`;
+  }).join('');
 
-  let filtered = locs.filter((l) => l && l.id && !l.trashed);
+  let filtered = locs.filter((l) => l && l.id && !l.trashed && !l.deletedAt);
   if (landing.cat) filtered = filtered.filter((l) => l.cat === landing.cat);
+  if (landing.sub) {
+    const withSub = filtered.filter((l) => Array.isArray(l.subcats) && l.subcats.includes(landing.sub));
+    if (withSub.length) filtered = withSub;
+  }
   const listed = filtered.slice(0, 24);
   const placeItems = listed
     .map((l) => {
@@ -411,15 +580,34 @@ function crawlerHtml(seo, landing, data) {
       return `<li><a href="${escapeHtmlAttr(href)}">${escapeHtml(l.title || 'Майстер')}</a>${escapeHtml(addr)}</li>`;
     })
     .join('');
+  const countLine =
+    filtered.length > 0
+      ? `<p>На карті зараз ${filtered.length} ${landing.cat ? 'майстрів у цій категорії' : 'точок'}${landing.area ? ' поруч із районом ' + escapeHtml(areaName(landing.area)) : ' у Києві'}.</p>`
+      : '<p>Карта наповнюється. Додайте свій бізнес безкоштовно — без комісії з замовлень.</p>';
+
+  const faq =
+    !landing.loc && !landing.cat
+      ? `<h2>Питання</h2>
+  <h3>Як знайти сантехніка в Києві?</h3>
+  <p>Оберіть категорію «Дім» або відкрийте сторінку сантехніка, порівняйте майстрів на карті й зателефонуйте напряму.</p>
+  <h3>Чи є комісія?</h3>
+  <p>Ні. Клієнт платить лише майстру. Пошук безкоштовний.</p>
+  <h3>Як забрати картку закладу?</h3>
+  <p>Відкрийте заклад і введіть телефон з картки. Якщо номер збігається — заклад ваш за хвилину.</p>`
+      : '';
 
   return `<section id="seo-static" class="seo-static" aria-label="Каталог Mapfix">
   <h1>${escapeHtml(seo.h1)}</h1>
   <p>${escapeHtml(seo.description)}</p>
+  ${countLine}
+  <h2>Популярні запити</h2>
+  <ul>${intentLinks}</ul>
   <h2>Послуги</h2>
   <ul>${catLinks}</ul>
   <h2>Райони Києва</h2>
   <ul>${areaLinks}</ul>
   ${placeItems ? `<h2>Майстри на карті</h2><ol>${placeItems}</ol>` : ''}
+  ${faq}
 </section>`;
 }
 
@@ -476,6 +664,14 @@ function injectSeoIntoHtml(html, seo, extras = {}) {
       `<link rel="canonical" href="${url}">`
     );
   }
+  out = out.replace(
+    /<link\s+rel="alternate"\s+hreflang="uk"\s+href="[^"]*"\s*\/?>/i,
+    `<link rel="alternate" hreflang="uk" href="${url}">`
+  );
+  out = out.replace(
+    /<link\s+rel="alternate"\s+hreflang="x-default"\s+href="[^"]*"\s*\/?>/i,
+    `<link rel="alternate" hreflang="x-default" href="${url}">`
+  );
   if (/<meta\s+name="twitter:title"/i.test(out)) {
     out = out.replace(
       /<meta\s+name="twitter:title"\s+content="[^"]*"\s*\/?>/i,
@@ -486,6 +682,12 @@ function injectSeoIntoHtml(html, seo, extras = {}) {
     out = out.replace(
       /<meta\s+name="twitter:description"\s+content="[^"]*"\s*\/?>/i,
       `<meta name="twitter:description" content="${description}">`
+    );
+  }
+  if (/<meta\s+name="twitter:image"/i.test(out)) {
+    out = out.replace(
+      /<meta\s+name="twitter:image"\s+content="[^"]*"\s*\/?>/i,
+      `<meta name="twitter:image" content="${image}">`
     );
   }
   out = out.replace(
@@ -521,6 +723,7 @@ function robotsTxt() {
     'Allow: /',
     'Allow: /kyiv',
     'Allow: /p/',
+    'Allow: /llms.txt',
     'Disallow: /admin',
     'Disallow: /admin.html',
     'Disallow: /client',
@@ -543,36 +746,37 @@ function sitemapXml({ categories = [], locations = [], areas = [] } = {}) {
   const base = siteBaseUrl();
   const today = new Date().toISOString().slice(0, 10);
   const urls = [{ loc: `${base}/`, changefreq: 'daily', priority: '1.0' }];
-  const areaKeys = areas.length ? areas : ['sviatoshyn', 'borshchahivka', 'akademmistechko'];
+  const areaKeys = areas.length ? areas : SITEMAP_AREAS;
+  const seen = new Set(urls.map((u) => u.loc));
+
+  function pushUrl(path, changefreq, priority, lastmod) {
+    const loc = `${base}${path}`;
+    if (seen.has(loc)) return;
+    seen.add(loc);
+    urls.push({ loc, changefreq, priority, lastmod: lastmod || today });
+  }
 
   for (const cat of categories) {
-    urls.push({
-      loc: `${base}${canonicalPath({ cat: cat.key })}`,
-      changefreq: 'daily',
-      priority: '0.9',
-    });
+    pushUrl(canonicalPath({ cat: cat.key }), 'daily', '0.9');
+  }
+  for (const row of PRIORITY_SUBS) {
+    if (categories.some((c) => c.key === row.cat)) {
+      pushUrl(canonicalPath(row), 'daily', '0.85');
+    }
   }
   for (const area of areaKeys) {
-    urls.push({
-      loc: `${base}${canonicalPath({ area })}`,
-      changefreq: 'weekly',
-      priority: '0.8',
-    });
+    pushUrl(canonicalPath({ area }), 'weekly', '0.8');
     for (const cat of categories) {
-      urls.push({
-        loc: `${base}${canonicalPath({ area, cat: cat.key })}`,
-        changefreq: 'weekly',
-        priority: '0.7',
-      });
+      pushUrl(canonicalPath({ area, cat: cat.key }), 'weekly', '0.7');
+    }
+    for (const row of PRIORITY_SUBS) {
+      pushUrl(canonicalPath({ area, cat: row.cat, sub: row.sub }), 'weekly', '0.65');
     }
   }
   for (const loc of locations) {
-    urls.push({
-      loc: `${base}${canonicalPath({ loc: loc.id })}`,
-      changefreq: 'weekly',
-      priority: '0.6',
-      lastmod: loc.lastmod || today,
-    });
+    const lastmod = String(loc.lastmod || '').slice(0, 10);
+    const safeLast = /^\d{4}-\d{2}-\d{2}$/.test(lastmod) ? lastmod : today;
+    pushUrl(canonicalPath({ loc: loc.id }), 'weekly', '0.6', safeLast);
   }
 
   const body = urls
@@ -595,14 +799,19 @@ ${body}
 module.exports = {
   siteBaseUrl,
   stripHeadingDecor,
+  clipMeta,
   DEFAULT_SEO,
   SEO_AREAS,
+  SITEMAP_AREAS,
   KNOWN_CATS,
+  PATH_ALIASES,
+  PRIORITY_SUBS,
   parseLanding,
   canonicalPath,
   canonicalUrl,
   keepTrackingQuery,
   shouldRedirectLegacy,
+  shouldRedirectAlias,
   seoForHome,
   seoForCategory,
   seoForLocation,

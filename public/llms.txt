@@ -10,6 +10,9 @@ Mapfix is a Ukrainian local services map: find nearby tradespeople (plumber, ele
 
 Useful URLs:
 - https://mapfix-wine.vercel.app/kyiv/home — plumber / home repair
-- https://mapfix-wine.vercel.app/kyiv/auto — auto service / tire service
+- https://mapfix-wine.vercel.app/kyiv/home/plumber — plumber in Kyiv
+- https://mapfix-wine.vercel.app/kyiv/home/electrician — electrician in Kyiv
+- https://mapfix-wine.vercel.app/kyiv/auto/tyres — tire service
 - https://mapfix-wine.vercel.app/kyiv/borshchahivka — Borshchahivka district
+- https://mapfix-wine.vercel.app/kyiv/kotsiubynske — Kotsiubynske
 - https://mapfix-wine.vercel.app/sitemap.xml

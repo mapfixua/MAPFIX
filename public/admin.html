@@ -1018,7 +1018,7 @@
             <div id="analyticsPages"><p class="list-item-meta">Завантаження…</p></div>
 
             <h3 style="font-size:1rem;margin:16px 0 8px">Звідки прийшли (UTM)</h3>
-            <p class="field-hint" style="margin:0 0 6px">utm_source / medium / campaign з рекламних посилань, наприклад <code>/?area=borshchahivka&amp;cat=home&amp;utm_source=meta</code></p>
+            <p class="field-hint" style="margin:0 0 6px">utm_source / medium / campaign, наприклад <code>/kyiv/borshchahivka/home?utm_source=meta&amp;utm_medium=cpc</code></p>
             <div id="analyticsUtms"><p class="list-item-meta">—</p></div>
 
             <h3 style="font-size:1rem;margin:16px 0 8px">Категорії (кліки)</h3>
@@ -1207,6 +1207,7 @@
               <p class="admin-list-count" id="locationsListCount"></p>
               <div style="display:flex;gap:8px;flex-wrap:wrap;margin:0 0 14px">
                 <button type="button" class="btn-secondary" style="width:auto" id="locCopyFilteredInvitesBtn">Скопіювати запрошення (видимий список)</button>
+                <button type="button" class="btn-secondary" style="width:auto" id="locDownloadInvitesCsvBtn">CSV для розсилки</button>
               </div>
               <div style="border:1px solid #e5e7eb;border-radius:12px;padding:12px;margin-bottom:14px;background:#fafafa">
                 <h3 style="margin:0 0 8px;font-size:0.95rem">Масове видалення в кошик</h3>
@@ -2644,6 +2645,7 @@
     document.getElementById('locationsSearch')?.addEventListener('input', () => renderAdminLocationsList());
     document.getElementById('locationsImportFilter')?.addEventListener('change', () => renderAdminLocationsList());
     document.getElementById('locCopyFilteredInvitesBtn')?.addEventListener('click', () => copyFilteredLocationInvites());
+    document.getElementById('locDownloadInvitesCsvBtn')?.addEventListener('click', () => downloadFilteredLocationInvitesCsv());
     document.getElementById('locationsCatFilter')?.addEventListener('change', () => {
       refillAdminSubFilter('locationsCatFilter', 'locationsSubFilter');
       renderAdminLocationsList();
@@ -3489,6 +3491,32 @@
       } catch (_) {
         prompt('Скопіюйте запрошення:', text);
       }
+    }
+
+    function csvCell(value) {
+      return `"${String(value || '').replace(/"/g, '""')}"`;
+    }
+
+    function downloadFilteredLocationInvitesCsv() {
+      const rows = filteredAdminLocations().filter((l) => !l.providerId);
+      if (!rows.length) {
+        showMessage('У видимому списку немає точок без власника', true);
+        return;
+      }
+      const lines = ['title,phone,address,invite_url,message'];
+      rows.forEach((l) => {
+        const url = `${location.origin}/p/${encodeURIComponent(l.id)}?claim=1`;
+        lines.push(
+          [csvCell(l.title), csvCell(l.phone), csvCell(l.address), csvCell(url), csvCell(locationInviteText(l, url))].join(',')
+        );
+      });
+      const blob = new Blob(['\uFEFF' + lines.join('\n')], { type: 'text/csv;charset=utf-8' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = `mapfix-invites-${rows.length}.csv`;
+      a.click();
+      URL.revokeObjectURL(a.href);
+      showMessage(`Завантажено CSV: ${rows.length} запрошень`);
     }
 
     function renderAdminLocationsList() {

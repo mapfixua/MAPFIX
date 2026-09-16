@@ -173,6 +173,38 @@ async function checkLoginFlow() {
   };
 }
 
+function checkSeoLanding() {
+  const seo = require('../seo.js');
+  const serverJs = read('server.js');
+  const indexHtml = read('public/index.html');
+  const plumber = seo.parseLanding({ pathname: '/kyiv/santekhnik', query: {} });
+  const homeSub = seo.parseLanding({ pathname: '/kyiv/home/plumber', query: {} });
+  const area = seo.parseLanding({ pathname: '/kyiv/kotsiubynske', query: {} });
+  const title = seo.stripHeadingDecor('🛠️ Ремонт та Побутові послуги');
+  const sm = seo.sitemapXml({
+    categories: [{ key: 'home' }, { key: 'auto' }],
+    locations: [{ id: 'loc-1' }],
+  });
+  const checks = {
+    plumberAlias: plumber.cat === 'home' && plumber.sub === 'plumber',
+    plumberCanon: seo.canonicalPath(homeSub) === '/kyiv/home/plumber',
+    aliasRedirect: seo.shouldRedirectAlias('/kyiv/santekhnik', plumber),
+    kotsiubynske: area.area === 'kotsiubynske',
+    emojiStrip: title.startsWith('Ремонт'),
+    sitemapPlumber: sm.includes('/kyiv/home/plumber') && sm.includes('/kyiv/kotsiubynske'),
+    serverAlias: serverJs.includes('shouldRedirectAlias') && serverJs.includes('/kyiv/:seg1/:seg2/:seg3'),
+    jsonldSlot: indexHtml.includes('<!--MAPFIX_JSONLD-->') && indexHtml.includes('twitter:image'),
+    lightSitemap: serverJs.includes('fetchLocationSitemapRows'),
+  };
+  const ok = Object.values(checks).every(Boolean);
+  return {
+    id: 5,
+    name: 'SEO лендінги (чисті URL, sitemap, aliases)',
+    ok,
+    details: Object.entries(checks).map(([k, v]) => `${k}: ${v ? 'OK' : 'FAIL'}`),
+  };
+}
+
 async function main() {
   console.log('\n=== Mapfix Architecture Self-Check ===\n');
 
@@ -181,6 +213,7 @@ async function main() {
     Promise.resolve(checkCatalogHierarchy()),
     Promise.resolve(checkRolesAndBinding()),
     checkLoginFlow(),
+    Promise.resolve(checkSeoLanding()),
   ]);
 
   let allOk = true;
@@ -192,7 +225,7 @@ async function main() {
     console.log('');
   }
 
-  console.log(allOk ? '✅ Усі 4 модулі готові.\n' : '❌ Є проблеми — перегляньте пункти вище.\n');
+  console.log(allOk ? '✅ Усі модулі готові.\n' : '❌ Є проблеми — перегляньте пункти вище.\n');
   process.exit(allOk ? 0 : 1);
 }
 
