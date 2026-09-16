@@ -1325,6 +1325,32 @@
             align-items: center;
         }
         .pwa-install-banner.show { display: flex; }
+        .data-load-banner {
+            display: none;
+            position: absolute;
+            z-index: 20;
+            left: 12px;
+            right: 12px;
+            top: 72px;
+            background: #fff;
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 10px 12px;
+            gap: 8px;
+            align-items: center;
+            font-size: 13px;
+        }
+        .data-load-banner.show { display: flex; }
+        .data-load-banner button {
+            margin-left: auto;
+            border: 0;
+            background: var(--dark);
+            color: #fff;
+            border-radius: 8px;
+            padding: 6px 10px;
+            font-weight: 700;
+            cursor: pointer;
+        }
         .pwa-install-banner-icon {
             width: 44px; height: 44px; border-radius: 12px; flex-shrink: 0;
             background: #12c4b5 url('/icon-192.png') center/cover no-repeat;
@@ -1911,6 +1937,10 @@
         <button id="geo-btn" type="button" aria-label="Моє місцезнаходження"><i class="fa-solid fa-location-crosshairs"></i></button>
         <div id="map" role="application" aria-label="Карта майстрів Києва"></div>
 
+        <div class="data-load-banner" id="dataLoadBanner" role="alert">
+            <span>Не вдалося завантажити карту. Перевірте інтернет і спробуйте ще раз.</span>
+            <button type="button" id="dataLoadRetryBtn">Повторити</button>
+        </div>
         <div class="pwa-install-banner" id="pwaInstallBanner" role="dialog" aria-label="Встановити Mapfix">
             <div class="pwa-install-banner-icon" aria-hidden="true"></div>
             <div class="pwa-install-banner-text">
@@ -2081,17 +2111,27 @@
         const leafletReady = loadLeafletBundle();
 
         async function loadCatalogData() {
-            const res = await fetch(`/api/data?t=${Date.now()}`, {
-                cache: 'no-store',
-                credentials: 'same-origin',
-                headers: { 'Cache-Control': 'no-cache', Pragma: 'no-cache' },
-            });
-            if (!res.ok) throw new Error('Не вдалося завантажити каталог');
-            const data = await res.json();
-            window.masterCatalog = data.masterCatalog || {};
-            window.mockLocations = data.mockLocations || [];
-            window.providerProfiles = data.providerProfiles || {};
-            window.catalogClicks = data.catalogClicks || {};
+            let lastErr;
+            for (let attempt = 0; attempt < 3; attempt++) {
+                try {
+                    const res = await fetch(`/api/data?t=${Date.now()}`, {
+                        cache: 'no-store',
+                        credentials: 'same-origin',
+                        headers: { 'Cache-Control': 'no-cache', Pragma: 'no-cache' },
+                    });
+                    if (!res.ok) throw new Error('Не вдалося завантажити каталог');
+                    const data = await res.json();
+                    window.masterCatalog = data.masterCatalog || {};
+                    window.mockLocations = data.mockLocations || [];
+                    window.providerProfiles = data.providerProfiles || {};
+                    window.catalogClicks = data.catalogClicks || {};
+                    return;
+                } catch (err) {
+                    lastErr = err;
+                    await new Promise((r) => setTimeout(r, 500 * (attempt + 1)));
+                }
+            }
+            throw lastErr || new Error('Не вдалося завантажити каталог');
         }
 
         document.addEventListener("DOMContentLoaded", async () => {
@@ -2306,7 +2346,11 @@
                 await Promise.all([loadCatalogData(), loadSession()]);
             } catch (err) {
                 console.error(err);
-                alert('Помилка завантаження даних. Перевірте, що сервер запущено.');
+                const banner = document.getElementById('dataLoadBanner');
+                if (banner) banner.classList.add('show');
+                document.getElementById('dataLoadRetryBtn')?.addEventListener('click', () => {
+                    location.reload();
+                });
                 return;
             }
 
@@ -4683,7 +4727,7 @@
             }
 
             if ('serviceWorker' in navigator) {
-                navigator.serviceWorker.register('/sw.js').catch(() => {});
+                navigator.serviceWorker.register('/sw.js', { updateViaCache: 'none' }).catch(() => {});
             }
 
             (function initPwaInstall() {
