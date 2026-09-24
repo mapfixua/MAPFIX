@@ -1682,15 +1682,15 @@
             .top-header { top: max(10px, env(safe-area-inset-top, 0px)); left: 10px; right: 10px; gap: 8px; }
             .top-header-main {
                 display: grid;
-                grid-template-columns: auto minmax(0, 1fr);
+                grid-template-columns: max-content minmax(max-content, 1fr);
                 grid-template-areas:
                     "brand actions"
                     "search search";
                 align-items: center;
-                column-gap: 8px;
+                column-gap: 10px;
                 row-gap: 8px;
             }
-            .brand-chip { grid-area: brand; order: 0; }
+            .brand-chip { grid-area: brand; order: 0; min-width: max-content; z-index: 1; }
             .top-header-end {
                 grid-area: actions;
                 order: 0;
@@ -1698,8 +1698,9 @@
                 justify-self: end;
                 gap: 6px;
                 flex-wrap: nowrap;
-                min-width: 0;
+                min-width: max-content;
             }
+            .install-app-btn { display: none !important; }
             .search-container {
                 grid-area: search;
                 order: 0;
