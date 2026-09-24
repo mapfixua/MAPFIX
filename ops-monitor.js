@@ -17,7 +17,7 @@ function adminEmail() {
 }
 
 function publicBaseUrl() {
-  return String(process.env.PUBLIC_BASE_URL || 'https://mapfix-wine.vercel.app').replace(/\/$/, '');
+  return String(process.env.PUBLIC_BASE_URL || 'https://www.mapfix.com.ua').replace(/\/$/, '');
 }
 
 async function readOpsState() {

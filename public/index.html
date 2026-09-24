@@ -7,18 +7,18 @@
     <title>Mapfix — майстер додому, сантехнік Київ, ремонт поруч</title>
     <meta name="description" content="Карта майстрів у Києві: сантехнік, ремонт квартири, майстер додому. Знайдіть виконавця поруч, порівняйте ціни й замовте послугу на Mapfix.">
     <meta name="keywords" content="майстер додому, сантехнік Київ, ремонт, майстер Київ, карта послуг, сантехнік, електрик, ремонт квартири, Mapfix">
-    <link rel="canonical" href="https://mapfix-wine.vercel.app/">
+    <link rel="canonical" href="https://www.mapfix.com.ua/">
     <meta property="og:title" content="Mapfix — майстер додому, сантехнік Київ, ремонт поруч">
     <meta property="og:description" content="Карта майстрів у Києві: сантехнік, ремонт, майстер додому. Знайдіть виконавця поруч на карті Mapfix.">
     <meta property="og:type" content="website">
     <meta property="og:locale" content="uk_UA">
     <meta property="og:site_name" content="Mapfix">
-    <meta property="og:url" content="https://mapfix-wine.vercel.app/">
-    <meta property="og:image" content="https://mapfix-wine.vercel.app/icon-512.png">
+    <meta property="og:url" content="https://www.mapfix.com.ua/">
+    <meta property="og:image" content="https://www.mapfix.com.ua/icon-512.png">
     <meta name="twitter:card" content="summary">
     <meta name="twitter:title" content="Mapfix — майстер додому, сантехнік Київ, ремонт поруч">
     <meta name="twitter:description" content="Карта майстрів у Києві: сантехнік, ремонт квартири, майстер додому.">
-    <meta name="twitter:image" content="https://mapfix-wine.vercel.app/icon-512.png">
+    <meta name="twitter:image" content="https://www.mapfix.com.ua/icon-512.png">
     <meta name="theme-color" content="#12c4b5">
     <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-capable" content="yes">
@@ -28,8 +28,8 @@
     <link rel="icon" href="/favicon.svg" type="image/svg+xml">
     <link rel="icon" href="/icon-192.png" type="image/png" sizes="192x192">
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" sizes="180x180">
-    <link rel="alternate" hreflang="uk" href="https://mapfix-wine.vercel.app/">
-    <link rel="alternate" hreflang="x-default" href="https://mapfix-wine.vercel.app/">
+    <link rel="alternate" hreflang="uk" href="https://www.mapfix.com.ua/">
+    <link rel="alternate" hreflang="x-default" href="https://www.mapfix.com.ua/">
     <!--MAPFIX_JSONLD-->
 
     <link rel="preconnect" href="https://unpkg.com" crossorigin>
@@ -1675,64 +1675,73 @@
                 overflow: hidden;
             }
 
-            .brand-chip-name { display: block; font-size: 0.85rem; }
+            .brand-chip-name { display: none; }
             .brand-chip-home { display: none; }
-            .brand-chip { padding: 5px 10px 5px 6px; width: auto; justify-content: flex-start; min-height: 44px; }
-
-            .top-header { top: 10px; left: 10px; right: 10px; gap: 8px; }
-            .top-header-main {
-                flex-wrap: wrap;
-                row-gap: 8px;
-                column-gap: 8px;
+            .brand-chip {
+                padding: 4px;
+                width: 36px;
+                min-width: 36px;
+                height: 36px;
+                min-height: 36px;
+                justify-content: center;
             }
-            .brand-chip { order: 1; }
-            .top-header-end {
-                order: 2;
-                margin-left: auto;
+            .brand-chip-mark { width: 28px; height: 28px; font-size: 0.8rem; }
+
+            .top-header {
+                top: max(8px, env(safe-area-inset-top, 0px));
+                left: 8px;
+                right: 8px;
                 gap: 6px;
             }
+            .top-header-main {
+                flex-wrap: wrap;
+                row-gap: 6px;
+                column-gap: 6px;
+                align-items: center;
+            }
+            .brand-chip { order: 1; }
             .search-container {
                 order: 3;
                 flex: 1 1 100%;
                 width: 100%;
-                height: 44px;
+                height: 40px;
                 min-width: 0;
+                padding: 3px 6px 3px 12px;
             }
-            .header-btn { height: 44px; }
-            .profile-btn { width: 44px; height: 44px; }
-
-            /* Компактніше «Додати», помітніше «Вхід» */
-            .add-business-btn {
-                padding: 0 10px;
-                font-size: 12px;
+            .search-container input { font-size: 14px; margin-left: 4px; }
+            .voice-mic-btn { width: 30px; height: 30px; font-size: 14px; }
+            .top-header-end {
+                order: 3;
+                margin-left: 0;
                 gap: 4px;
-                min-width: 0;
+                flex-shrink: 0;
             }
-            .add-business-btn .btn-label-full { display: none; }
-            .add-business-btn .btn-label-short { display: inline; font-size: 12px; }
-            .add-business-btn i { font-size: 12px; }
-            .install-app-btn {
-                padding: 0 10px;
-                min-width: 44px;
-                font-size: 12px;
-            }
-            .install-app-btn .btn-label { display: none; }
+            .header-btn { height: 36px; font-size: 12px; box-shadow: 0 4px 14px rgba(11,13,16,0.12); }
+            .profile-btn { width: 36px; height: 36px; }
+
+            .add-business-btn,
+            .install-app-btn,
             .bug-report-btn {
-                padding: 0 10px;
-                min-width: 44px;
-                font-size: 12px;
+                width: 36px;
+                min-width: 36px;
+                padding: 0;
+                gap: 0;
             }
+            .add-business-btn .btn-label-full,
+            .add-business-btn .btn-label-short,
+            .install-app-btn .btn-label,
             .bug-report-btn .btn-label { display: none; }
+            .add-business-btn i { font-size: 13px; margin: 0; }
 
             .login-btn span { display: inline; }
             .login-btn {
                 width: auto;
-                min-width: 78px;
-                padding: 0 14px;
-                gap: 6px;
-                font-size: 13px;
+                min-width: 0;
+                padding: 0 10px;
+                gap: 0;
+                font-size: 12px;
             }
-            .login-btn i { font-size: 13px; }
+            .login-btn i { display: none; }
 
             #sidebar {
                 height: var(--sheet-h);

@@ -1,7 +1,7 @@
 'use strict';
 
 function siteBaseUrl() {
-  return String(process.env.PUBLIC_BASE_URL || 'https://mapfix-wine.vercel.app').replace(/\/$/, '');
+  return String(process.env.PUBLIC_BASE_URL || 'https://www.mapfix.com.ua').replace(/\/$/, '');
 }
 
 function stripHeadingDecor(name) {
@@ -721,19 +721,6 @@ function robotsTxt() {
   return [
     'User-agent: *',
     'Allow: /',
-    'Allow: /kyiv',
-    'Allow: /p/',
-    'Allow: /llms.txt',
-    'Disallow: /admin',
-    'Disallow: /admin.html',
-    'Disallow: /client',
-    'Disallow: /login',
-    'Disallow: /login.html',
-    'Disallow: /register',
-    'Disallow: /register.html',
-    'Disallow: /forgot-password.html',
-    'Disallow: /reset-password.html',
-    'Disallow: /link-telegram.html',
     'Disallow: /api/',
     '',
     `Host: ${base.replace(/^https?:\/\//, '')}`,
