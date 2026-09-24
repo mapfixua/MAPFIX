@@ -1681,20 +1681,29 @@
 
             .top-header { top: max(10px, env(safe-area-inset-top, 0px)); left: 10px; right: 10px; gap: 8px; }
             .top-header-main {
-                flex-wrap: wrap;
-                row-gap: 8px;
+                display: grid;
+                grid-template-columns: auto minmax(0, 1fr);
+                grid-template-areas:
+                    "brand actions"
+                    "search search";
+                align-items: center;
                 column-gap: 8px;
+                row-gap: 8px;
             }
-            .brand-chip { order: 1; }
+            .brand-chip { grid-area: brand; order: 0; }
             .top-header-end {
-                order: 2;
-                margin-left: auto;
+                grid-area: actions;
+                order: 0;
+                margin-left: 0;
+                justify-self: end;
                 gap: 6px;
                 flex-wrap: nowrap;
+                min-width: 0;
             }
             .search-container {
-                order: 3;
-                flex: 1 1 100%;
+                grid-area: search;
+                order: 0;
+                flex: none;
                 width: 100%;
                 height: 44px;
                 min-width: 0;
