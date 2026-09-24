@@ -2,11 +2,12 @@
 
 const crypto = require('crypto');
 const { loadAppState, saveAppState } = require('./app-state-store.js');
+const { readReportRows, writeReportRows } = require('./relational-store.js');
 
 const REPORTS_ID = 'moderation_reports';
 const STATUSES = ['new', 'reviewing', 'resolved', 'rejected'];
 
-async function readReports() {
+async function readLegacyReports() {
   const remote = await loadAppState(REPORTS_ID, null);
   if (remote.ok && remote.value) {
     const items = Array.isArray(remote.value)
@@ -19,12 +20,33 @@ async function readReports() {
   return [];
 }
 
+let reportsImportTried = false;
+
+async function readReports() {
+  const table = await readReportRows();
+  if (table.ok && table.rows.length) return table.rows;
+  const legacy = await readLegacyReports();
+  if (table.ok && legacy.length && !reportsImportTried) {
+    reportsImportTried = true;
+    const saved = await writeReportRows(legacy);
+    if (saved.ok) return legacy;
+    console.warn('[reports] table import failed:', saved.error?.message || saved.error);
+  }
+  return legacy;
+}
+
 async function writeReports(list) {
-  const remote = await saveAppState(REPORTS_ID, { items: Array.isArray(list) ? list : [] });
-  if (!remote.ok && process.env.VERCEL && !remote.missing) {
+  const items = Array.isArray(list) ? list : [];
+  const table = await writeReportRows(items);
+  if (!table.ok) {
+    console.warn('[reports] table save failed:', table.error?.message || table.error);
+    if (process.env.VERCEL) throw new Error('Не вдалося зберегти скаргу');
+  }
+  const remote = await saveAppState(REPORTS_ID, { items });
+  if (!remote.ok && !table.ok && process.env.VERCEL && !remote.missing) {
     throw new Error('Не вдалося зберегти скаргу');
   }
-  return remote;
+  return table.ok ? table : remote;
 }
 
 function publicReport(r) {

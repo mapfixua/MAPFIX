@@ -9,8 +9,13 @@ Use **`sync_database.sql`** as the single source of truth. It is idempotent (saf
 | `users` (+ `phone`, `telegram_id`, `telegram_linked_at`) | `supabaseClient.js`, `otp-auth.js`, `telegram-auth.js`, `telegram-bot.js`, `server.js` |
 | `otp_codes` | `otp-auth.js` |
 | `telegram_link_tokens` | `telegram-auth.js` |
+| `masters`, `master_weekly_hours`, `master_time_off`, `bookings` | schema only (hourly booking; app not switched yet) |
+| `location_services`, `master_services` | schema only (price list; `locations.prices` still live) |
+| `service_orders`, `client_favorites`, `location_reviews`, `moderation_reports` | schema ready; app still uses JSON blobs |
 
 Older files `migrations/001_*.sql` and `002_*.sql` are kept for history; **`sync_database.sql` supersedes them**.
+
+Booking, prices, orders, favorites, reviews, and reports are in `migrations/018_booking_slots_and_prices.sql`. The app writes orders, favorites, reports, user reviews, and the price list into those tables. Hourly booking still has no screen. Writes need `SUPABASE_SERVICE_ROLE_KEY` because row security blocks the public key.
 
 ## Apply automatically
 

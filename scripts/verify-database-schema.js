@@ -43,6 +43,16 @@ const EXPECTED = {
     'created_at',
     'updated_at',
   ],
+  masters: ['id', 'location_id', 'display_name', 'is_active'],
+  location_services: ['id', 'location_id', 'name', 'duration_minutes', 'price_amount', 'price_label'],
+  master_services: ['master_id', 'service_id'],
+  master_weekly_hours: ['id', 'master_id', 'weekday', 'start_time', 'end_time', 'slot_minutes'],
+  master_time_off: ['id', 'master_id', 'starts_at', 'ends_at'],
+  bookings: ['id', 'master_id', 'starts_at', 'ends_at', 'status'],
+  service_orders: ['id', 'client_id', 'location_id', 'service_name', 'status'],
+  client_favorites: ['client_id', 'location_id'],
+  location_reviews: ['id', 'location_id', 'rating', 'body'],
+  moderation_reports: ['id', 'status', 'message'],
 };
 
 /** Maps DB snake_case columns to JS property names used in app code */

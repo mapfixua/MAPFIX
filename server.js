@@ -154,6 +154,7 @@ const {
 } = require('./kv-store.js');
 const supportTickets = require('./support-tickets.js');
 const reportsMod = require('./reports.js');
+const { insertLocationReview, backfillRelationalTables } = require('./relational-store.js');
 const opsMonitor = require('./ops-monitor.js');
 const {
   notifyNewOrder,
@@ -785,7 +786,9 @@ function sendPublicPage(res, filename) {
     filename === 'register.html' ||
     filename === 'forgot-password.html' ||
     filename === 'reset-password.html' ||
-    filename === 'link-telegram.html'
+    filename === 'link-telegram.html' ||
+    filename === 'admin.html' ||
+    filename === 'client.html'
   ) {
     res.set('X-Robots-Tag', 'noindex, nofollow');
   }
@@ -959,6 +962,7 @@ app.get('/admin', (req, res) => {
     return res.redirect('/login.html?next=/admin');
   }
   res.set('Cache-Control', 'no-store');
+  res.set('X-Robots-Tag', 'noindex, nofollow');
   res.sendFile(path.resolve(PUBLIC_DIR, 'admin.html'));
 });
 
@@ -972,6 +976,7 @@ app.get('/client', (req, res) => {
     return res.redirect('/login.html?next=/client');
   }
   res.set('Cache-Control', 'no-store');
+  res.set('X-Robots-Tag', 'noindex, nofollow');
   res.sendFile(path.resolve(PUBLIC_DIR, 'client.html'));
 });
 
@@ -2106,6 +2111,10 @@ app.post('/api/locations/:id/reviews', requireAuth, requireClient, async (req, r
     };
     loc.reviews.unshift(review);
     loc.reviews = loc.reviews.slice(0, 40);
+    const savedReview = await insertLocationReview(review, loc.id);
+    if (!savedReview.ok && !savedReview.skipped) {
+      console.warn('[reviews] table:', savedReview.error?.message || savedReview.error);
+    }
     const total = loc.reviews.reduce((sum, r) => sum + (Number(r.rating) || 0), 0);
     loc.reviewsCount = loc.reviews.length;
     loc.rating = Math.round((total / loc.reviewsCount) * 10) / 10;
@@ -5250,6 +5259,11 @@ if (require.main === module) {
       console.error('[startup] Помилка валідації:', err.message);
     }
     try {
+      await backfillRelationalTables();
+    } catch (err) {
+      console.error('[startup] Перенесення в нові таблиці:', err.message);
+    }
+    try {
       await startTelegramBotRuntime();
     } catch (err) {
       console.error('[startup] Telegram runtime:', err.message);
@@ -5268,11 +5282,15 @@ if (require.main === module) {
     console.error('[startup] Помилка сервера:', err.message);
     process.exit(1);
   });
-} else if (process.env.VERCEL && isTelegramConfigured()) {
-  // Best-effort webhook registration on serverless cold start
-  startTelegramBotRuntime().catch((err) => {
-    console.error('[vercel] Telegram runtime:', err.message);
+} else if (process.env.VERCEL) {
+  backfillRelationalTables().catch((err) => {
+    console.error('[vercel] Перенесення в нові таблиці:', err.message);
   });
+  if (isTelegramConfigured()) {
+    startTelegramBotRuntime().catch((err) => {
+      console.error('[vercel] Telegram runtime:', err.message);
+    });
+  }
 }
 
 module.exports = app;

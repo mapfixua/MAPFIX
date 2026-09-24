@@ -42,6 +42,7 @@
           "support-tickets.js",
           "notifications.js",
           "reports.js",
+          "relational-store.js",
           "billing.js",
           "analytics.js",
           "ops-monitor.js",

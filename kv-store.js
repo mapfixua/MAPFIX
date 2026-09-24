@@ -3,6 +3,12 @@
 const fs = require('fs').promises;
 const path = require('path');
 const { loadAppState, saveAppState } = require('./app-state-store.js');
+const {
+  readOrderRows,
+  writeOrderRows,
+  readFavoriteRows,
+  writeFavoriteRows,
+} = require('./relational-store.js');
 const { resolveProjectRoot } = require('./paths.js');
 
 const ORDERS_ID = 'orders';
@@ -27,7 +33,7 @@ async function writeLocalJson(file, value) {
   await fs.writeFile(localPath(file), JSON.stringify(value, null, 2), 'utf8');
 }
 
-async function readOrders() {
+async function readLegacyOrders() {
   const remote = await loadAppState(ORDERS_ID, null);
   if (remote.ok && remote.value) {
     const items = Array.isArray(remote.value)
@@ -40,19 +46,35 @@ async function readOrders() {
   return readLocalJson('orders.json', []);
 }
 
+let ordersImportTried = false;
+
+async function readOrders() {
+  const table = await readOrderRows();
+  if (table.ok && table.rows.length) return table.rows;
+  const legacy = await readLegacyOrders();
+  if (table.ok && legacy.length && !ordersImportTried) {
+    ordersImportTried = true;
+    const saved = await writeOrderRows(legacy);
+    if (saved.ok) return legacy;
+    console.warn('[orders] table import failed:', saved.error?.message || saved.error);
+  }
+  return legacy;
+}
+
 async function writeOrders(orders) {
   const list = Array.isArray(orders) ? orders : [];
+  const table = await writeOrderRows(list);
+  if (!table.ok) {
+    console.warn('[orders] table save failed:', table.error?.message || table.error);
+    if (process.env.VERCEL) throw new Error('Не вдалося зберегти замовлення');
+  }
   const remote = await saveAppState(ORDERS_ID, { items: list });
-  if (!remote.ok) {
-    if (process.env.VERCEL) {
-      console.warn('[orders] supabase save failed:', remote.error?.message || remote.error);
-      if (!remote.missing) throw new Error('Не вдалося зберегти замовлення');
-    }
+  if (!remote.ok && !table.ok) {
     await writeLocalJson('orders.json', list);
   }
 }
 
-async function readFavorites() {
+async function readLegacyFavorites() {
   const remote = await loadAppState(FAVORITES_ID, null);
   if (remote.ok && remote.value) {
     const items = Array.isArray(remote.value)
@@ -65,14 +87,30 @@ async function readFavorites() {
   return readLocalJson('favorites.json', []);
 }
 
+let favoritesImportTried = false;
+
+async function readFavorites() {
+  const table = await readFavoriteRows();
+  if (table.ok && table.rows.length) return table.rows;
+  const legacy = await readLegacyFavorites();
+  if (table.ok && legacy.length && !favoritesImportTried) {
+    favoritesImportTried = true;
+    const saved = await writeFavoriteRows(legacy);
+    if (saved.ok) return legacy;
+    console.warn('[favorites] table import failed:', saved.error?.message || saved.error);
+  }
+  return legacy;
+}
+
 async function writeFavorites(favorites) {
   const list = Array.isArray(favorites) ? favorites : [];
+  const table = await writeFavoriteRows(list);
+  if (!table.ok) {
+    console.warn('[favorites] table save failed:', table.error?.message || table.error);
+    if (process.env.VERCEL) throw new Error('Не вдалося зберегти обране');
+  }
   const remote = await saveAppState(FAVORITES_ID, { items: list });
-  if (!remote.ok) {
-    if (process.env.VERCEL) {
-      console.warn('[favorites] supabase save failed:', remote.error?.message || remote.error);
-      if (!remote.missing) throw new Error('Не вдалося зберегти обране');
-    }
+  if (!remote.ok && !table.ok) {
     await writeLocalJson('favorites.json', list);
   }
 }

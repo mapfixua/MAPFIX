@@ -1,6 +1,11 @@
 'use strict';
 
 const { supabaseClient } = require('./supabaseClient.js');
+const {
+  overlayLocations,
+  syncLocationPrices,
+  syncUserReviews,
+} = require('./relational-store.js');
 
 const LOCATIONS_TABLE = process.env.SUPABASE_LOCATIONS_TABLE || 'locations';
 
@@ -74,10 +79,13 @@ async function fetchLocationsFromSupabase() {
     }
     return { ok: false, locations: [], error };
   }
-  return {
-    ok: true,
-    locations: (data || []).map(fromDbRow).filter(Boolean),
-  };
+  const locations = (data || []).map(fromDbRow).filter(Boolean);
+  try {
+    return { ok: true, locations: await overlayLocations(locations) };
+  } catch (overlayError) {
+    console.warn('[locations] overlay skipped:', overlayError.message);
+    return { ok: true, locations };
+  }
 }
 
 async function fetchLocationSitemapRows() {
@@ -137,6 +145,14 @@ async function upsertLocationsToSupabase(locations) {
 
   if (error) {
     return { ok: false, error };
+  }
+  const synced = await syncLocationPrices(locations);
+  if (!synced.ok) {
+    console.warn('[locations] price table:', synced.error?.message || synced.error);
+  }
+  const reviews = await syncUserReviews(locations);
+  if (!reviews.ok) {
+    console.warn('[locations] review table:', reviews.error?.message || reviews.error);
   }
   return { ok: true, count: rows.length };
 }
