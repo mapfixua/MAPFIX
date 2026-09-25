@@ -183,8 +183,15 @@ function checkSeoLanding() {
   const title = seo.stripHeadingDecor('🛠️ Ремонт та Побутові послуги');
   const sm = seo.sitemapXml({
     categories: [{ key: 'home' }, { key: 'auto' }],
-    locations: [{ id: 'loc-1' }],
+    locations: [{ id: 'loc-1', lastmod: '2026-01-02' }, { id: 'loc-2' }],
   });
+  const homeBlock = (sm.match(/<loc>https:\/\/www\.mapfix\.com\.ua\/<\/loc>[\s\S]*?<\/url>/) || [''])[0];
+  const datedBlock = (sm.match(/<loc>[^<]*\/p\/loc-1<\/loc>[\s\S]*?<\/url>/) || [''])[0];
+  const undatedBlock = (sm.match(/<loc>[^<]*\/p\/loc-2<\/loc>[\s\S]*?<\/url>/) || [''])[0];
+  const legacy = seo.legacyHostRedirectUrl(
+    'mapfix-wine.vercel.app',
+    '/kyiv/home/plumber?q=1'
+  );
   const checks = {
     plumberAlias: plumber.cat === 'home' && plumber.sub === 'plumber',
     plumberCanon: seo.canonicalPath(homeSub) === '/kyiv/home/plumber',
@@ -192,7 +199,10 @@ function checkSeoLanding() {
     kotsiubynske: area.area === 'kotsiubynske',
     emojiStrip: title.startsWith('Ремонт'),
     sitemapPlumber: sm.includes('/kyiv/home/plumber') && sm.includes('/kyiv/kotsiubynske'),
+    sitemapLastmod: datedBlock.includes('<lastmod>2026-01-02</lastmod>') && !undatedBlock.includes('<lastmod>') && !homeBlock.includes('<lastmod>'),
+    legacyHost: legacy === 'https://www.mapfix.com.ua/kyiv/home/plumber?q=1',
     serverAlias: serverJs.includes('shouldRedirectAlias') && serverJs.includes('/kyiv/:seg1/:seg2/:seg3'),
+    serverLegacy: serverJs.includes('legacyHostRedirectUrl'),
     jsonldSlot: indexHtml.includes('<!--MAPFIX_JSONLD-->') && indexHtml.includes('twitter:image'),
     lightSitemap: serverJs.includes('fetchLocationSitemapRows'),
   };

@@ -470,7 +470,7 @@ async function fetchOsmPlaces({ city, category }) {
         headers: {
           'Content-Type': 'application/x-www-form-urlencoded',
           Accept: 'application/json',
-          'User-Agent': 'MapfixImport/1.0 (https://mapfix-wine.vercel.app)',
+          'User-Agent': 'MapfixImport/1.0 (https://www.mapfix.com.ua)',
         },
         body: 'data=' + encodeURIComponent(query),
         signal: controller.signal,
@@ -1430,7 +1430,7 @@ async function geocodeQueryUkraine(query) {
     try {
       const res = await fetch(url, {
         headers: {
-          'User-Agent': 'MapfixImport/1.0 (https://mapfix-wine.vercel.app)',
+          'User-Agent': 'MapfixImport/1.0 (https://www.mapfix.com.ua)',
           Accept: 'application/json',
         },
       });
