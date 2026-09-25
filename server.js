@@ -20,6 +20,7 @@ const {
   injectSeoIntoHtml,
   robotsTxt,
   sitemapXml,
+  legacyHostRedirectUrl,
   parseLanding,
   canonicalPath,
   keepTrackingQuery,
@@ -137,6 +138,12 @@ const IS_VERCEL = !!process.env.VERCEL;
 
 const app = express();
 if (IS_VERCEL) app.set('trust proxy', 1);
+app.use((req, res, next) => {
+  if (req.method !== 'GET' && req.method !== 'HEAD') return next();
+  const target = legacyHostRedirectUrl(req.hostname, req.originalUrl);
+  if (!target) return next();
+  res.redirect(301, target);
+});
 const PORT = process.env.PORT || 3000;
 const ROOT = resolveProjectRoot();
 const PUBLIC_DIR = resolvePublicDir(ROOT);
