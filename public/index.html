@@ -2027,7 +2027,7 @@
         <div id="geoAsk" class="geo-ask" role="dialog" aria-label="Запит геолокації">
             <p class="geo-ask-copy" id="geoAskCopy">Дозвольте геолокацію, щоб карта відкрилась біля вас і показала найближчих майстрів.</p>
             <div class="geo-ask-actions">
-                <geolocation id="geoAskNative" lang="uk" accuracymode="precise">
+                <geolocation id="geoAskNative" lang="uk">
                     <button type="button" id="geoAskAllow">Дозволити</button>
                 </geolocation>
                 <button type="button" class="geo-ask-later" id="geoAskLater">Пізніше</button>
@@ -2140,14 +2140,15 @@
 
     <script>
         const GEO_ASK_DISMISS_KEY = 'mapfix_geo_ask_later';
-        const GEO_OPTIONS = { enableHighAccuracy: true, timeout: 12000, maximumAge: 30000 };
         const earlyGeo = {
             status: 'idle',
             coords: null,
             error: null,
+            accuracy: null,
             forceCenter: false,
             listeners: new Set(),
         };
+        let geoLookupToken = 0;
 
         function emitGeo() {
             earlyGeo.listeners.forEach((fn) => {
@@ -2174,17 +2175,30 @@
             if (!force && geoAskDismissed()) return;
             const copy = document.getElementById('geoAskCopy');
             if (copy) {
-                const denied = earlyGeo.error && earlyGeo.error.code === 1;
-                copy.textContent = denied
-                    ? 'Браузер не запитав місце або доступ закритий. Натисніть кнопку нижче, щоб відкрити запит ще раз.'
-                    : 'Дозвольте геолокацію, щоб карта відкрилась біля вас і показала найближчих майстрів.';
+                const code = earlyGeo.error && earlyGeo.error.code;
+                copy.textContent = code === 1
+                    ? 'Браузер не дав доступ до місця. Натисніть кнопку нижче, щоб відкрити запит ще раз.'
+                    : code === 2 || code === 3
+                        ? 'Не вдалося визначити місце. Натисніть кнопку нижче, щоб спробувати ще раз.'
+                        : 'Дозвольте геолокацію, щоб карта відкрилась біля вас і показала найближчих майстрів.';
             }
             document.getElementById('geoAsk')?.classList.add('show');
         }
 
-        function rememberGeoPosition(lat, lng, { forceCenter = false } = {}) {
+        function rememberGeoPosition(lat, lng, { forceCenter = false, accuracy = null } = {}) {
+            const acc = Number.isFinite(Number(accuracy)) ? Number(accuracy) : null;
+            if (
+                !forceCenter &&
+                earlyGeo.status === 'ok' &&
+                earlyGeo.accuracy != null &&
+                acc != null &&
+                acc > earlyGeo.accuracy
+            ) {
+                return;
+            }
             earlyGeo.status = 'ok';
             earlyGeo.coords = { lat: Number(lat), lng: Number(lng) };
+            earlyGeo.accuracy = acc == null ? earlyGeo.accuracy : acc;
             earlyGeo.error = null;
             earlyGeo.forceCenter = !!forceCenter;
             document.getElementById('geo-btn')?.classList.remove('locating');
@@ -2193,10 +2207,11 @@
         }
 
         function failGeo(err, { fromGesture = false } = {}) {
+            document.getElementById('geo-btn')?.classList.remove('locating');
+            if (earlyGeo.status === 'ok') return;
             earlyGeo.status = 'error';
             earlyGeo.error = err || null;
             earlyGeo.forceCenter = false;
-            document.getElementById('geo-btn')?.classList.remove('locating');
             emitGeo();
             showGeoAsk({ force: fromGesture });
             if (!fromGesture) return;
@@ -2217,14 +2232,57 @@
                 failGeo({ code: 0, message: 'unsupported' }, { fromGesture });
                 return;
             }
+            const token = ++geoLookupToken;
+            const stale = () => token !== geoLookupToken;
             document.getElementById('geo-btn')?.classList.add('locating');
+
+            const coarseOpts = {
+                enableHighAccuracy: false,
+                timeout: 10000,
+                maximumAge: fromGesture ? 0 : 120000,
+            };
+            const preciseOpts = {
+                enableHighAccuracy: true,
+                timeout: 12000,
+                maximumAge: 0,
+            };
+
+            const onFix = (pos, forceCenter) => {
+                if (stale() || !pos || !pos.coords) return;
+                rememberGeoPosition(pos.coords.latitude, pos.coords.longitude, {
+                    forceCenter,
+                    accuracy: pos.coords.accuracy,
+                });
+            };
+
+            // Network/Wi-Fi fix first. Precise GPS often times out and leaves the map without a point.
             navigator.geolocation.getCurrentPosition(
-                (pos) => rememberGeoPosition(pos.coords.latitude, pos.coords.longitude, { forceCenter: fromGesture }),
+                (pos) => {
+                    onFix(pos, fromGesture);
+                    navigator.geolocation.getCurrentPosition(
+                        (better) => onFix(better, false),
+                        () => {},
+                        preciseOpts
+                    );
+                },
                 (err) => {
+                    if (stale()) return;
                     console.warn('[geo]', err && err.message ? err.message : err);
+                    if (err && (err.code === 2 || err.code === 3)) {
+                        navigator.geolocation.getCurrentPosition(
+                            (pos) => onFix(pos, fromGesture),
+                            (err2) => {
+                                if (stale()) return;
+                                console.warn('[geo]', err2 && err2.message ? err2.message : err2);
+                                failGeo(err2, { fromGesture });
+                            },
+                            preciseOpts
+                        );
+                        return;
+                    }
                     failGeo(err, { fromGesture });
                 },
-                fromGesture ? { ...GEO_OPTIONS, maximumAge: 0 } : GEO_OPTIONS
+                coarseOpts
             );
         }
 
@@ -2242,41 +2300,36 @@
         geoAskNative?.addEventListener('location', () => {
             const pos = geoAskNative.position;
             if (pos && pos.coords) {
-                rememberGeoPosition(pos.coords.latitude, pos.coords.longitude, { forceCenter: true });
-            } else {
-                failGeo(geoAskNative.error, { fromGesture: true });
-            }
-        });
-
-        // Page-load geolocation prompts are often swallowed. Ask in the page,
-        // and only call the browser API immediately when permission is already granted.
-        let geoBootSettled = false;
-        const geoBootTimer = setTimeout(() => {
-            if (!geoBootSettled && earlyGeo.status !== 'ok') showGeoAsk();
-        }, 800);
-        (async function bootLocationAsk() {
-            let state = 'prompt';
-            try {
-                if (navigator.permissions && navigator.permissions.query) {
-                    const perm = await navigator.permissions.query({ name: 'geolocation' });
-                    state = perm.state;
-                    perm.onchange = () => {
-                        if (perm.state === 'granted' && earlyGeo.status !== 'ok') {
-                            requestDeviceLocation({ fromGesture: false });
-                        }
-                    };
-                }
-            } catch (_) {}
-            geoBootSettled = true;
-            clearTimeout(geoBootTimer);
-            if (earlyGeo.status === 'ok') return;
-            if (state === 'granted') {
-                hideGeoAsk();
-                requestDeviceLocation({ fromGesture: false });
+                rememberGeoPosition(pos.coords.latitude, pos.coords.longitude, {
+                    forceCenter: true,
+                    accuracy: pos.coords.accuracy,
+                });
+                if (!navigator.geolocation) return;
+                navigator.geolocation.getCurrentPosition(
+                    (better) => rememberGeoPosition(better.coords.latitude, better.coords.longitude, {
+                        forceCenter: false,
+                        accuracy: better.coords && better.coords.accuracy,
+                    }),
+                    () => {},
+                    { enableHighAccuracy: true, timeout: 12000, maximumAge: 0 }
+                );
                 return;
             }
-            showGeoAsk();
-        })();
+            requestDeviceLocation({ fromGesture: true });
+        });
+
+        // Ask immediately. A fast network fix still shows the permission prompt,
+        // and does not wait on a GPS timeout before the map can move.
+        requestDeviceLocation({ fromGesture: false });
+        if (navigator.permissions && navigator.permissions.query) {
+            navigator.permissions.query({ name: 'geolocation' }).then((perm) => {
+                perm.onchange = () => {
+                    if (perm.state === 'granted' && earlyGeo.status !== 'ok') {
+                        requestDeviceLocation({ fromGesture: false });
+                    }
+                };
+            }).catch(() => {});
+        }
 
         function loadStylesheet(href) {
             return new Promise((resolve) => {
