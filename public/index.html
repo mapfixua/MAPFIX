@@ -1440,6 +1440,55 @@
         #geo-btn.locating { color: var(--primary); }
         #geo-btn.locating i { animation: geo-spin 0.9s linear infinite; }
         #geo-btn.active { color: var(--primary); box-shadow: 0 0 0 3px rgba(18,196,181,0.25), 0 4px 15px rgba(0,0,0,0.15); }
+        .geo-ask {
+            display: none;
+            position: absolute;
+            z-index: 24;
+            left: 12px;
+            right: 72px;
+            bottom: 14px;
+            max-width: 420px;
+            background: #fff;
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            box-shadow: 0 12px 36px rgba(11,13,16,0.16);
+            padding: 12px;
+            gap: 10px;
+            align-items: center;
+        }
+        .geo-ask.show { display: flex; }
+        .geo-ask-copy {
+            margin: 0;
+            flex: 1;
+            min-width: 140px;
+            font-size: 13px;
+            font-weight: 700;
+            line-height: 1.35;
+            color: var(--ink);
+        }
+        .geo-ask-actions { display: flex; gap: 6px; flex-shrink: 0; align-items: center; }
+        .geo-ask-actions button {
+            border: 0;
+            border-radius: 10px;
+            height: 36px;
+            padding: 0 12px;
+            font-family: inherit;
+            font-size: 14px;
+            font-weight: 800;
+            cursor: pointer;
+            color: #fff;
+            background: #0b0d10;
+        }
+        .geo-ask-actions geolocation {
+            font-size: 14px;
+            font-weight: 700;
+            border-radius: 10px;
+        }
+        .geo-ask-later {
+            background: #f1f5f9 !important;
+            color: #334155 !important;
+        }
+        .pwa-install-banner.show ~ .geo-ask.show { bottom: 118px; }
         @keyframes geo-spin { to { transform: rotate(360deg); } }
 
         .user-location-marker-wrap {
@@ -1623,6 +1672,7 @@
             }
 
             #geo-btn { bottom: 28px; right: 28px; }
+            .geo-ask { left: 18px; bottom: 28px; }
             .top-header { top: 18px; left: 18px; right: 18px; max-width: 860px; }
         }
 
@@ -1835,6 +1885,18 @@
             }
 
             #geo-btn { bottom: calc(14px + var(--chrome-nav-pad)); right: 14px; }
+            .geo-ask {
+                left: 10px;
+                right: 10px;
+                bottom: calc(68px + var(--chrome-nav-pad));
+                max-width: none;
+                flex-direction: column;
+                align-items: stretch;
+            }
+            .geo-ask-actions { flex-wrap: wrap; }
+            .pwa-install-banner.show ~ .geo-ask.show {
+                bottom: calc(108px + var(--chrome-nav-pad));
+            }
 
             /* Compact mode — тільки мобільний */
             .sidebar-header {
@@ -1962,6 +2024,15 @@
                 <button type="button" class="pwa-install-cta" id="pwaInstallBannerBtn">Додати</button>
             </div>
         </div>
+        <div id="geoAsk" class="geo-ask" role="dialog" aria-label="Запит геолокації">
+            <p class="geo-ask-copy" id="geoAskCopy">Дозвольте геолокацію, щоб карта відкрилась біля вас і показала найближчих майстрів.</p>
+            <div class="geo-ask-actions">
+                <geolocation id="geoAskNative" lang="uk" accuracymode="precise">
+                    <button type="button" id="geoAskAllow">Дозволити</button>
+                </geolocation>
+                <button type="button" class="geo-ask-later" id="geoAskLater">Пізніше</button>
+            </div>
+        </div>
     </main>
 
     <div class="pwa-install-modal" id="pwaInstallModal" aria-hidden="true">
@@ -2068,6 +2139,145 @@
     <script src="/mf-analytics.js" defer></script>
 
     <script>
+        const GEO_ASK_DISMISS_KEY = 'mapfix_geo_ask_later';
+        const GEO_OPTIONS = { enableHighAccuracy: true, timeout: 12000, maximumAge: 30000 };
+        const earlyGeo = {
+            status: 'idle',
+            coords: null,
+            error: null,
+            forceCenter: false,
+            listeners: new Set(),
+        };
+
+        function emitGeo() {
+            earlyGeo.listeners.forEach((fn) => {
+                try { fn(earlyGeo); } catch (_) {}
+            });
+        }
+
+        function watchGeo(fn) {
+            earlyGeo.listeners.add(fn);
+            if (earlyGeo.status === 'ok' || earlyGeo.status === 'error') fn(earlyGeo);
+        }
+
+        function geoAskDismissed() {
+            try { return sessionStorage.getItem(GEO_ASK_DISMISS_KEY) === '1'; }
+            catch (_) { return false; }
+        }
+
+        function hideGeoAsk() {
+            document.getElementById('geoAsk')?.classList.remove('show');
+        }
+
+        function showGeoAsk({ force = false } = {}) {
+            if (earlyGeo.status === 'ok') return;
+            if (!force && geoAskDismissed()) return;
+            const copy = document.getElementById('geoAskCopy');
+            if (copy) {
+                const denied = earlyGeo.error && earlyGeo.error.code === 1;
+                copy.textContent = denied
+                    ? 'Браузер не запитав місце або доступ закритий. Натисніть кнопку нижче, щоб відкрити запит ще раз.'
+                    : 'Дозвольте геолокацію, щоб карта відкрилась біля вас і показала найближчих майстрів.';
+            }
+            document.getElementById('geoAsk')?.classList.add('show');
+        }
+
+        function rememberGeoPosition(lat, lng, { forceCenter = false } = {}) {
+            earlyGeo.status = 'ok';
+            earlyGeo.coords = { lat: Number(lat), lng: Number(lng) };
+            earlyGeo.error = null;
+            earlyGeo.forceCenter = !!forceCenter;
+            document.getElementById('geo-btn')?.classList.remove('locating');
+            hideGeoAsk();
+            emitGeo();
+        }
+
+        function failGeo(err, { fromGesture = false } = {}) {
+            earlyGeo.status = 'error';
+            earlyGeo.error = err || null;
+            earlyGeo.forceCenter = false;
+            document.getElementById('geo-btn')?.classList.remove('locating');
+            emitGeo();
+            showGeoAsk({ force: fromGesture });
+            if (!fromGesture) return;
+            if (!navigator.geolocation || (err && err.code === 0)) {
+                alert('Геолокація не підтримується цим браузером');
+                return;
+            }
+            const denied = err && err.code === 1;
+            if (denied && typeof HTMLGeolocationElement !== 'function') {
+                alert('Доступ до геолокації заборонено. Дозвольте його в налаштуваннях браузера.');
+            } else if (!denied) {
+                alert('Не вдалося визначити місцезнаходження. Спробуйте ще раз.');
+            }
+        }
+
+        function requestDeviceLocation({ fromGesture = false } = {}) {
+            if (!navigator.geolocation) {
+                failGeo({ code: 0, message: 'unsupported' }, { fromGesture });
+                return;
+            }
+            document.getElementById('geo-btn')?.classList.add('locating');
+            navigator.geolocation.getCurrentPosition(
+                (pos) => rememberGeoPosition(pos.coords.latitude, pos.coords.longitude, { forceCenter: fromGesture }),
+                (err) => {
+                    console.warn('[geo]', err && err.message ? err.message : err);
+                    failGeo(err, { fromGesture });
+                },
+                fromGesture ? { ...GEO_OPTIONS, maximumAge: 0 } : GEO_OPTIONS
+            );
+        }
+
+        document.getElementById('geo-btn')?.addEventListener('click', () => {
+            requestDeviceLocation({ fromGesture: true });
+        });
+        document.getElementById('geoAskAllow')?.addEventListener('click', () => {
+            requestDeviceLocation({ fromGesture: true });
+        });
+        document.getElementById('geoAskLater')?.addEventListener('click', () => {
+            try { sessionStorage.setItem(GEO_ASK_DISMISS_KEY, '1'); } catch (_) {}
+            hideGeoAsk();
+        });
+        const geoAskNative = document.getElementById('geoAskNative');
+        geoAskNative?.addEventListener('location', () => {
+            const pos = geoAskNative.position;
+            if (pos && pos.coords) {
+                rememberGeoPosition(pos.coords.latitude, pos.coords.longitude, { forceCenter: true });
+            } else {
+                failGeo(geoAskNative.error, { fromGesture: true });
+            }
+        });
+
+        // Page-load geolocation prompts are often swallowed. Ask in the page,
+        // and only call the browser API immediately when permission is already granted.
+        let geoBootSettled = false;
+        const geoBootTimer = setTimeout(() => {
+            if (!geoBootSettled && earlyGeo.status !== 'ok') showGeoAsk();
+        }, 800);
+        (async function bootLocationAsk() {
+            let state = 'prompt';
+            try {
+                if (navigator.permissions && navigator.permissions.query) {
+                    const perm = await navigator.permissions.query({ name: 'geolocation' });
+                    state = perm.state;
+                    perm.onchange = () => {
+                        if (perm.state === 'granted' && earlyGeo.status !== 'ok') {
+                            requestDeviceLocation({ fromGesture: false });
+                        }
+                    };
+                }
+            } catch (_) {}
+            geoBootSettled = true;
+            clearTimeout(geoBootTimer);
+            if (earlyGeo.status === 'ok') return;
+            if (state === 'granted') {
+                hideGeoAsk();
+                requestDeviceLocation({ fromGesture: false });
+                return;
+            }
+            showGeoAsk();
+        })();
+
         function loadStylesheet(href) {
             return new Promise((resolve) => {
                 const exists = [...document.querySelectorAll('link[rel="stylesheet"]')].some(
@@ -2286,45 +2496,14 @@
                 }
             }
 
-            function locateUser({ center = true, fromButton = false } = {}) {
-                if (!navigator.geolocation) {
-                    if (fromButton) alert('Геолокація не підтримується цим браузером');
-                    return;
-                }
-                if (geoBtn) geoBtn.classList.add('locating');
-                navigator.geolocation.getCurrentPosition(
-                    (pos) => {
-                        if (geoBtn) geoBtn.classList.remove('locating');
-                        setUserLocation(pos.coords.latitude, pos.coords.longitude, {
-                            center: fromButton ? true : center && shouldAutoCenterOnUser(),
-                            zoom: USER_FOCUS_ZOOM,
-                        });
-                    },
-                    (err) => {
-                        if (geoBtn) geoBtn.classList.remove('locating');
-                        console.warn('[geo]', err && err.message ? err.message : err);
-                        if (fromButton) {
-                            const denied = err && err.code === 1;
-                            alert(
-                                denied
-                                    ? 'Доступ до геолокації заборонено. Дозвольте його в налаштуваннях браузера.'
-                                    : 'Не вдалося визначити місцезнаходження. Спробуйте ще раз.'
-                            );
-                        }
-                    },
-                    {
-                        enableHighAccuracy: true,
-                        timeout: 12000,
-                        maximumAge: 30000,
-                    }
-                );
-            }
-
-            if (geoBtn) {
-                geoBtn.addEventListener('click', () => locateUser({ center: true, fromButton: true }));
-            }
-            // Show viewer location and center the map on first load
-            locateUser({ center: true });
+            watchGeo((snap) => {
+                if (snap.status !== 'ok' || !snap.coords) return;
+                if (geoBtn) geoBtn.classList.remove('locating');
+                setUserLocation(snap.coords.lat, snap.coords.lng, {
+                    center: snap.forceCenter || shouldAutoCenterOnUser(),
+                    zoom: USER_FOCUS_ZOOM,
+                });
+            });
 
             async function refreshMapData() {
                 await loadCatalogData();
