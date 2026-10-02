@@ -5859,12 +5859,16 @@
       refreshLocSuggestionLists();
     }
 
+    function providerDefaultPhone() {
+      return String(providerData?.account?.phone || providerData?.profile?.phone || '').trim();
+    }
+
     function clearLocationFormFields() {
       document.getElementById('editLocId').value = '';
       document.getElementById('locTitle').value = '';
       document.getElementById('locText').value = '';
       document.getElementById('locAddress').value = '';
-      document.getElementById('locPhone').value = '';
+      document.getElementById('locPhone').value = providerDefaultPhone();
       document.getElementById('locCustomSubcatName').value = '';
       document.getElementById('priceServiceCustom').value = '';
       document.getElementById('priceValue').value = '';
@@ -6002,7 +6006,7 @@
       document.getElementById('locTitle').value = loc.title;
       document.getElementById('locText').value = loc.text || '';
       document.getElementById('locAddress').value = loc.address || '';
-      document.getElementById('locPhone').value = loc.phone || '';
+      document.getElementById('locPhone').value = loc.phone || providerDefaultPhone();
       document.getElementById('locLat').value = loc.lat;
       document.getElementById('locLng').value = loc.lng;
       document.getElementById('locStatus').value = loc.openStatus || 'open';
