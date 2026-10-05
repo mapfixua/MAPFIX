@@ -214,6 +214,8 @@ function firstEmoji(text) {
   return m ? m[0] : '📍';
 }
 
+const PRICE_ON_REQUEST = 'за домовленістю';
+
 function isValidPrice(price) {
   // Must contain at least one digit (allows "650", "650 грн", "від 500 грн").
   return /\d/.test(String(price || '').trim());
@@ -238,8 +240,14 @@ function normalizePricesMap(prices) {
   const out = {};
   for (const [rawName, rawPrice] of Object.entries(prices)) {
     const name = String(rawName || '').trim();
-    const price = String(rawPrice || '').trim();
-    if (!name || !isValidPrice(price)) continue;
+    const price = rawPrice == null ? '' : String(rawPrice).trim();
+    if (!name) continue;
+    if (!isValidPrice(price)) {
+      // Ticked service without a numeric price: keep it as "за домовленістю"
+      // (free-text labels like "безкоштовно" are kept as-is).
+      out[name] = /безкошт|безплат/i.test(price) ? price.slice(0, 80) : PRICE_ON_REQUEST;
+      continue;
+    }
     try {
       out[name] = formatPrice(price);
     } catch {
@@ -921,12 +929,19 @@ app.get('/login', (req, res) => {
   res.redirect('/login.html' + next);
 });
 
+/** Keep ?role=provider, ?next=, ?token= etc. when redirecting pretty URLs to .html pages. */
+function queryStringOf(req) {
+  const url = String(req.originalUrl || '');
+  const i = url.indexOf('?');
+  return i >= 0 ? url.slice(i) : '';
+}
+
 app.get('/register.html', (req, res) => {
   sendPublicPage(res, 'register.html');
 });
 
 app.get('/register', (req, res) => {
-  res.redirect('/register.html');
+  res.redirect('/register.html' + queryStringOf(req));
 });
 
 app.get('/forgot-password.html', (req, res) => {
@@ -934,7 +949,7 @@ app.get('/forgot-password.html', (req, res) => {
 });
 
 app.get('/forgot-password', (req, res) => {
-  res.redirect('/forgot-password.html');
+  res.redirect('/forgot-password.html' + queryStringOf(req));
 });
 
 app.get('/reset-password.html', (req, res) => {
@@ -942,7 +957,7 @@ app.get('/reset-password.html', (req, res) => {
 });
 
 app.get('/reset-password', (req, res) => {
-  res.redirect('/reset-password.html');
+  res.redirect('/reset-password.html' + queryStringOf(req));
 });
 
 app.get('/link-telegram.html', (req, res) => {
@@ -950,7 +965,7 @@ app.get('/link-telegram.html', (req, res) => {
 });
 
 app.get('/link-telegram', (req, res) => {
-  res.redirect('/link-telegram.html');
+  res.redirect('/link-telegram.html' + queryStringOf(req));
 });
 
 app.get('/api/telegram/status', (_req, res) => {
@@ -959,7 +974,8 @@ app.get('/api/telegram/status', (_req, res) => {
 
 app.get('/admin', (req, res) => {
   if (!canAccessAdmin(req)) {
-    return res.redirect('/login.html?next=/admin');
+    const next = String(req.originalUrl || '/admin').startsWith('/admin') ? req.originalUrl : '/admin';
+    return res.redirect('/login.html?next=' + encodeURIComponent(next));
   }
   res.set('Cache-Control', 'no-store');
   res.set('X-Robots-Tag', 'noindex, nofollow');
@@ -1373,9 +1389,19 @@ app.get('/api/data', async (req, res) => {
       if (reviews.length <= 2) return loc;
       return { ...loc, reviews: reviews.slice(0, 2) };
     });
+    // Public endpoint: never expose account/profile phones. The map only needs
+    // the company name of providers that own a published card.
+    const providerProfiles = {};
+    for (const loc of locations) {
+      const pid = loc.providerId;
+      if (!pid || providerProfiles[pid]) continue;
+      const profile = data.providerProfiles?.[pid];
+      if (profile) providerProfiles[pid] = { companyName: profile.companyName || '' };
+    }
     res.json({
-      ...data,
+      masterCatalog: data.masterCatalog,
       mockLocations: locations,
+      providerProfiles,
       catalogClicks,
     });
   } catch (err) {
