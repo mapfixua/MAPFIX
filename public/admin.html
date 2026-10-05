@@ -1702,11 +1702,11 @@
               <button type="button" class="btn-danger hidden" id="locDeleteBtn" style="margin-top:8px;width:100%">Видалити локацію</button>
             </form>
 
-            <div id="locPhotosBlock" class="hidden" style="margin-top:16px">
+            <div id="locPhotosBlock" style="margin-top:16px">
               <h2>Фото точки</h2>
-              <p class="field-hint" id="locPhotosHint">Фото доступні на Pro / у пробному періоді. Кожне до 5 МБ (JPEG / PNG / WebP).</p>
+              <p class="field-hint" id="locPhotosHint">До 6 фото, кожне до 5 МБ (JPEG / PNG / WebP). Перше фото — обкладинка картки.</p>
               <div id="locPhotosList" style="display:flex;flex-wrap:wrap;gap:10px;margin-bottom:10px"></div>
-              <label class="btn-secondary" style="display:inline-block;width:auto;cursor:pointer;padding:10px 14px">
+              <label class="btn-secondary" id="locPhotoAddLabel" style="display:inline-block;width:auto;cursor:pointer;padding:10px 14px">
                 Додати фото
                 <input type="file" id="locPhotoInput" accept="image/jpeg,image/png,image/webp" style="display:none">
               </label>
@@ -5767,6 +5767,7 @@
         onLocSubcatsChanged();
         document.querySelectorAll('.price-service-cb').forEach((cb) => {
           cb.checked = allCb.checked;
+          if (!cb.checked) delete locDraftPrices[cb.value];
         });
         syncPriceServicesSelectAll();
         syncLocSubcatsSelectAll();
@@ -5987,7 +5988,6 @@
       document.getElementById('locDeleteBtn').classList.toggle('hidden', !locId);
       document.getElementById('locEditorTitle').textContent = locId ? 'Редагування локації' : 'Нова локація';
       document.getElementById('priceForm').classList.add('hidden');
-      document.getElementById('locPhotosBlock').classList.toggle('hidden', !locId);
 
       if (!locId) {
         clearLocationFormFields();
@@ -6040,11 +6040,32 @@
       if (!list) return;
       const photos = Array.isArray(loc?.photos) ? loc.photos : [];
       list.innerHTML = '';
-      if (!loc) {
-        if (input) input.disabled = true;
-        return;
+      const hint = document.getElementById('locPhotosHint');
+      const addLabel = document.getElementById('locPhotoAddLabel');
+      const limit = locPhotoLimit();
+      if (hint) {
+        if (!loc) {
+          hint.textContent =
+            'Спочатку натисніть «Зберегти локацію» — після цього тут можна додати до ' +
+            MAX_LOC_PHOTOS +
+            ' фото (кожне до 5 МБ).';
+        } else if (limit <= 0) {
+          hint.textContent =
+            'Фото доступні на підписці Pro / у пробному періоді. Відкрийте розділ «Підписка».';
+        } else {
+          hint.textContent =
+            'До ' +
+            limit +
+            ' фото, кожне до 5 МБ (JPEG / PNG / WebP). Перше фото — обкладинка картки.';
+        }
       }
-      if (input) input.disabled = photos.length >= locPhotoLimit() || locPhotoLimit() <= 0;
+      const canAdd = Boolean(loc) && limit > 0 && photos.length < limit;
+      if (input) input.disabled = !canAdd;
+      if (addLabel) {
+        addLabel.style.opacity = canAdd ? '' : '0.5';
+        addLabel.style.cursor = canAdd ? 'pointer' : 'not-allowed';
+      }
+      if (!loc) return;
       if (!photos.length) {
         list.innerHTML = '<p class="list-item-meta">Фото ще немає</p>';
         return;
@@ -6392,6 +6413,10 @@
 
     function buildPricesPayload() {
       const prices = { ...locDraftPrices };
+      // Unticked catalog services are removed from the price list.
+      document.querySelectorAll('.price-service-cb:not(:checked)').forEach((cb) => {
+        delete prices[cb.value];
+      });
       getSelectedPriceServices().forEach((svc) => {
         if (!prices[svc.name]) {
           prices[svc.name] = svc.refPrice || 'за домовленістю';
@@ -6426,6 +6451,7 @@
       allCb.addEventListener('change', () => {
         document.querySelectorAll('.price-service-cb').forEach((cb) => {
           cb.checked = allCb.checked;
+          if (!cb.checked) delete locDraftPrices[cb.value];
         });
         syncPriceServicesSelectAll();
       });
@@ -6444,7 +6470,10 @@
         cb.value = item.name;
         cb.dataset.refPrice = item.refPrice || '';
         cb.checked = Boolean(locDraftPrices[item.name]);
-        cb.addEventListener('change', syncPriceServicesSelectAll);
+        cb.addEventListener('change', () => {
+          if (!cb.checked) delete locDraftPrices[item.name];
+          syncPriceServicesSelectAll();
+        });
         label.appendChild(cb);
         const span = document.createElement('span');
         span.textContent = item.refPrice ? `${item.name} (${item.refPrice})` : item.name;

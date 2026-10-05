@@ -2053,12 +2053,13 @@
                 <h2 id="googleImportTitle">Додати місце з Google Maps</h2>
                 <button type="button" class="import-modal-close" id="googleImportClose" aria-label="Закрити">×</button>
             </div>
-            <p style="font-size:13px;color:var(--muted);margin:8px 0 0">Вставте посилання Google Maps (Share → Copy link). Назву й координати витягнемо з URL; телефон/рейтинг/графік підтягнуться, якщо налаштовано Google Places API.</p>
+            <p style="font-size:13px;color:var(--muted);margin:8px 0 0">Вставте посилання Google Maps (Share → Copy link). Назву й координати витягнемо з URL; телефон і графік підтягнемо, якщо вони є в Google.</p>
             <label for="googleImportUrl">Посилання Google Maps</label>
             <input type="url" id="googleImportUrl" placeholder="https://maps.app.goo.gl/..." autocomplete="url">
             <div class="import-modal-actions">
                 <button type="button" class="import-modal-secondary" id="googleImportPreviewBtn">Розпізнати</button>
             </div>
+            <p style="font-size:13px;margin:14px 0 0;color:var(--muted)">Немає закладу в Google Maps? <a href="/admin?newLocation=1" id="googleImportManualLink">Створити картку вручну →</a></p>
             <div id="googleImportPreview" class="import-preview hidden"></div>
             <div id="googleImportMessage" class="import-message" aria-live="polite"></div>
         </div>
@@ -2655,11 +2656,11 @@
             window.startAddBusinessFlow = function() {
                 const u = State.currentUser;
                 if (!u) {
-                    window.location.href = '/register.html?role=provider&next=' + encodeURIComponent('/?add=1');
+                    window.location.href = '/register.html?role=provider&next=' + encodeURIComponent('/admin?newLocation=1');
                     return;
                 }
                 if (u.role === 'client') {
-                    window.location.href = '/register.html?role=provider&next=' + encodeURIComponent('/?add=1');
+                    window.location.href = '/register.html?role=provider&next=' + encodeURIComponent('/admin?newLocation=1');
                     return;
                 }
                 openGoogleImport();
