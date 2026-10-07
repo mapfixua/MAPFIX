@@ -4181,7 +4181,12 @@
                     canon.rel = 'canonical';
                     document.head.appendChild(canon);
                 }
-                canon.href = url;
+                // Канонічна адреса — завжди www-хост і шлях без query (як у серверному HTML)
+                try {
+                    canon.href = 'https://www.mapfix.com.ua' + new URL(url, window.location.origin).pathname;
+                } catch (_) {
+                    canon.href = url;
+                }
             }
             function shareUrlFromState() {
                 const origin = window.location.origin;

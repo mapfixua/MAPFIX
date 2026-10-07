@@ -811,6 +811,10 @@ function sendPublicPage(res, filename) {
 }
 
 async function serveMapPage(req, res) {
+  if (req.path.length > 1 && req.path.endsWith('/')) {
+    const qi = req.originalUrl.indexOf('?');
+    return res.redirect(301, req.path.replace(/\/+$/, '') + (qi >= 0 ? req.originalUrl.slice(qi) : ''));
+  }
   try {
     const data = await readData();
     const landing = parseLanding({
