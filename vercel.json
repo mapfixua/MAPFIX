@@ -45,6 +45,7 @@
           "relational-store.js",
           "billing.js",
           "analytics.js",
+          "analytics-events.js",
           "ops-monitor.js",
           "seo.js"
         ]

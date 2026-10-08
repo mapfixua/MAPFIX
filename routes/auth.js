@@ -3,6 +3,7 @@ const otpAuth = require('../otp-auth.js');
 const passwordReset = require('../password-reset.js');
 const { sendOtpToTelegram } = require('../telegram-bot.js');
 const { setAuthCookie } = require('../auth-jwt.js');
+const analyticsEvents = require('../analytics-events.js');
 
 const OTP_ERROR_MESSAGES = {
   invalid_phone: 'Вкажіть коректний номер телефону',
@@ -131,6 +132,11 @@ function createAuthRouter({ jwtSecret, toPublicUserWithProfile, readData }) {
       }
 
       setAuthCookie(res, verifyResult.user, secret);
+      await analyticsEvents.logEvent(req, {
+        type: 'login',
+        user: verifyResult.user,
+        meta: { method: 'telegram_otp' },
+      });
 
       const data = await readData();
       res.status(200).json({

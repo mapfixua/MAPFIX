@@ -983,7 +983,7 @@
 
           <div id="adminPaneAnalytics" class="admin-pane card">
             <h2>Статистика платформи</h2>
-            <p class="field-hint">Онлайн оновлюється з heartbeat (~30 с). Кліки каталогу — з карти. Пошук — з поля вводу / голосу.</p>
+            <p class="field-hint">Натисніть на будь-який показник, щоб побачити деталі: хто, коли, на якій картці, з якого пристрою і звідки прийшов. Онлайн оновлюється кожні ~30 с.</p>
             <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">
               <button type="button" class="btn-secondary" style="width:auto" id="analyticsRefreshBtn">Оновити</button>
               <span class="field-hint" id="analyticsUpdatedAt" style="margin:0;align-self:center"></span>
@@ -1011,7 +1011,7 @@
             <p class="field-hint" style="margin-top:0">Як у Google Business: дзвінки, маршрути, поділитись, обране, замовлення, детальніше. Call rate = дзвінки / перегляди.</p>
             <div class="stat-grid" id="analyticsCtaStats" style="margin-bottom:12px"></div>
             <h3 style="font-size:0.95rem;margin:0 0 6px">Топ локацій за дзвінками</h3>
-            <p class="field-hint" style="margin:0 0 6px">Подвійний клік — відкрити локацію</p>
+            <p class="field-hint" style="margin:0 0 6px">Натисніть на картку — всі її події</p>
             <div id="analyticsTopCalls"><p class="list-item-meta">—</p></div>
 
             <h3 style="font-size:1rem;margin:16px 0 8px">Куди заходять (сторінки)</h3>
@@ -1040,7 +1040,7 @@
             <div id="analyticsRecentSearches"><p class="list-item-meta">—</p></div>
 
             <h3 style="font-size:1rem;margin:16px 0 8px">Топ локацій за залученістю</h3>
-            <p class="field-hint" style="margin:0 0 6px">Спочатку за дзвінками, потім за переглядами. Подвійний клік — відкрити локацію</p>
+            <p class="field-hint" style="margin:0 0 6px">Спочатку за дзвінками, потім за переглядами. Натисніть на картку — всі її події</p>
             <div id="analyticsTopLocs"><p class="list-item-meta">—</p></div>
 
             <h3 style="font-size:1rem;margin:16px 0 8px">Історія по днях</h3>
@@ -2343,28 +2343,29 @@
       const todayIso = analyticsTodayIso || windowRows[windowRows.length - 1]?.day;
       if (label) label.textContent = analyticsWindowRangeText(windowRows, todayIso);
       const charts = [
-        ['Унікальні заходи', 'uniqueVisits', true],
-        ['Перегляди сторінок', 'pageViews', false],
-        ['Завантаження карти', 'mapLoads', false],
-        ['Відкриття карток', 'locationOpens', false],
-        ['Пошукові запити', 'searches', false],
-        ['Замовлення', 'orders', false],
+        ['Унікальні заходи', 'uniqueVisits', true, 'page_view'],
+        ['Перегляди сторінок', 'pageViews', false, 'page_view'],
+        ['Завантаження карти', 'mapLoads', false, 'page_view'],
+        ['Відкриття карток', 'locationOpens', false, 'view'],
+        ['Пошукові запити', 'searches', false, 'search'],
+        ['Замовлення', 'orders', false, 'order'],
       ];
       const dayKeys = windowRows.map((d) => d.day);
       kpisEl.innerHTML = charts
-        .map(([title, field, highlight]) =>
+        .map(([title, field, highlight, drillType]) =>
           renderMetricBarChart({
             title,
             values: windowRows.map((d) => Number(d[field]) || 0),
             days: dayKeys,
             todayIso,
             highlight,
+            drillType,
           })
         )
         .join('');
     }
 
-    function renderMetricBarChart({ title, values, days, todayIso, highlight }) {
+    function renderMetricBarChart({ title, values, days, todayIso, highlight, drillType }) {
       const max = Math.max(1, ...values);
       const med = analyticsMedian(values);
       const medPct = Math.max(0, Math.min(100, (med / max) * 100));
@@ -2386,7 +2387,10 @@
         })
         .join('');
       const medLabel = Number.isInteger(med) ? String(med) : med.toFixed(1);
-      return `<div class="metric-chart-card${highlight ? ' metric-highlight' : ''}">
+      const drill = drillType
+        ? ` data-drill="events" data-drill-type="${esc(drillType)}" data-drill-title="${esc(title)}" role="button" tabindex="0"`
+        : '';
+      return `<div class="metric-chart-card${highlight ? ' metric-highlight' : ''}"${drill}>
         <div class="metric-chart-head">
           <div class="metric-chart-title">${esc(title)}</div>
           <div class="metric-chart-today">${esc(String(lastVal))}<span>${esc(lastCaption)}</span></div>
@@ -2411,10 +2415,20 @@
       liveEl.innerHTML = '';
       kpisEl.innerHTML = '<p class="list-item-meta">Завантаження…</p>';
       if (platformEl) platformEl.innerHTML = '';
-      const card = (label, value, highlight) =>
-        `<div class="stat-card${highlight ? ' stat-highlight' : ''}"><div class="stat-label">${esc(label)}</div><div class="stat-value">${esc(String(value ?? 0))}</div></div>`;
+      const drillAttrs = (drill) => {
+        if (!drill) return '';
+        const [kind, arg, mode] = drill.split(':');
+        let a = ` data-drill="${esc(kind)}" role="button" tabindex="0"`;
+        if (kind === 'events') a += ` data-drill-type="${esc(arg || 'all')}"`;
+        if (kind === 'list') a += ` data-drill-list="${esc(arg || '')}"`;
+        if (mode) a += ` data-drill-mode="${esc(mode)}"`;
+        return a;
+      };
+      const card = (label, value, highlight, drill) =>
+        `<div class="stat-card${highlight ? ' stat-highlight' : ''}"${drillAttrs(drill)}><div class="stat-label">${esc(label)}</div><div class="stat-value">${esc(String(value ?? 0))}</div></div>`;
       try {
         const data = await apiFetch('/api/admin/analytics');
+        window.adminAnalyticsLast = data;
         const live = data.live || {};
         const kpis = data.kpis || {};
         const todayIso = data.today?.day || null;
@@ -2424,10 +2438,10 @@
         if (updated) updated.textContent = 'Оновлено: ' + formatBillingDate(data.generatedAt);
 
         liveEl.innerHTML = [
-          ['Онлайн зараз', live.onlineNow || 0],
-          ['Сесії (heartbeat)', (live.sessions || []).length],
+          ['Онлайн зараз', live.onlineNow || 0, 'online'],
+          ['Заходів сьогодні', kpis.uniqueVisitsToday || 0, 'events:page_view'],
         ]
-          .map(([label, value]) => card(label, value, false))
+          .map(([label, value, drill]) => card(label, value, false, drill))
           .join('');
 
         const paths = live.byPath || {};
@@ -2470,38 +2484,44 @@
 
         if (platformEl) {
           platformEl.innerHTML = [
-            ['Користувачі', kpis.usersTotal],
-            ['Провайдери', kpis.providersCount],
-            ['Клієнти', kpis.clientsCount],
-            ['Локації', kpis.locationsTotal],
-            ['З власником', kpis.locationsClaimed],
-            ['З фото', kpis.locationsWithPhotos],
-            ['З прайсом', kpis.locationsWithPrices],
-            ['Перегляди карток (усього)', kpis.locationCardViews],
-            ['Кліки донат', kpis.donateClicks],
-            ['Кліки Pro', kpis.subscribeClicks],
-            ['Активні Pro', kpis.activePaid],
+            ['Користувачі', kpis.usersTotal, 'list:users'],
+            ['Провайдери', kpis.providersCount, 'list:providers'],
+            ['Клієнти', kpis.clientsCount, 'list:clients'],
+            ['🆕 Реєстрації', kpis.registersTotal, 'events:register'],
+            ['🔐 Входи', kpis.loginsTotal, 'events:login'],
+            ['🔍 Пошуки', kpis.searchesTotal, 'events:search'],
+            ['Локації', kpis.locationsTotal, 'list:locations'],
+            ['З власником', kpis.locationsClaimed, 'list:claimed'],
+            ['З фото', kpis.locationsWithPhotos, 'list:photos'],
+            ['З прайсом', kpis.locationsWithPrices, 'list:prices'],
+            ['👁 Перегляди карток (усього)', kpis.locationCardViews, 'events:view'],
+            ['Кліки донат', kpis.donateClicks, 'events:donate'],
+            ['Кліки Pro', kpis.subscribeClicks, 'events:subscribe'],
+            ['Активні Pro', kpis.activePaid, 'list:pro'],
           ]
-            .map(([label, value]) => card(label, value, false))
+            .map(([label, value, drill]) => card(label, value, false, drill))
             .join('');
         }
 
         const ctaEl = document.getElementById('analyticsCtaStats');
         if (ctaEl) {
+          const ctaAll = data.locationCta?.totalCtaClicks || 0;
           ctaEl.innerHTML = [
-            ['📞 Дзвінки', kpis.callClicks, true],
-            ['🧭 Маршрути', kpis.directionsClicks, true],
-            ['Call rate %', kpis.callRate, true],
-            ['🔎 Детальніше', kpis.diveClicks, false],
-            ['↗ Поділитись', kpis.shareClicks, false],
-            ['☆ В обране', kpis.favoriteClicks, false],
-            ['🛒 Замовлення (клік)', kpis.orderClicks, false],
-            ['🗺️ На карті', kpis.mapFocusClicks, false],
-            ['🔑 Claim', kpis.claimClicks, false],
-            ['⭐ Відгук', kpis.reviewClicks, false],
-            ['⚑ Скарга', kpis.reportClicks, false],
+            ['📞 Дзвінки', kpis.callClicks, true, 'events:call'],
+            ['🧭 Маршрути', kpis.directionsClicks, true, 'events:directions'],
+            ['Call rate %', kpis.callRate, true, 'events:call:callrate'],
+            ['💬 Написати', kpis.chatClicks || 0, false, 'events:chat'],
+            ['🔎 Детальніше', kpis.diveClicks, false, 'events:dive'],
+            ['↗ Поділитись', kpis.shareClicks, false, 'events:share'],
+            ['☆ В обране', kpis.favoriteClicks, false, 'events:favorite'],
+            ['🛒 Замовлення (клік)', kpis.orderClicks, false, 'events:order'],
+            ['🗺️ На карті', kpis.mapFocusClicks, false, 'events:map_focus'],
+            ['🔑 Claim', kpis.claimClicks, false, 'events:claim'],
+            ['⭐ Відгук', kpis.reviewClicks, false, 'events:review'],
+            ['⚑ Скарга', kpis.reportClicks, false, 'events:report'],
+            ['Усі взаємодії', ctaAll, false, 'events:cta'],
           ]
-            .map(([label, value, hi]) => card(label, value, hi))
+            .map(([label, value, hi, drill]) => card(label, value, hi, drill))
             .join('');
         }
 
@@ -2515,7 +2535,7 @@
             `${esc(x.title || x.id)} · 📞 ${x.call || 0} · 🧭 ${x.directions || 0} · 👁 ${x.views || 0}${
               x.callRate != null ? ` · ${x.callRate}%` : ''
             }`,
-          (x) => `data-jump-loc="${esc(x.id || '')}"`
+          (x) => (x.id ? `data-drill="location" data-drill-id="${esc(x.id)}" data-drill-title="${esc(x.title || x.id)}"` : '')
         );
 
         const funnel = data.catalogFunnel || {};
@@ -2582,7 +2602,7 @@
             `${esc(x.title || x.id)} · 📞 ${x.call || 0} · 🧭 ${x.directions || 0} · 👁 ${x.views || 0}${
               x.callRate != null ? ` · ${x.callRate}%` : ''
             }`,
-          (x) => (x.id ? `data-jump-loc="${esc(x.id)}"` : '')
+          (x) => (x.id ? `data-drill="location" data-drill-id="${esc(x.id)}" data-drill-title="${esc(x.title || x.id)}"` : '')
         );
 
         bindAnalyticsJumps(document.getElementById('analyticsCats'));
@@ -7678,6 +7698,7 @@
       }
     })();
   </script>
+  <script src="/admin-stats-drill.js"></script>
   <script src="/mf-analytics.js" defer></script>
 </body>
 </html>

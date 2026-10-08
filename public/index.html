@@ -3204,6 +3204,14 @@
                 }).catch(() => {});
             }
 
+            function mfSid() {
+                try {
+                    return window.MapfixAnalytics?.sid || localStorage.getItem('mf_sid') || undefined;
+                } catch (_) {
+                    return undefined;
+                }
+            }
+
             function trackLocationClick(locationId, type) {
                 const id = String(locationId || '').trim();
                 const t = String(type || '').trim();
@@ -3212,7 +3220,7 @@
                     method: 'POST',
                     credentials: 'same-origin',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ type: t }),
+                    body: JSON.stringify({ type: t, sid: mfSid() }),
                     keepalive: true,
                 }).catch(() => {});
             }
@@ -3524,6 +3532,8 @@
                 fetch('/api/locations/' + encodeURIComponent(locId) + '/view', {
                     method: 'POST',
                     credentials: 'same-origin',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ sid: mfSid() }),
                 }).then(async (r) => {
                     if (!r.ok) return;
                     const j = await r.json().catch(() => ({}));

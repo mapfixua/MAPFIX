@@ -129,6 +129,7 @@ const {
 } = require('./location-photos.js');
 const billing = require('./billing.js');
 const analytics = require('./analytics.js');
+const analyticsEvents = require('./analytics-events.js');
 
 const LOGIN_RE = /^[a-z0-9._-]{3,32}$/;
 
@@ -1145,6 +1146,11 @@ app.post('/api/register', async (req, res) => {
 
     setSessionUser(res, newUser);
     analytics.bumpTotal('registers').catch(() => {});
+    await analyticsEvents.logEvent(req, {
+      type: 'register',
+      user: newUser,
+      meta: { method: 'password' },
+    });
 
     let claimedOnRegister = [];
     if (role === 'provider' && normalizedPhone) {
@@ -1240,6 +1246,11 @@ async function finishOauthSignIn(res, result) {
   }
 
   setSessionUser(res, result.user);
+  await analyticsEvents.logEvent(req, {
+    type: result.created ? 'register' : 'login',
+    user: result.user,
+    meta: { method: String(result.provider || 'oauth') },
+  });
   const data = await readData();
   return res.json({
     ok: true,
@@ -1300,6 +1311,7 @@ app.post('/api/login', authRateLimit, async (req, res) => {
     setSessionUser(res, user);
     const data = await readData();
     analytics.bumpTotal('logins').catch(() => {});
+    await analyticsEvents.logEvent(req, { type: 'login', user, meta: { method: 'password' } });
     res.json({ ok: true, user: await toPublicUserWithProfile(user, data) });
   } catch (err) {
     console.error(err);
@@ -1463,12 +1475,15 @@ app.post('/api/catalog/click', async (req, res) => {
 app.post('/api/analytics/page', async (req, res) => {
   try {
     const user = getSessionUser(req);
-    await analytics.trackPageView({
-      path: req.body?.path,
-      sid: req.body?.sid,
-      role: user?.role || 'guest',
-      utm: req.body?.utm,
-    });
+    await Promise.all([
+      analytics.trackPageView({
+        path: req.body?.path,
+        sid: req.body?.sid,
+        role: user?.role || 'guest',
+        utm: req.body?.utm,
+      }),
+      analyticsEvents.logEvent(req, { type: 'page_view' }),
+    ]);
     res.json({ ok: true });
   } catch (err) {
     console.warn('[analytics page]', err.message);
@@ -1478,12 +1493,25 @@ app.post('/api/analytics/page', async (req, res) => {
 
 app.post('/api/analytics/search', async (req, res) => {
   try {
-    await analytics.trackSearch({
-      query: req.body?.query,
-      source: req.body?.source,
-      sid: req.body?.sid,
-      matched: req.body?.matched,
-    });
+    const query = String(req.body?.query || '').trim().slice(0, 120);
+    await Promise.all([
+      analytics.trackSearch({
+        query: req.body?.query,
+        source: req.body?.source,
+        sid: req.body?.sid,
+        matched: req.body?.matched,
+      }),
+      query.length >= 2
+        ? analyticsEvents.logEvent(req, {
+            type: 'search',
+            meta: {
+              q: query,
+              source: String(req.body?.source || 'search').slice(0, 24),
+              matched: Boolean(req.body?.matched),
+            },
+          })
+        : null,
+    ]);
     res.json({ ok: true });
   } catch (err) {
     console.warn('[analytics search]', err.message);
@@ -1561,6 +1589,181 @@ app.get('/api/admin/analytics', requireAuth, requireAdmin, async (req, res) => {
   }
 });
 
+/**
+ * Drill-down: individual events with grouping by card / day / device / source.
+ * ?type=call | call,directions | cta | location | page_view | view | search | register | login | donate | subscribe | all
+ * &range=today|yesterday|7d|30d|90d|all  or  &from=YYYY-MM-DD&to=YYYY-MM-DD  (Kyiv days)
+ * &locationId=… &userId=… &limit=50 (max 200) &offset=0 &includeAdmin=1
+ */
+app.get('/api/admin/analytics/events', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    res.set('Cache-Control', 'no-store');
+    const range = analyticsEvents.parseRange(req.query || {});
+    const types = analyticsEvents.resolveTypes(req.query.type);
+    const locationId = String(req.query.locationId || '').trim().slice(0, 80) || null;
+    const userId = String(req.query.userId || '').trim().slice(0, 64) || null;
+    const includeAdmin = String(req.query.includeAdmin || '') === '1';
+    const [fetched, data, users, clicksRes] = await Promise.all([
+      analyticsEvents.fetchEvents({ types, from: range.from, to: range.to, locationId, userId }),
+      readData(),
+      readUsers().catch(() => []),
+      locationId ? fetchCatalogClicksMap().catch(() => ({ clicks: {} })) : Promise.resolve(null),
+    ]);
+    if (!fetched.ok) {
+      if (fetched.missing) {
+        return res.json({
+          ok: false,
+          missing: true,
+          error: 'Таблиця analytics_events відсутня — виконайте міграцію 020_analytics_events.sql',
+        });
+      }
+      throw fetched.error || new Error('events read failed');
+    }
+    const allRows = fetched.rows;
+    const rows = includeAdmin ? allRows : allRows.filter((r) => r.user_role !== 'admin');
+    const sessionSources = await analyticsEvents
+      .sessionSourcesFor(
+        rows.filter((r) => !r.utm_source && !r.referrer_host).map((r) => r.session_id),
+        range.to
+      )
+      .catch(() => new Map());
+    const drill = analyticsEvents.buildDrill(rows, {
+      locations: data.mockLocations || [],
+      users,
+      profiles: data.providerProfiles || {},
+      catalog: data.masterCatalog || {},
+      sessionSources,
+      range,
+      limit: req.query.limit,
+      offset: req.query.offset,
+    });
+
+    let location = null;
+    if (locationId) {
+      const l = (data.mockLocations || []).find((x) => String(x.id) === locationId);
+      if (l) {
+        const owner = l.providerId ? data.providerProfiles?.[l.providerId] : null;
+        location = {
+          id: l.id,
+          title: l.title || l.id,
+          catName: data.masterCatalog?.[l.cat]?.name || l.cat || '',
+          address: l.address || '',
+          viewsAllTime: Number(l.views) || 0,
+          ownerName: owner?.companyName || (l.providerId ? 'є власник' : ''),
+          photos: Array.isArray(l.photos) ? l.photos.length : 0,
+          prices: Object.keys(l.prices || {}).length,
+          trashed: isLocationTrashed(l),
+          url: `/p/${encodeURIComponent(l.id)}`,
+          allTime: locationClickStatsFromMap(clicksRes?.clicks || {}, l.id),
+        };
+      }
+    }
+
+    res.json({
+      ok: true,
+      types: types || 'all',
+      location,
+      truncated: Boolean(fetched.truncated),
+      adminExcluded: allRows.length - rows.length,
+      generatedAt: new Date().toISOString(),
+      ...drill,
+    });
+  } catch (err) {
+    console.error('[admin analytics events]', err);
+    res.status(500).json({ error: 'Не вдалося завантажити події' });
+  }
+});
+
+/** Drill-down lists behind the "state" tiles (users, cards, Pro). */
+app.get('/api/admin/analytics/list', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    res.set('Cache-Control', 'no-store');
+    const kind = String(req.query.kind || '').trim();
+    const limit = Math.max(1, Math.min(500, Number(req.query.limit) || 300));
+    const data = await readData();
+    const profiles = data.providerProfiles || {};
+    const catalog = data.masterCatalog || {};
+
+    if (['users', 'providers', 'clients', 'admins'].includes(kind)) {
+      const users = await readUsers();
+      const roleFor = { providers: 'provider', clients: 'client', admins: 'admin' }[kind];
+      const cardsByOwner = new Map();
+      for (const l of activeLocations(data.mockLocations)) {
+        if (l.providerId) cardsByOwner.set(l.providerId, (cardsByOwner.get(l.providerId) || 0) + 1);
+      }
+      const rows = users
+        .filter((u) => !roleFor || u.role === roleFor)
+        .map((u) => ({
+          id: u.id,
+          name: profiles[u.id]?.companyName || analyticsEvents.maskLogin(u.login),
+          login: analyticsEvents.maskLogin(u.login),
+          role: u.role,
+          createdAt: u.createdAt || profiles[u.id]?.createdAt || u.telegramLinkedAt || null,
+          telegram: Boolean(u.telegramId),
+          google: Boolean(u.googleId),
+          apple: Boolean(u.appleId),
+          email: Boolean(u.email),
+          cards: cardsByOwner.get(u.id) || 0,
+        }))
+        .sort((a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || '')));
+      return res.json({ ok: true, kind, total: rows.length, rows: rows.slice(0, limit) });
+    }
+
+    if (['locations', 'claimed', 'unclaimed', 'photos', 'prices', 'views'].includes(kind)) {
+      const clicksRes = await fetchCatalogClicksMap().catch(() => ({ clicks: {} }));
+      const clicks = clicksRes.clicks || {};
+      let list = activeLocations(data.mockLocations);
+      if (kind === 'claimed') list = list.filter((l) => l.providerId);
+      if (kind === 'unclaimed') list = list.filter((l) => !l.providerId);
+      if (kind === 'photos') list = list.filter((l) => Array.isArray(l.photos) && l.photos.length);
+      if (kind === 'prices') list = list.filter((l) => Object.keys(l.prices || {}).length);
+      const rows = list
+        .map((l) => {
+          const cta = locationClickStatsFromMap(clicks, l.id);
+          const ctaTotal = Object.values(cta).reduce((a, n) => a + (Number(n) || 0), 0);
+          return {
+            id: l.id,
+            title: l.title || l.id,
+            catName: catalog[l.cat]?.name || l.cat || '',
+            address: l.address || '',
+            views: Number(l.views) || 0,
+            photos: Array.isArray(l.photos) ? l.photos.length : 0,
+            prices: Object.keys(l.prices || {}).length,
+            ownerName: l.providerId ? profiles[l.providerId]?.companyName || 'є власник' : '',
+            claimedAt: l.claimedAt || null,
+            call: cta.call || 0,
+            ctaTotal,
+          };
+        })
+        .sort((a, b) => b.views - a.views || b.ctaTotal - a.ctaTotal || a.title.localeCompare(b.title));
+      return res.json({ ok: true, kind, total: rows.length, rows: rows.slice(0, limit) });
+    }
+
+    if (['pro', 'trial', 'subscriptions'].includes(kind)) {
+      const overview = await billing.adminOverview(profiles);
+      let subs = overview.subscriptions || [];
+      if (kind === 'pro') subs = subs.filter((s) => s.activePaid);
+      if (kind === 'trial') subs = subs.filter((s) => s.entitlements?.inTrial && !s.activePaid);
+      const rows = subs.map((s) => ({
+        id: s.userId,
+        name: s.companyName || analyticsEvents.maskLogin(s.login) || s.userId,
+        activePaid: Boolean(s.activePaid),
+        inTrial: Boolean(s.entitlements?.inTrial),
+        paidUntil: s.paidUntil || null,
+        lastPaidAt: s.lastPaidAt || null,
+        lastAmount: s.lastAmount ?? null,
+        trialStartedAt: s.trialStartedAt || null,
+      }));
+      return res.json({ ok: true, kind, total: rows.length, rows: rows.slice(0, limit) });
+    }
+
+    res.status(400).json({ error: 'Невідомий kind' });
+  } catch (err) {
+    console.error('[admin analytics list]', err);
+    res.status(500).json({ error: 'Не вдалося завантажити список' });
+  }
+});
+
 app.post('/api/search-ai', searchRateLimit, async (req, res) => {
   try {
     const text = req.body?.text?.trim();
@@ -1580,6 +1783,14 @@ app.post('/api/search-ai', searchRateLimit, async (req, res) => {
         matched: Boolean(result.category),
       })
       .catch(() => {});
+    await analyticsEvents.logEvent(req, {
+      type: 'search',
+      meta: {
+        q: text.slice(0, 120),
+        source: result.source === 'gemini' ? 'ai_gemini' : 'ai_catalog',
+        matched: Boolean(result.category),
+      },
+    });
 
     if (!result.category) {
       return res.status(404).json({
@@ -2050,7 +2261,10 @@ app.post('/api/locations/:id/view', async (req, res) => {
     const loc = data.mockLocations.find((l) => l.id === id);
     if (!loc) return res.status(404).json({ error: 'not_found' });
     loc.views = (Number(loc.views) || 0) + 1;
-    await persistLocationsPatch(data, [loc]);
+    await Promise.all([
+      persistLocationsPatch(data, [loc]),
+      analyticsEvents.logEvent(req, { type: 'view', locationId: id }),
+    ]);
     analytics.bumpTotal('locationOpens').catch(() => {});
     res.json({ ok: true, views: loc.views });
   } catch (err) {
@@ -2101,6 +2315,7 @@ app.post('/api/locations/:id/click', async (req, res) => {
 
     const totalField = LOCATION_CLICK_TOTAL_FIELD[type];
     if (totalField) analytics.bumpTotal(totalField).catch(() => {});
+    await analyticsEvents.logEvent(req, { type, locationId: id });
 
     res.json({
       ok: true,
@@ -2207,6 +2422,7 @@ app.post('/api/feedback', supportRateLimit, async (req, res) => {
     try {
       await analytics.bumpTotal('supportTickets');
     } catch (_) {}
+    await analyticsEvents.logEvent(req, { type: 'support', user: user || null });
     opsMonitor.notifyAdminNewReport(report).catch((err) => console.warn('[ops] feedback email', err.message));
     res.status(201).json({ ok: true, report });
   } catch (err) {
@@ -2314,6 +2530,7 @@ app.post('/api/billing/click', requireAuth, async (req, res) => {
       },
     });
     analytics.bumpTotal(type === 'subscribe' ? 'subscribeClicks' : 'donateClicks').catch(() => {});
+    await analyticsEvents.logEvent(req, { type, user });
     res.json({ ok: true, ...result });
   } catch (err) {
     console.error('[billing click]', err);
