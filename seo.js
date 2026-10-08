@@ -580,8 +580,9 @@ function crawlerHtml(seo, landing, data) {
       return `<li><a href="${escapeHtmlAttr(href)}">${escapeHtml(l.title || 'Майстер')}</a>${escapeHtml(addr)}</li>`;
     })
     .join('');
-  const countLine =
-    filtered.length > 0
+  const countLine = landing.loc
+    ? ''
+    : filtered.length > 0
       ? `<p>На карті зараз ${filtered.length} ${landing.cat ? 'майстрів у цій категорії' : 'точок'}${landing.area ? ' поруч із районом ' + escapeHtml(areaName(landing.area)) : ' у Києві'}.</p>`
       : '<p>Карта наповнюється. Додайте свій бізнес безкоштовно — без комісії з замовлень.</p>';
 
@@ -597,7 +598,6 @@ function crawlerHtml(seo, landing, data) {
       : '';
 
   return `<section id="seo-static" class="seo-static" aria-label="Каталог Mapfix">
-  <h1>${escapeHtml(seo.h1)}</h1>
   <p>${escapeHtml(seo.description)}</p>
   ${countLine}
   <h2>Популярні запити</h2>
@@ -729,10 +729,34 @@ function robotsTxt() {
   ].join('\n');
 }
 
+const LEGACY_SITE_HOSTS = new Set(['mapfix-wine.vercel.app', 'www.mapfix-wine.vercel.app']);
+
+function validSitemapDate(value) {
+  const day = String(value || '').slice(0, 10);
+  return /^\d{4}-\d{2}-\d{2}$/.test(day) ? day : '';
+}
+
+function legacyHostRedirectUrl(hostname, originalUrl) {
+  const host = String(hostname || '')
+    .split(':')[0]
+    .toLowerCase();
+  if (!LEGACY_SITE_HOSTS.has(host)) return '';
+  const base = siteBaseUrl();
+  let baseHost = '';
+  try {
+    baseHost = new URL(base).hostname.toLowerCase();
+  } catch {
+    return '';
+  }
+  if (!baseHost || baseHost === host) return '';
+  const path = String(originalUrl || '/');
+  const suffix = path.startsWith('/') ? path : `/${path}`;
+  return `${base}${suffix}`;
+}
+
 function sitemapXml({ categories = [], locations = [], areas = [] } = {}) {
   const base = siteBaseUrl();
-  const today = new Date().toISOString().slice(0, 10);
-  const urls = [{ loc: `${base}/`, changefreq: 'daily', priority: '1.0' }];
+  const urls = [{ loc: `${base}/`, changefreq: 'weekly', priority: '1.0' }];
   const areaKeys = areas.length ? areas : SITEMAP_AREAS;
   const seen = new Set(urls.map((u) => u.loc));
 
@@ -740,15 +764,18 @@ function sitemapXml({ categories = [], locations = [], areas = [] } = {}) {
     const loc = `${base}${path}`;
     if (seen.has(loc)) return;
     seen.add(loc);
-    urls.push({ loc, changefreq, priority, lastmod: lastmod || today });
+    const row = { loc, changefreq, priority };
+    const day = validSitemapDate(lastmod);
+    if (day) row.lastmod = day;
+    urls.push(row);
   }
 
   for (const cat of categories) {
-    pushUrl(canonicalPath({ cat: cat.key }), 'daily', '0.9');
+    pushUrl(canonicalPath({ cat: cat.key }), 'weekly', '0.9');
   }
   for (const row of PRIORITY_SUBS) {
     if (categories.some((c) => c.key === row.cat)) {
-      pushUrl(canonicalPath(row), 'daily', '0.85');
+      pushUrl(canonicalPath(row), 'weekly', '0.85');
     }
   }
   for (const area of areaKeys) {
@@ -761,20 +788,18 @@ function sitemapXml({ categories = [], locations = [], areas = [] } = {}) {
     }
   }
   for (const loc of locations) {
-    const lastmod = String(loc.lastmod || '').slice(0, 10);
-    const safeLast = /^\d{4}-\d{2}-\d{2}$/.test(lastmod) ? lastmod : today;
-    pushUrl(canonicalPath({ loc: loc.id }), 'weekly', '0.6', safeLast);
+    pushUrl(canonicalPath({ loc: loc.id }), 'weekly', '0.6', loc.lastmod);
   }
 
   const body = urls
-    .map(
-      (u) => `  <url>
-    <loc>${xmlEscape(u.loc)}</loc>
-    <lastmod>${xmlEscape(u.lastmod || today)}</lastmod>
+    .map((u) => {
+      const lastmod = u.lastmod ? `\n    <lastmod>${xmlEscape(u.lastmod)}</lastmod>` : '';
+      return `  <url>
+    <loc>${xmlEscape(u.loc)}</loc>${lastmod}
     <changefreq>${u.changefreq}</changefreq>
     <priority>${u.priority}</priority>
-  </url>`
-    )
+  </url>`;
+    })
     .join('\n');
   return `<?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
@@ -809,4 +834,5 @@ module.exports = {
   injectSeoIntoHtml,
   robotsTxt,
   sitemapXml,
+  legacyHostRedirectUrl,
 };
