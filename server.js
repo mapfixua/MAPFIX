@@ -1389,6 +1389,15 @@ app.use(
   })
 );
 
+// Keep-warm / liveness probe: no DB, never cached.
+app.get('/api/ping', (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  res.json({ ok: true, t: Date.now() });
+});
+
+// Fields the public map never reads; dropped from /api/data to shrink it.
+const PUBLIC_LOC_OMIT = ['createdAt', 'updatedAt', 'importSource', 'claimedAt', 'deletedAt', 'deletedReason', 'customSubcats'];
+
 app.get('/api/data', async (req, res) => {
   try {
     // Public, non-personalized payload: short CDN cache keeps the map fast.
@@ -1403,8 +1412,9 @@ app.get('/api/data', async (req, res) => {
     const catalogClicks = clicksRes.ok ? clicksRes.clicks || {} : {};
     const locations = activeLocations(data.mockLocations).map((loc) => {
       const reviews = Array.isArray(loc.reviews) ? loc.reviews : [];
-      if (reviews.length <= 2) return loc;
-      return { ...loc, reviews: reviews.slice(0, 2) };
+      const out = { ...loc, reviews: reviews.slice(0, 2) };
+      for (const k of PUBLIC_LOC_OMIT) delete out[k];
+      return out;
     });
     // Public endpoint: never expose account/profile phones. The map only needs
     // the company name of providers that own a published card.

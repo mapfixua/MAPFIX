@@ -2125,11 +2125,7 @@
             let lastErr;
             for (let attempt = 0; attempt < 3; attempt++) {
                 try {
-                    const res = await fetch(`/api/data?t=${Date.now()}`, {
-                        cache: 'no-store',
-                        credentials: 'same-origin',
-                        headers: { 'Cache-Control': 'no-cache', Pragma: 'no-cache' },
-                    });
+                    const res = await fetch('/api/data', { credentials: 'same-origin' });
                     if (!res.ok) throw new Error('Не вдалося завантажити каталог');
                     const data = await res.json();
                     window.masterCatalog = data.masterCatalog || {};
