@@ -57,5 +57,8 @@
       "src": "/(.*)",
       "dest": "/api/index.js"
     }
+  ],
+  "regions": [
+    "dub1"
   ]
 }

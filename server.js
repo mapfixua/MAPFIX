@@ -1391,7 +1391,8 @@ app.use(
 
 app.get('/api/data', async (req, res) => {
   try {
-    res.set('Cache-Control', 'no-store');
+    // Public, non-personalized payload: short CDN cache keeps the map fast.
+    res.set('Cache-Control', 'public, s-maxage=30, stale-while-revalidate=120, max-age=0');
     const [data, clicksRes] = await Promise.all([
       readData(),
       fetchCatalogClicksMap().catch((err) => {
@@ -5473,7 +5474,16 @@ app.post('/api/admin/import/excel', requireAuth, requireAdmin, (req, res) =>
   handleExcelImport(req, res, { asSystem: true })
 );
 
-app.use(express.static(PUBLIC_DIR, { index: false, fallthrough: true }));
+app.use(express.static(PUBLIC_DIR, {
+  index: false,
+  fallthrough: true,
+  setHeaders(res, filePath) {
+    // Static assets are not fingerprinted: short browser cache, longer CDN
+    // cache (purged on every deploy). HTML stays uncached.
+    if (/\.html?$/i.test(filePath)) return;
+    res.setHeader('Cache-Control', 'public, max-age=600, s-maxage=86400, stale-while-revalidate=604800');
+  },
+}));
 
 async function validateStartupData() {
   const data = await readData();
