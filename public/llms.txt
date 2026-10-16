@@ -2,17 +2,17 @@
 
 Mapfix is a Ukrainian local services map: find nearby tradespeople (plumber, electrician, home repair, auto service, beauty) in Kyiv and call them directly. No marketplace commission.
 
-- Site: https://mapfix-wine.vercel.app/
+- Site: https://www.mapfix.com.ua/
 - Language: Ukrainian (uk)
 - Primary city: Kyiv
 - For customers: open the map, pick a category or district, call or request a job.
 - For businesses: claim an existing listing in about a minute by entering the phone number on the card. Adding a business is free.
 
 Useful URLs:
-- https://mapfix-wine.vercel.app/kyiv/home — plumber / home repair
-- https://mapfix-wine.vercel.app/kyiv/home/plumber — plumber in Kyiv
-- https://mapfix-wine.vercel.app/kyiv/home/electrician — electrician in Kyiv
-- https://mapfix-wine.vercel.app/kyiv/auto/tyres — tire service
-- https://mapfix-wine.vercel.app/kyiv/borshchahivka — Borshchahivka district
-- https://mapfix-wine.vercel.app/kyiv/kotsiubynske — Kotsiubynske
-- https://mapfix-wine.vercel.app/sitemap.xml
+- https://www.mapfix.com.ua/kyiv/home — plumber / home repair
+- https://www.mapfix.com.ua/kyiv/home/plumber — plumber in Kyiv
+- https://www.mapfix.com.ua/kyiv/home/electrician — electrician in Kyiv
+- https://www.mapfix.com.ua/kyiv/auto/tyres — tire service
+- https://www.mapfix.com.ua/kyiv/borshchahivka — Borshchahivka district
+- https://www.mapfix.com.ua/kyiv/kotsiubynske — Kotsiubynske
+- https://www.mapfix.com.ua/sitemap.xml
