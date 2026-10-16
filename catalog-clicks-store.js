@@ -7,6 +7,7 @@ const TABLE = process.env.SUPABASE_CATALOG_CLICKS_TABLE || 'catalog_clicks';
 /** High-intent location CTA types (GBP / local marketplace style). */
 const LOCATION_CLICK_TYPES = [
   'call',
+  'chat',
   'directions',
   'map_focus',
   'share',
@@ -20,6 +21,7 @@ const LOCATION_CLICK_TYPES = [
 
 const LOCATION_CLICK_LABELS = {
   call: 'Дзвінки',
+  chat: 'Написати',
   directions: 'Маршрути',
   map_focus: 'На карті',
   share: 'Поділитись',
@@ -33,6 +35,7 @@ const LOCATION_CLICK_LABELS = {
 
 const LOCATION_CLICK_ICONS = {
   call: '📞',
+  chat: '💬',
   directions: '🧭',
   map_focus: '🗺️',
   share: '↗',

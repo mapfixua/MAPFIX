@@ -489,6 +489,7 @@ async function buildAdminReport({
       reportClicks: locationCta.byType?.report || 0,
       favoriteClicks: locationCta.byType?.favorite || state.totals.favorites || 0,
       orderClicks: locationCta.byType?.order || 0,
+      chatClicks: locationCta.byType?.chat || 0,
       callRate:
         totalLocViews > 0 ? Math.round((callTotal / totalLocViews) * 1000) / 10 : 0,
       uniqueVisitsToday: today.uniqueVisits,

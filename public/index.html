@@ -936,11 +936,20 @@
         .profile-quick-actions.single {
             grid-template-columns: 1fr;
         }
+        .profile-quick-actions > :last-child:nth-child(odd) {
+            grid-column: 1 / -1;
+        }
         .profile-quick-btn {
-            width: auto;
+            width: 100%;
+            min-width: 0;
+            box-sizing: border-box;
             height: 40px;
+            margin: 0;
+            padding: 0 8px;
             border-radius: 8px;
             border: none;
+            appearance: none;
+            -webkit-appearance: none;
             background: var(--primary);
             color: #fff;
             display: inline-flex;
@@ -951,6 +960,8 @@
             font-size: 13px;
             font-weight: 800;
             font-family: inherit;
+            line-height: 1;
+            white-space: nowrap;
             cursor: pointer;
             box-shadow: none;
         }
@@ -2053,12 +2064,13 @@
                 <h2 id="googleImportTitle">Додати місце з Google Maps</h2>
                 <button type="button" class="import-modal-close" id="googleImportClose" aria-label="Закрити">×</button>
             </div>
-            <p style="font-size:13px;color:var(--muted);margin:8px 0 0">Вставте посилання Google Maps (Share → Copy link). Назву й координати витягнемо з URL; телефон/рейтинг/графік підтягнуться, якщо налаштовано Google Places API.</p>
+            <p style="font-size:13px;color:var(--muted);margin:8px 0 0">Вставте посилання Google Maps (Share → Copy link). Назву й координати витягнемо з URL; телефон і графік підтягнемо, якщо вони є в Google.</p>
             <label for="googleImportUrl">Посилання Google Maps</label>
             <input type="url" id="googleImportUrl" placeholder="https://maps.app.goo.gl/..." autocomplete="url">
             <div class="import-modal-actions">
                 <button type="button" class="import-modal-secondary" id="googleImportPreviewBtn">Розпізнати</button>
             </div>
+            <p style="font-size:13px;margin:14px 0 0;color:var(--muted)">Немає закладу в Google Maps? <a href="/admin?newLocation=1" id="googleImportManualLink">Створити картку вручну →</a></p>
             <div id="googleImportPreview" class="import-preview hidden"></div>
             <div id="googleImportMessage" class="import-message" aria-live="polite"></div>
         </div>
@@ -2124,11 +2136,7 @@
             let lastErr;
             for (let attempt = 0; attempt < 3; attempt++) {
                 try {
-                    const res = await fetch(`/api/data?t=${Date.now()}`, {
-                        cache: 'no-store',
-                        credentials: 'same-origin',
-                        headers: { 'Cache-Control': 'no-cache', Pragma: 'no-cache' },
-                    });
+                    const res = await fetch('/api/data', { credentials: 'same-origin' });
                     if (!res.ok) throw new Error('Не вдалося завантажити каталог');
                     const data = await res.json();
                     window.masterCatalog = data.masterCatalog || {};
@@ -2655,11 +2663,11 @@
             window.startAddBusinessFlow = function() {
                 const u = State.currentUser;
                 if (!u) {
-                    window.location.href = '/register.html?role=provider&next=' + encodeURIComponent('/?add=1');
+                    window.location.href = '/register.html?role=provider&next=' + encodeURIComponent('/admin?newLocation=1');
                     return;
                 }
                 if (u.role === 'client') {
-                    window.location.href = '/register.html?role=provider&next=' + encodeURIComponent('/?add=1');
+                    window.location.href = '/register.html?role=provider&next=' + encodeURIComponent('/admin?newLocation=1');
                     return;
                 }
                 openGoogleImport();
@@ -3203,6 +3211,14 @@
                 }).catch(() => {});
             }
 
+            function mfSid() {
+                try {
+                    return window.MapfixAnalytics?.sid || localStorage.getItem('mf_sid') || undefined;
+                } catch (_) {
+                    return undefined;
+                }
+            }
+
             function trackLocationClick(locationId, type) {
                 const id = String(locationId || '').trim();
                 const t = String(type || '').trim();
@@ -3211,7 +3227,7 @@
                     method: 'POST',
                     credentials: 'same-origin',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ type: t }),
+                    body: JSON.stringify({ type: t, sid: mfSid() }),
                     keepalive: true,
                 }).catch(() => {});
             }
@@ -3523,6 +3539,8 @@
                 fetch('/api/locations/' + encodeURIComponent(locId) + '/view', {
                     method: 'POST',
                     credentials: 'same-origin',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ sid: mfSid() }),
                 }).then(async (r) => {
                     if (!r.ok) return;
                     const j = await r.json().catch(() => ({}));
@@ -3574,15 +3592,23 @@
                 const ratingVal = Number(loc.rating || 0).toFixed(1);
                 const reviewsN = Number(loc.reviewsCount) || 0;
                 const phoneHref = loc.phone ? `tel:${escapeHtml(loc.phone)}` : '';
+                const hasCoords = Number.isFinite(Number(loc.lat)) && Number.isFinite(Number(loc.lng));
+                const hasAddress = Boolean(String(loc.address || '').trim());
+                const locIdAttr = escapeHtml(loc.id);
 
                 const callBtn = phoneHref
-                    ? `<a href="${phoneHref}" class="profile-quick-btn" title="Подзвонити" aria-label="Подзвонити" onclick="event.stopPropagation(); trackLocationClick('${escapeHtml(loc.id)}','call')"><i class="fa-solid fa-phone"></i> Подзвонити</a>`
+                    ? `<a href="${phoneHref}" class="profile-quick-btn" title="Подзвонити" aria-label="Подзвонити" onclick="event.stopPropagation(); trackLocationClick('${locIdAttr}','call')"><i class="fa-solid fa-phone"></i> Подзвонити</a>`
                     : '';
                 const chatBtn = chatHref
-                    ? `<a href="${escapeHtml(chatHref)}" target="_blank" rel="noopener" class="profile-quick-btn" title="Написати" aria-label="Написати" onclick="event.stopPropagation(); trackLocationClick('${escapeHtml(loc.id)}','chat')"><i class="fa-solid fa-comment"></i> Написати</a>`
+                    ? `<a href="${escapeHtml(chatHref)}" target="_blank" rel="noopener" class="profile-quick-btn" title="Написати" aria-label="Написати" onclick="event.stopPropagation(); trackLocationClick('${locIdAttr}','chat')"><i class="fa-solid fa-comment"></i> Написати</a>`
                     : '';
-                const quickActionsHtml = callBtn || chatBtn
-                    ? `<div class="profile-quick-actions${callBtn && chatBtn ? '' : ' single'}">${callBtn}${chatBtn}</div>`
+                const routeBtn = hasCoords || hasAddress
+                    ? `<button type="button" class="profile-quick-btn" title="Маршрут" aria-label="Маршрут" onclick="event.stopPropagation(); openGoogleMapsDirections('${locIdAttr}')"><i class="fa-solid fa-route"></i> Маршрут</button>`
+                    : '';
+                const shareBtn = `<button type="button" class="profile-quick-btn" title="Поділитись" aria-label="Поділитись" onclick="event.stopPropagation(); shareLocation('${locIdAttr}')"><i class="fa-solid fa-share-nodes"></i> Поділитись</button>`;
+                const quickBtns = [callBtn, chatBtn, routeBtn, shareBtn].filter(Boolean);
+                const quickActionsHtml = quickBtns.length
+                    ? `<div class="profile-quick-actions${quickBtns.length === 1 ? ' single' : ''}">${quickBtns.join('')}</div>`
                     : '';
 
                 const headerBox = document.getElementById('detailHeaderContent');
@@ -3796,8 +3822,6 @@
 
                 const aboutText = String(loc.text || '').trim();
                 const providerName = typeof getProviderName === 'function' ? getProviderName(loc) : '';
-                const hasCoords = Number.isFinite(Number(loc.lat)) && Number.isFinite(Number(loc.lng));
-                const hasAddress = Boolean(String(loc.address || '').trim());
                 const isFav = State.favoriteIds.has(loc.id);
                 const distKm = Number.isFinite(loc.currentDistance)
                     ? loc.currentDistance
@@ -3862,8 +3886,6 @@
                                 </div>
                             </div>
                             <div class="detail-secondary-row">
-                                <button type="button" class="action-btn" ${hasCoords || hasAddress ? '' : 'disabled'} onclick="event.stopPropagation(); openGoogleMapsDirections('${escapeHtml(loc.id)}')">🧭 Маршрут</button>
-                                <button type="button" class="action-btn" onclick="event.stopPropagation(); shareLocation('${escapeHtml(loc.id)}')">↗ Поділитись</button>
                                 <button type="button" class="action-btn btn-fav-header ${isFav ? 'active' : ''}" onclick="event.stopPropagation(); toggleFavorite('${escapeHtml(loc.id)}')">${isFav ? '★ Обране' : '☆ В обране'}</button>
                                 <button type="button" class="action-btn btn-report" onclick="event.stopPropagation(); reportLocation('${escapeHtml(loc.id)}')">⚑ Скарга</button>
                                 ${manageLocationBtnHtml(loc)}
@@ -4180,7 +4202,12 @@
                     canon.rel = 'canonical';
                     document.head.appendChild(canon);
                 }
-                canon.href = url;
+                // Канонічна адреса — завжди www-хост і шлях без query (як у серверному HTML)
+                try {
+                    canon.href = 'https://www.mapfix.com.ua' + new URL(url, window.location.origin).pathname;
+                } catch (_) {
+                    canon.href = url;
+                }
             }
             function shareUrlFromState() {
                 const origin = window.location.origin;

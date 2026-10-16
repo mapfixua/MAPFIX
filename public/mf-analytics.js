@@ -59,10 +59,26 @@
 
     var utm = readUtm();
 
+    // External referrer of this visit (host only is kept server-side).
+    function readRef() {
+      try {
+        var r = document.referrer || '';
+        if (r && r.indexOf(window.location.host) === -1) {
+          sessionStorage.setItem('mf_ref', r.slice(0, 300));
+          return r.slice(0, 300);
+        }
+        return sessionStorage.getItem('mf_ref') || '';
+      } catch (_) {
+        return '';
+      }
+    }
+
+    var ref = readRef();
+
     window.MapfixAnalytics = {
       sid: sid,
       page: function (path) {
-        post('/api/analytics/page', { path: path || pathNow(), sid: sid, utm: utm });
+        post('/api/analytics/page', { path: path || pathNow(), sid: sid, utm: utm, ref: ref });
       },
       search: function (query, source, matched) {
         post('/api/analytics/search', {
