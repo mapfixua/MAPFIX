@@ -100,7 +100,11 @@
             width: 100%;
             height: 100%;
             z-index: 1;
-            background: #dbe4ea;
+            background: #e4e7eb;
+        }
+        /* Mute tiles only — markers and clusters stay in their own panes. */
+        .leaflet-tile-pane {
+            filter: grayscale(0.72) saturate(0.35) brightness(1.08) contrast(0.95);
         }
 
         #sidebar {
@@ -122,13 +126,42 @@
         }
         .category-strip {
             display: flex;
+            flex-wrap: nowrap;
+            align-items: center;
             overflow-x: auto;
             overflow-y: hidden;
             scroll-behavior: smooth;
             -webkit-overflow-scrolling: touch;
             scrollbar-width: none;
+            gap: 8px;
+            padding: 8px 12px;
         }
         .category-strip::-webkit-scrollbar { display: none; }
+        .category-chip {
+            flex: 0 0 auto;
+            height: 40px;
+            padding: 0 14px;
+            border-radius: 999px;
+            border: 1.5px solid #d7dde7;
+            background: #fff;
+            color: var(--ink);
+            font-family: inherit;
+            font-size: 14px;
+            font-weight: 800;
+            line-height: 1;
+            white-space: nowrap;
+            cursor: pointer;
+            text-decoration: none;
+            display: inline-flex;
+            align-items: center;
+            touch-action: manipulation;
+        }
+        .category-chip:active { transform: scale(0.97); }
+        .category-chip.active {
+            background: var(--primary);
+            border-color: var(--primary);
+            color: var(--ink);
+        }
         .category-card {
             display: flex;
             flex-direction: column;
@@ -885,8 +918,23 @@
             margin: 0;
             font-size: 16px;
             font-weight: 800;
-            line-height: 1.2;
+            line-height: 1.25;
             color: var(--ink);
+            display: -webkit-box;
+            -webkit-box-orient: vertical;
+            -webkit-line-clamp: 2;
+            overflow: hidden;
+            word-break: break-word;
+        }
+        .profile-new-badge {
+            display: inline-flex;
+            align-items: center;
+            background: var(--primary-light);
+            color: #0f766e;
+            font-size: 12px;
+            font-weight: 800;
+            padding: 3px 8px;
+            border-radius: 999px;
         }
         .profile-handle {
             margin: 2px 0 0;
@@ -1096,6 +1144,9 @@
             box-shadow: 0 -6px 16px rgba(15, 23, 42, 0.06);
             z-index: 4;
         }
+        .detail-mobile-actions {
+            display: none;
+        }
         .profile-trust {
             display: flex;
             flex-wrap: wrap;
@@ -1173,6 +1224,63 @@
             background: transparent; color: var(--ink);
         }
         .search-container input::placeholder { color: #9ca3af; font-weight: 500; }
+        .search-suggest {
+            position: absolute;
+            top: calc(100% + 6px);
+            left: 0;
+            right: 0;
+            z-index: 30;
+            background: #fff;
+            border-radius: 14px;
+            box-shadow: 0 12px 32px rgba(15, 23, 42, 0.16);
+            max-height: 280px;
+            overflow: auto;
+            padding: 6px;
+            text-align: left;
+        }
+        .search-suggest[hidden] { display: none !important; }
+        .search-suggest-item {
+            width: 100%;
+            border: none;
+            background: transparent;
+            border-radius: 10px;
+            padding: 8px 10px;
+            display: flex;
+            flex-direction: column;
+            align-items: flex-start;
+            gap: 1px;
+            cursor: pointer;
+            font-family: inherit;
+            color: var(--ink);
+        }
+        .search-suggest-item:hover,
+        .search-suggest-item:focus { background: #f1f5f9; outline: none; }
+        .search-suggest-kind {
+            font-size: 10px;
+            font-weight: 800;
+            letter-spacing: 0.04em;
+            text-transform: uppercase;
+            color: #64748b;
+        }
+        .search-suggest-label {
+            font-size: 14px;
+            font-weight: 800;
+            line-height: 1.25;
+            max-width: 100%;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        .search-suggest-meta {
+            font-size: 12px;
+            font-weight: 600;
+            color: #64748b;
+            max-width: 100%;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        .search-suggest-item.is-map .search-suggest-label { color: #0f766e; }
         .voice-mic-btn {
             width: 36px; height: 36px; border: none; border-radius: 50%; background: var(--primary-light);
             color: var(--ink); cursor: pointer; display: flex; align-items: center; justify-content: center;
@@ -1448,6 +1556,15 @@
             display: flex; align-items: center; justify-content: center; font-size: 18px;
             touch-action: manipulation; color: var(--ink);
         }
+        #kyiv-btn {
+            position: absolute; bottom: 18px; right: 68px; z-index: 10;
+            height: 40px; padding: 0 12px; border: none; border-radius: 999px;
+            background: #fff; color: var(--ink); font-family: inherit;
+            font-size: 13px; font-weight: 800; cursor: pointer;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.15);
+            touch-action: manipulation; white-space: nowrap;
+        }
+        #kyiv-btn:active { transform: scale(0.98); }
         #geo-btn.locating { color: var(--primary); }
         #geo-btn.locating i { animation: geo-spin 0.9s linear infinite; }
         #geo-btn.active { color: var(--primary); box-shadow: 0 0 0 3px rgba(18,196,181,0.25), 0 4px 15px rgba(0,0,0,0.15); }
@@ -1589,17 +1706,17 @@
                 transform: translateX(-100%);
             }
 
-            /* Категорії: сітка 2 колонки в sidebar (не горизонтальна стрічка) */
+            /* Категорії: один горизонтальний ряд коротких чіпів */
             .category-strip-wrap {
-                padding: 10px 12px 8px;
+                padding: 4px 0 2px;
                 background: #f8fafc;
             }
             .category-strip {
-                display: grid;
-                grid-template-columns: repeat(2, minmax(0, 1fr));
+                display: flex;
+                flex-wrap: nowrap;
+                overflow-x: auto;
                 gap: 8px;
-                overflow: visible;
-                padding: 0;
+                padding: 8px 12px;
             }
             .category-card {
                 flex: none;
@@ -1634,6 +1751,7 @@
             }
 
             #geo-btn { bottom: 28px; right: 28px; }
+            #kyiv-btn { bottom: 32px; right: 84px; }
             .top-header { top: 18px; left: 18px; right: 18px; max-width: 860px; }
         }
 
@@ -1816,11 +1934,21 @@
             .category-strip-wrap {
                 padding: 2px 0 4px;
                 margin: 0;
+                background: #fff;
             }
             .category-strip {
-                gap: 6px;
-                padding: 2px 10px;
+                display: flex;
+                flex-wrap: nowrap;
+                overflow-x: auto;
+                gap: 8px;
+                padding: 6px 12px 8px;
                 margin: 0;
+            }
+            .detail-mobile-actions {
+                display: grid;
+                grid-template-columns: 1fr 1fr;
+                gap: 8px;
+                margin-bottom: 8px;
             }
             .category-card {
                 flex: 0 0 72px;
@@ -1846,6 +1974,7 @@
             }
 
             #geo-btn { bottom: calc(14px + var(--chrome-nav-pad)); right: 14px; }
+            #kyiv-btn { bottom: calc(18px + var(--chrome-nav-pad)); right: 66px; height: 40px; }
 
             /* Compact mode — тільки мобільний */
             .sidebar-header {
@@ -1936,7 +2065,8 @@
                 </button>
                 <div class="search-container">
                     <i class="fa-solid fa-magnifying-glass" style="color:#9ca3af;font-size:14px" aria-hidden="true"></i>
-                    <input type="text" id="searchInput" placeholder="Пошук послуги, майстра або адреси..." autocomplete="off">
+                    <input type="text" id="searchInput" placeholder="Пошук послуги, майстра або адреси..." autocomplete="off" role="combobox" aria-autocomplete="list" aria-controls="searchSuggest" aria-expanded="false">
+                    <div id="searchSuggest" class="search-suggest" hidden role="listbox" aria-label="Підказки пошуку"></div>
                     <button type="button" class="voice-mic-btn" id="voiceSearchBtn" title="Голосовий пошук" aria-label="Голосовий пошук">🎤</button>
                     <div id="voiceStatus" class="voice-status hidden" role="status" aria-live="polite">
                         <span class="voice-pulse"></span>
@@ -1955,6 +2085,7 @@
             </div>
         </header>
 
+        <button id="kyiv-btn" type="button">Весь Київ</button>
         <button id="geo-btn" type="button" aria-label="Моє місцезнаходження"><i class="fa-solid fa-location-crosshairs"></i></button>
         <div id="map" role="application" aria-label="Карта майстрів Києва"></div>
 
@@ -2155,7 +2286,7 @@
         document.addEventListener("DOMContentLoaded", async () => {
             await leafletReady;
             // Paint map tiles after Leaflet is loaded — CSS/JS no longer block first paint.
-            const map = L.map('map', { zoomControl: false }).setView([50.4501, 30.5234], 11);
+            const map = L.map('map', { zoomControl: false }).setView([50.49, 30.33], 14);
             L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
 
             function clusterIcon(cluster) {
@@ -2183,7 +2314,11 @@
             });
             map.addLayer(markersLayer);
 
-            const DEFAULT_CENTER = { lat: 50.4501, lng: 30.5234 };
+            const KOTSIUBYNSKE_CENTER = { lat: 50.49, lng: 30.33 };
+            const KOTSIUBYNSKE_ZOOM = 14;
+            const KYIV_CENTER = { lat: 50.4501, lng: 30.5234 };
+            const KYIV_ZOOM = 11;
+            const DEFAULT_CENTER = KOTSIUBYNSKE_CENTER;
             const USER_FOCUS_ZOOM = 13;
             const MAPFIX_AREAS = {
                 sviatoshyn: { key: 'sviatoshyn', name: 'Святошин', on: 'Святошині', lat: 50.4574, lng: 30.3553, zoom: 13 },
@@ -2215,6 +2350,7 @@
                 favoriteIds: new Set(),
                 locationSearchQuery: '',
                 aiSuggestions: [],
+                viewLock: null,
             };
             
             let userMarkerInstance = null;
@@ -2267,13 +2403,43 @@
             }
 
             function shouldAutoCenterOnUser() {
+                if (State.viewLock) return false;
+                if (State.selectedLocation) return false;
                 return !State.category && !State.subcategory && !State.service && !State.locationSearchQuery && !State.area;
             }
 
-            (function bootAreaFromUrl() {
+            function showWholeKyiv() {
+                State.viewLock = 'kyiv';
+                map.setView([KYIV_CENTER.lat, KYIV_CENTER.lng], KYIV_ZOOM, { animate: true });
+            }
+
+            (function bootMapFromUrl() {
                 const boot = window.__MAPFIX_LANDING || {};
                 const parts = window.location.pathname.split('/').filter(Boolean);
-                const qArea = new URLSearchParams(window.location.search).get('area');
+                const params = new URLSearchParams(window.location.search);
+                if (parts[0] === 'p' && parts[1]) State.viewLock = 'place';
+                const latRaw = params.get('lat');
+                const lngRaw = params.get('lng');
+                const lat = Number(latRaw);
+                const lng = Number(lngRaw);
+                if (
+                    latRaw != null &&
+                    lngRaw != null &&
+                    latRaw !== '' &&
+                    lngRaw !== '' &&
+                    Number.isFinite(lat) &&
+                    Number.isFinite(lng) &&
+                    Math.abs(lat) <= 90 &&
+                    Math.abs(lng) <= 180
+                ) {
+                    const zoomRaw = params.get('zoom') || params.get('z');
+                    const zoomNum = Number(zoomRaw);
+                    const zoom = zoomRaw && Number.isFinite(zoomNum) ? Math.min(18, Math.max(3, zoomNum)) : KOTSIUBYNSKE_ZOOM;
+                    State.viewLock = 'url';
+                    map.setView([lat, lng], zoom, { animate: false });
+                    return;
+                }
+                const qArea = params.get('area');
                 const pathArea = ((parts[0] === 'kyiv' || parts[0] === 'kiev') && resolveMapArea(parts[1]))
                     ? parts[1]
                     : null;
@@ -2329,8 +2495,12 @@
             }
 
             if (geoBtn) {
-                geoBtn.addEventListener('click', () => locateUser({ center: true, fromButton: true }));
+                geoBtn.addEventListener('click', () => {
+                    State.viewLock = null;
+                    locateUser({ center: true, fromButton: true });
+                });
             }
+            document.getElementById('kyiv-btn')?.addEventListener('click', showWholeKyiv);
             // Show viewer location and center the map on first load
             locateUser({ center: true });
 
@@ -3233,36 +3403,113 @@
             }
             window.trackLocationClick = trackLocationClick;
 
+            const QUICK_CHIP_DEFS = [
+                { label: 'Сантехнік', cat: 'home', sub: 'plumber' },
+                { label: 'Електрик', cat: 'home', sub: 'electrician' },
+                { label: 'СТО', cat: 'auto', sub: 'auto_repair' },
+                { label: 'Шиномонтаж', cat: 'auto', sub: 'tyres' },
+                { label: 'Краса', cat: 'beauty' },
+                { label: 'Ремонт техніки', cat: 'repair', sub: 'appliances' },
+                { label: 'Майстер', cat: 'home', sub: 'handyman' },
+                { label: 'Автомийка', cat: 'auto', sub: 'wash' },
+            ];
+            const CATEGORY_CHIP_LABELS = {
+                beauty: 'Краса',
+                auto: 'Авто',
+                repair: 'Ремонт',
+                pets: 'Тварини',
+                home: 'Дім',
+                education: 'Освіта',
+                sport: 'Спорт',
+                rental: 'Оренда',
+                medical: 'Медицина',
+                food: 'Їжа',
+                furniture: 'Меблі',
+            };
+
+            function chipHref(catKey, subKey) {
+                const area = State.area ? encodeURIComponent(State.area) + '/' : '';
+                if (subKey) return '/kyiv/' + area + encodeURIComponent(catKey) + '/' + encodeURIComponent(subKey);
+                return categoryHref(catKey);
+            }
+
+            function quickChips() {
+                const catalog = window.masterCatalog || {};
+                const chips = [];
+                const covered = new Set();
+                QUICK_CHIP_DEFS.forEach((def) => {
+                    const cat = catalog[def.cat];
+                    if (!cat) return;
+                    if (def.sub && !cat.subcats?.[def.sub]) return;
+                    chips.push(def);
+                    covered.add(def.cat);
+                });
+                Object.keys(catalog).forEach((catKey) => {
+                    if (covered.has(catKey)) return;
+                    chips.push({
+                        label: CATEGORY_CHIP_LABELS[catKey] || categoryLabel(catalog[catKey]?.name || catKey),
+                        cat: catKey,
+                    });
+                });
+                return chips;
+            }
+
+            function handleQuickChip(catKey, subKey) {
+                const same =
+                    State.category === catKey &&
+                    (State.subcategory || null) === (subKey || null) &&
+                    !State.service &&
+                    !State.locationSearchQuery;
+                if (same) {
+                    resetToHome();
+                    return;
+                }
+                trackCatalogClick(
+                    subKey
+                        ? { type: 'subcategory', categoryKey: catKey, subcategoryKey: subKey }
+                        : { type: 'category', categoryKey: catKey }
+                );
+                State.locationSearchQuery = '';
+                const searchField = document.getElementById('searchInput');
+                if (searchField) searchField.value = '';
+                hideSearchSuggest();
+                State.aiSuggestions = [];
+                State.category = catKey;
+                State.subcategory = subKey || null;
+                State.service = null;
+                State.selectedLocation = null;
+                State.detailMode = null;
+                closeMasterDetail();
+                browseBottomSheet();
+                syncUI();
+            }
+
             function renderCategoryStrip() {
                 categoryStrip.innerHTML = '';
-                const cats = sortByClicksThenName(
-                    Object.entries(window.masterCatalog || {}),
-                    ([catKey]) => catClickKey(catKey),
-                    ([, catData]) => catData?.name || ''
-                );
-                if (!cats.length) {
+                const chips = quickChips();
+                if (!chips.length) {
                     categoryStrip.innerHTML = '<p class="nav-hint" style="padding:8px 16px">Каталог порожній</p>';
                     return;
                 }
 
-                cats.forEach(([catKey, catData]) => {
-                    const card = document.createElement('a');
-                    card.href = categoryHref(catKey);
-                    card.className = 'category-card' + (State.category === catKey ? ' active' : '');
-                    const iconClass = categoryIconClass(catKey);
-                    card.innerHTML = `
-                        <div class="category-card-icon"><i class="fa-solid ${iconClass}"></i></div>
-                        <span class="category-card-label">${categoryLabel(catData.name)}</span>`;
-                    card.addEventListener('click', (e) => {
+                chips.forEach((chip) => {
+                    const active =
+                        State.category === chip.cat &&
+                        (chip.sub ? State.subcategory === chip.sub : !State.subcategory);
+                    const link = document.createElement('a');
+                    link.href = chipHref(chip.cat, chip.sub);
+                    link.className = 'category-chip' + (active ? ' active' : '');
+                    link.textContent = chip.label;
+                    link.addEventListener('click', (e) => {
                         e.preventDefault();
-                        handleL1Click(catKey);
+                        handleQuickChip(chip.cat, chip.sub || null);
                     });
-                    categoryStrip.appendChild(card);
+                    categoryStrip.appendChild(link);
                 });
 
-                const activeCard = categoryStrip.querySelector('.category-card.active');
-                if (activeCard) {
-                    activeCard.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
+                const activeChip = categoryStrip.querySelector('.category-chip.active');
+                if (activeChip) {
+                    activeChip.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
                 }
             }
 
@@ -3379,10 +3626,6 @@
                         ['/kyiv/kotsiubynske', 'Коцюбинське'],
                     ].map(([href, label]) => `<li><a href="${href}">${label}</a></li>`).join('');
                     catalogNav.innerHTML = `
-                        <p class="nav-hint">
-                            <i class="fa-solid fa-hand-pointer" style="color:var(--primary);margin-right:6px"></i>
-                            Проведіть стрічкою категорій і торкніться потрібної іконки
-                        </p>
                         <button type="button" class="masters-home-cta" id="homeAddBusinessCta" onclick="window.startAddBusinessFlow && window.startAddBusinessFlow()">
                             <strong>Додати свій бізнес безкоштовно</strong>
                             <span>Без комісій${areaPlaceName() ? ' · ' + areaPlaceName() : ''}. Якщо заклад уже на карті — введіть телефон на картці.</span>
@@ -3589,8 +3832,10 @@
                 const tgUser = getTelegramUsername(loc);
                 const chatHref = getChatHref(loc);
                 const specialty = State.service?.name || catName;
-                const ratingVal = Number(loc.rating || 0).toFixed(1);
                 const reviewsN = Number(loc.reviewsCount) || 0;
+                const ratingRowHtml = reviewsN > 0
+                    ? `<div class="profile-rating-row"><span>${Number(loc.rating || 0).toFixed(1)}</span>${ratingStarsHtml(loc.rating)}<span class="reviews-count">(${reviewsN} відгуків)</span></div>`
+                    : `<div class="profile-rating-row"><span class="profile-new-badge">Новий на MapFix</span></div>`;
                 const phoneHref = loc.phone ? `tel:${escapeHtml(loc.phone)}` : '';
                 const hasCoords = Number.isFinite(Number(loc.lat)) && Number.isFinite(Number(loc.lng));
                 const hasAddress = Boolean(String(loc.address || '').trim());
@@ -3621,15 +3866,11 @@
                         </div>
                         <div class="profile-copy">
                             <div class="profile-name-row">
-                                <h2 class="profile-name">${escapeHtml(displayName)}</h2>
+                                <h2 class="profile-name" title="${escapeHtml(displayName)}">${escapeHtml(displayName)}</h2>
                                 ${loc.providerId ? '<span class="profile-verified-pill"><i class="fa-solid fa-shield-halved"></i> Verified</span>' : ''}
                             </div>
                             ${tgUser ? `<p class="profile-handle">@${escapeHtml(tgUser)}</p>` : ''}
-                            <div class="profile-rating-row">
-                                <span>${ratingVal}</span>
-                                ${ratingStarsHtml(loc.rating)}
-                                <span class="reviews-count">(${reviewsN} відгуків)</span>
-                            </div>
+                            ${ratingRowHtml}
                             ${specialty ? `<p class="profile-specialty">${escapeHtml(specialty)}</p>` : ''}
                         </div>
                     </div>
@@ -3822,6 +4063,12 @@
 
                 const aboutText = String(loc.text || '').trim();
                 const providerName = typeof getProviderName === 'function' ? getProviderName(loc) : '';
+                const fullTitle =
+                    providerName && providerName !== loc.title ? `${loc.title} / ${providerName}` : String(loc.title || '');
+                const fullTitleHtml =
+                    fullTitle.trim().length > 72 && fullTitle.trim() !== aboutText
+                        ? `<div class="info-item" style="font-weight:700">${escapeHtml(fullTitle.trim())}</div>`
+                        : '';
                 const isFav = State.favoriteIds.has(loc.id);
                 const distKm = Number.isFinite(loc.currentDistance)
                     ? loc.currentDistance
@@ -3831,6 +4078,7 @@
                 const aboutHtml = `<div class="detail-about-inline">
                         <span class="detail-about-i" aria-hidden="true">i</span>
                         <div class="detail-about-copy">
+                            ${fullTitleHtml}
                             ${aboutText ? `<div class="info-item" style="font-weight:500">${escapeHtml(aboutText)}</div>` : ''}
                             ${providerName ? `<div class="info-item">👤 ${escapeHtml(providerName)}</div>` : ''}
                             <div class="info-item">🏢 ${escapeHtml(loc.address || 'Адресу не вказано')}</div>
@@ -3921,7 +4169,18 @@
                     const trustBits = [];
                     if (loc.providerId) trustBits.push('Гарантія на роботу');
                     if (loc.openStatus === 'open') trustBits.push('Зараз працює');
+                    const locIdAttr = escapeHtml(loc.id);
+                    const phoneHref = loc.phone ? `tel:${escapeHtml(loc.phone)}` : '';
+                    const hasCoords = Number.isFinite(Number(loc.lat)) && Number.isFinite(Number(loc.lng));
+                    const hasAddress = Boolean(String(loc.address || '').trim());
+                    const stickyCall = phoneHref
+                        ? `<a href="${phoneHref}" class="profile-quick-btn" title="Подзвонити" aria-label="Подзвонити" onclick="event.stopPropagation(); trackLocationClick('${locIdAttr}','call')"><i class="fa-solid fa-phone"></i> Подзвонити</a>`
+                        : `<button type="button" class="profile-quick-btn" title="Подзвонити" aria-label="Подзвонити" aria-disabled="true" disabled><i class="fa-solid fa-phone"></i> Подзвонити</button>`;
+                    const stickyRoute = hasCoords || hasAddress
+                        ? `<button type="button" class="profile-quick-btn" title="Маршрут" aria-label="Маршрут" onclick="event.stopPropagation(); openGoogleMapsDirections('${locIdAttr}')"><i class="fa-solid fa-route"></i> Маршрут</button>`
+                        : `<button type="button" class="profile-quick-btn" title="Маршрут" aria-label="Маршрут" aria-disabled="true" disabled><i class="fa-solid fa-route"></i> Маршрут</button>`;
                     orderBar.innerHTML = `
+                        <div class="detail-mobile-actions">${stickyCall}${stickyRoute}</div>
                         ${trustBits.length ? `<div class="profile-trust">${trustBits.map((t) => `<span>${escapeHtml(t)}</span>`).join('')}</div>` : ''}
                         <button type="button" class="btn-order-service" onclick="event.stopPropagation(); orderSelectedService('${escapeHtml(loc.id)}')">Замовити послугу</button>
                     `;
@@ -4666,10 +4925,164 @@
                 }
             });
 
+            let searchSuggestTimer = null;
+
+            function hideSearchSuggest() {
+                const box = document.getElementById('searchSuggest');
+                if (!box) return;
+                box.hidden = true;
+                box.innerHTML = '';
+                searchInput.setAttribute('aria-expanded', 'false');
+            }
+
+            function collectSearchSuggestions(query) {
+                const q = normalizeLocationSearch(query);
+                if (q.length < 2) return [];
+                const catalog = window.masterCatalog || {};
+                const cats = [];
+                const subs = [];
+                const locs = [];
+                Object.entries(catalog).forEach(([catKey, cat]) => {
+                    const name = categoryLabel(cat?.name || catKey);
+                    if (normalizeLocationSearch(name).includes(q)) {
+                        cats.push({ kind: 'category', label: name, cat: catKey });
+                    }
+                    Object.entries(cat?.subcats || {}).forEach(([subKey, sub]) => {
+                        const subName = categoryLabel(sub?.name || subKey);
+                        const hay = normalizeLocationSearch([subName, subKey, ...(sub?.tags || [])].join(' '));
+                        if (hay.includes(q)) {
+                            subs.push({
+                                kind: 'subcategory',
+                                label: subName,
+                                cat: catKey,
+                                sub: subKey,
+                                meta: name,
+                            });
+                        }
+                    });
+                });
+                (window.mockLocations || []).forEach((loc) => {
+                    const title = String(loc.title || '').trim();
+                    if (!title) return;
+                    if (normalizeLocationSearch(title).includes(q)) {
+                        locs.push({
+                            kind: 'location',
+                            label: title,
+                            id: loc.id,
+                            meta: String(loc.address || '').trim(),
+                        });
+                    }
+                });
+                const rank = (label) => {
+                    const n = normalizeLocationSearch(label);
+                    if (n.startsWith(q)) return 0;
+                    if (n.split(' ').some((word) => word.startsWith(q))) return 1;
+                    return 2;
+                };
+                const byRank = (a, b) => rank(a.label) - rank(b.label) || a.label.localeCompare(b.label, 'uk');
+                cats.sort(byRank);
+                subs.sort(byRank);
+                locs.sort(byRank);
+                return [...cats.slice(0, 3), ...subs.slice(0, 3), ...locs.slice(0, 4)].slice(0, 8);
+            }
+
+            function applySearchSuggest(item) {
+                hideSearchSuggest();
+                if (!item) return;
+                if (item.kind === 'map') {
+                    State.locationSearchQuery = item.query;
+                    State.category = null;
+                    State.subcategory = null;
+                    State.service = null;
+                    State.aiSuggestions = [];
+                    State.selectedLocation = null;
+                    closeMasterDetail();
+                    browseBottomSheet();
+                    syncUI();
+                    return;
+                }
+                if (item.kind === 'location') {
+                    searchInput.value = item.label;
+                    openMasterDetail(item.id, { mode: 'dive', forceMode: true });
+                    return;
+                }
+                searchInput.value = item.label;
+                applyCatalogSearchFilter(
+                    { category: item.cat, subcategory: item.sub || null },
+                    { keepSuggestions: false }
+                );
+                State.aiSuggestions = [];
+            }
+
+            function renderSearchSuggest(items, query) {
+                const box = document.getElementById('searchSuggest');
+                if (!box) return;
+                const kindLabel = {
+                    category: 'Категорія',
+                    subcategory: 'Підкатегорія',
+                    location: 'Заклад',
+                };
+                box.innerHTML = '';
+                items.forEach((item) => {
+                    const btn = document.createElement('button');
+                    btn.type = 'button';
+                    btn.className = 'search-suggest-item';
+                    btn.setAttribute('role', 'option');
+                    btn.title = item.label;
+                    btn.innerHTML = `
+                        <span class="search-suggest-kind">${kindLabel[item.kind] || ''}</span>
+                        <span class="search-suggest-label"></span>
+                        ${item.meta ? '<span class="search-suggest-meta"></span>' : ''}`;
+                    btn.querySelector('.search-suggest-label').textContent = item.label;
+                    if (item.meta) btn.querySelector('.search-suggest-meta').textContent = item.meta;
+                    btn.addEventListener('mousedown', (e) => {
+                        e.preventDefault();
+                        applySearchSuggest(item);
+                    });
+                    box.appendChild(btn);
+                });
+                if (query) {
+                    const show = document.createElement('button');
+                    show.type = 'button';
+                    show.className = 'search-suggest-item is-map';
+                    show.setAttribute('role', 'option');
+                    show.innerHTML = `
+                        <span class="search-suggest-kind">На мапі</span>
+                        <span class="search-suggest-label"></span>`;
+                    show.querySelector('.search-suggest-label').textContent = `Показати «${query}» на мапі`;
+                    show.addEventListener('mousedown', (e) => {
+                        e.preventDefault();
+                        applySearchSuggest({ kind: 'map', query });
+                    });
+                    box.appendChild(show);
+                }
+                box.hidden = false;
+                searchInput.setAttribute('aria-expanded', 'true');
+            }
+
             searchInput.addEventListener('input', () => {
-                if (searchInput.value.trim() || !State.locationSearchQuery) return;
-                State.locationSearchQuery = '';
-                syncUI();
+                const text = searchInput.value.trim();
+                if (!text && State.locationSearchQuery) {
+                    State.locationSearchQuery = '';
+                    syncUI();
+                }
+                clearTimeout(searchSuggestTimer);
+                if (text.length < 2) {
+                    hideSearchSuggest();
+                    return;
+                }
+                searchSuggestTimer = setTimeout(() => {
+                    if (searchInput.value.trim() !== text) return;
+                    renderSearchSuggest(collectSearchSuggestions(text), text);
+                }, 200);
+            });
+
+            searchInput.addEventListener('blur', () => {
+                setTimeout(hideSearchSuggest, 180);
+            });
+
+            searchInput.addEventListener('keydown', (e) => {
+                if (e.key === 'Escape') hideSearchSuggest();
             });
 
             const sheetHandle = document.getElementById('sheetHandle');

@@ -89,12 +89,12 @@ async function fetchLocationsFromSupabase() {
 }
 
 async function fetchLocationSitemapRows() {
-  let { data, error } = await supabaseClient
-    .from(LOCATIONS_TABLE)
-    .select('id,updated_at,deleted_at')
-    .limit(5000);
-  if (error && /updated_at|deleted_at/i.test(String(error.message || ''))) {
-    ({ data, error } = await supabaseClient.from(LOCATIONS_TABLE).select('id').limit(5000));
+  const attempts = ['id,title,updated_at,deleted_at', 'id,title,deleted_at', 'id,title', 'id,updated_at,deleted_at', 'id'];
+  let data;
+  let error;
+  for (const columns of attempts) {
+    ({ data, error } = await supabaseClient.from(LOCATIONS_TABLE).select(columns).limit(5000));
+    if (!error) break;
   }
   if (error) return { ok: false, rows: [], error };
   return {
@@ -102,6 +102,7 @@ async function fetchLocationSitemapRows() {
     rows: (data || [])
       .map((row) => ({
         id: row.id,
+        title: row.title || '',
         lastmod: String(row.updated_at || '').slice(0, 10),
         deletedAt: row.deleted_at || null,
       }))

@@ -446,6 +446,22 @@ function activeLocations(list) {
   return (list || []).filter((l) => !isLocationTrashed(l));
 }
 
+/** Test fixtures stay in the database and admin; they are hidden from the public map, lists, and sitemap. */
+function isPublicTestLocation(loc) {
+  if (!loc || typeof loc !== 'object') return false;
+  if (loc.isTest === true || loc.is_test === true) return true;
+  const title = String(loc.title || '').replace(/\s+/g, ' ').trim();
+  if (!title) return false;
+  if (/^test\b/i.test(title)) return true;
+  if (/^тестов/i.test(title)) return true;
+  if (/\b(qa|admin)\s+biz\b/i.test(title)) return true;
+  return false;
+}
+
+function publicLocations(list) {
+  return activeLocations(list).filter((loc) => !isPublicTestLocation(loc));
+}
+
 function trashedLocations(list) {
   return (list || []).filter((l) => isLocationTrashed(l));
 }
@@ -840,19 +856,19 @@ async function serveMapPage(req, res) {
     }
     const seo = buildSeo(landing, {
       masterCatalog: data.masterCatalog,
-      mockLocations: activeLocations(data.mockLocations),
+      mockLocations: publicLocations(data.mockLocations),
     });
     const filePath = path.resolve(PUBLIC_DIR, 'index.html');
     let html = await fsPromises.readFile(filePath, 'utf8');
     html = injectSeoIntoHtml(html, seo, {
       jsonLd: jsonLdGraph(seo, landing, {
         masterCatalog: data.masterCatalog,
-        mockLocations: activeLocations(data.mockLocations),
+        mockLocations: publicLocations(data.mockLocations),
       }),
       bootScript: landingBootScript(landing),
       crawlerHtml: crawlerHtml(seo, landing, {
         masterCatalog: data.masterCatalog,
-        mockLocations: activeLocations(data.mockLocations),
+        mockLocations: publicLocations(data.mockLocations),
       }),
     });
     res.set('Cache-Control', 'public, s-maxage=180, stale-while-revalidate=600, max-age=0');
@@ -907,8 +923,20 @@ app.get('/sitemap.xml', async (_req, res) => {
       return { ok: false, rows: [] };
     });
     if (light.ok && light.rows.length) {
+      const hasTitle = light.rows.some((row) => row && row.title);
+      let hiddenIds = null;
+      if (!hasTitle) {
+        const data = await readData();
+        hiddenIds = new Set(
+          (data.mockLocations || []).filter((loc) => isPublicTestLocation(loc)).map((loc) => loc.id)
+        );
+      }
       locations = light.rows
-        .filter((row) => row && row.id && !row.deletedAt)
+        .filter((row) => {
+          if (!row || !row.id || row.deletedAt) return false;
+          if (hasTitle) return !isPublicTestLocation(row);
+          return !hiddenIds.has(row.id);
+        })
         .slice(0, 2000)
         .map((row) => ({ id: row.id, lastmod: row.lastmod }));
     } else {
@@ -916,7 +944,7 @@ app.get('/sitemap.xml', async (_req, res) => {
       if (!categories.length) {
         categories = Object.keys(data.masterCatalog || {}).map((key) => ({ key }));
       }
-      locations = activeLocations(data.mockLocations)
+      locations = publicLocations(data.mockLocations)
         .filter((loc) => loc && loc.id)
         .slice(0, 2000)
         .map((loc) => ({
@@ -1417,7 +1445,7 @@ app.get('/api/data', async (req, res) => {
       }),
     ]);
     const catalogClicks = clicksRes.ok ? clicksRes.clicks || {} : {};
-    const locations = activeLocations(data.mockLocations).map((loc) => {
+    const locations = publicLocations(data.mockLocations).map((loc) => {
       const reviews = Array.isArray(loc.reviews) ? loc.reviews : [];
       const out = { ...loc, reviews: reviews.slice(0, 2) };
       for (const k of PUBLIC_LOC_OMIT) delete out[k];
