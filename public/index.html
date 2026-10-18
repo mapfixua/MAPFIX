@@ -1144,9 +1144,6 @@
             box-shadow: 0 -6px 16px rgba(15, 23, 42, 0.06);
             z-index: 4;
         }
-        .detail-mobile-actions {
-            display: none;
-        }
         .profile-trust {
             display: flex;
             flex-wrap: wrap;
@@ -1944,11 +1941,28 @@
                 padding: 6px 12px 8px;
                 margin: 0;
             }
-            .detail-mobile-actions {
-                display: grid;
-                grid-template-columns: 1fr 1fr;
-                gap: 8px;
-                margin-bottom: 8px;
+            #sidebar-detail-view .profile-more {
+                flex: 0 1 auto;
+                max-height: 148px;
+            }
+            #sidebar-detail-view .profile-more-head {
+                font-size: 12px;
+                padding: 5px 10px 2px;
+            }
+            #sidebar-detail-view .profile-more-body {
+                gap: 4px;
+                padding: 0 8px 18px;
+            }
+            #sidebar-detail-view .profile-more-body .info-item,
+            #sidebar-detail-view .profile-more-body .detail-about-copy {
+                font-size: 12px;
+                line-height: 1.3;
+            }
+            #sidebar-detail-view .profile-more-body .detail-about-inline {
+                padding: 4px 6px;
+            }
+            #sidebar-detail-view .profile-more-body .detail-section {
+                padding: 4px 6px;
             }
             .category-card {
                 flex: 0 0 72px;
@@ -4169,18 +4183,7 @@
                     const trustBits = [];
                     if (loc.providerId) trustBits.push('Гарантія на роботу');
                     if (loc.openStatus === 'open') trustBits.push('Зараз працює');
-                    const locIdAttr = escapeHtml(loc.id);
-                    const phoneHref = loc.phone ? `tel:${escapeHtml(loc.phone)}` : '';
-                    const hasCoords = Number.isFinite(Number(loc.lat)) && Number.isFinite(Number(loc.lng));
-                    const hasAddress = Boolean(String(loc.address || '').trim());
-                    const stickyCall = phoneHref
-                        ? `<a href="${phoneHref}" class="profile-quick-btn" title="Подзвонити" aria-label="Подзвонити" onclick="event.stopPropagation(); trackLocationClick('${locIdAttr}','call')"><i class="fa-solid fa-phone"></i> Подзвонити</a>`
-                        : `<button type="button" class="profile-quick-btn" title="Подзвонити" aria-label="Подзвонити" aria-disabled="true" disabled><i class="fa-solid fa-phone"></i> Подзвонити</button>`;
-                    const stickyRoute = hasCoords || hasAddress
-                        ? `<button type="button" class="profile-quick-btn" title="Маршрут" aria-label="Маршрут" onclick="event.stopPropagation(); openGoogleMapsDirections('${locIdAttr}')"><i class="fa-solid fa-route"></i> Маршрут</button>`
-                        : `<button type="button" class="profile-quick-btn" title="Маршрут" aria-label="Маршрут" aria-disabled="true" disabled><i class="fa-solid fa-route"></i> Маршрут</button>`;
                     orderBar.innerHTML = `
-                        <div class="detail-mobile-actions">${stickyCall}${stickyRoute}</div>
                         ${trustBits.length ? `<div class="profile-trust">${trustBits.map((t) => `<span>${escapeHtml(t)}</span>`).join('')}</div>` : ''}
                         <button type="button" class="btn-order-service" onclick="event.stopPropagation(); orderSelectedService('${escapeHtml(loc.id)}')">Замовити послугу</button>
                     `;
