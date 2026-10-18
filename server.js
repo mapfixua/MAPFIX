@@ -31,6 +31,11 @@ const {
   crawlerHtml,
   landingBootScript,
   SITEMAP_AREAS,
+  isPublicTestLocation,
+  kotsyubynskeSitemapPaths,
+  renderKotsyubynskeHub,
+  renderKotsyubynskeCategory,
+  renderKotsyubynskeNotFound,
 } = require('./seo.js');
 const {
   supabaseClient,
@@ -447,17 +452,6 @@ function activeLocations(list) {
 }
 
 /** Test fixtures stay in the database and admin; they are hidden from the public map, lists, and sitemap. */
-function isPublicTestLocation(loc) {
-  if (!loc || typeof loc !== 'object') return false;
-  if (loc.isTest === true || loc.is_test === true) return true;
-  const title = String(loc.title || '').replace(/\s+/g, ' ').trim();
-  if (!title) return false;
-  if (/^test\b/i.test(title)) return true;
-  if (/^тестов/i.test(title)) return true;
-  if (/\b(qa|admin)\s+biz\b/i.test(title)) return true;
-  return false;
-}
-
 function publicLocations(list) {
   return activeLocations(list).filter((loc) => !isPublicTestLocation(loc));
 }
@@ -896,6 +890,37 @@ app.get('/index.html', (req, res) => {
   res.redirect(301, canonicalPath(landing) + (keep ? `?${keep}` : ''));
 });
 
+async function serveKotsyubynske(req, res) {
+  if (req.path.length > 1 && req.path.endsWith('/')) {
+    const qi = req.originalUrl.indexOf('?');
+    return res.redirect(301, req.path.replace(/\/+$/, '') + (qi >= 0 ? req.originalUrl.slice(qi) : ''));
+  }
+  try {
+    const data = await readData();
+    const locations = data.mockLocations || [];
+    const catalog = data.masterCatalog || {};
+    const page = req.params.slug
+      ? renderKotsyubynskeCategory({ catalog, locations, slug: req.params.slug })
+      : renderKotsyubynskeHub({ catalog, locations });
+    if (!page) {
+      res.set('X-Robots-Tag', 'noindex, follow');
+      res.status(404).type('html').send(renderKotsyubynskeNotFound());
+      return;
+    }
+    if (page.redirect) return res.redirect(301, page.redirect);
+    res.set('Cache-Control', 'public, s-maxage=180, stale-while-revalidate=600, max-age=0');
+    res.set('Content-Type', 'text/html; charset=utf-8');
+    if (page.noindex) res.set('X-Robots-Tag', 'noindex, follow');
+    res.send(page.html);
+  } catch (err) {
+    console.error('[kotsyubynske]', err);
+    if (!res.headersSent) res.status(500).type('text/plain').send('Помилка сторінки');
+  }
+}
+
+app.get('/kotsyubynske', serveKotsyubynske);
+app.get('/kotsyubynske/:slug', serveKotsyubynske);
+
 app.get('/robots.txt', (_req, res) => {
   res.set('Cache-Control', 'public, max-age=3600');
   res.type('text/plain').send(robotsTxt());
@@ -952,8 +977,20 @@ app.get('/sitemap.xml', async (_req, res) => {
           lastmod: String(loc.updatedAt || loc.claimedAt || loc.createdAt || '').slice(0, 10),
         }));
     }
+    let localPaths = ['/kotsyubynske'];
+    try {
+      const localData = await readData();
+      if (!categories.length) {
+        categories = Object.keys(localData.masterCatalog || {}).map((key) => ({ key }));
+      }
+      localPaths = kotsyubynskeSitemapPaths(localData.masterCatalog, publicLocations(localData.mockLocations));
+    } catch (err) {
+      console.warn('[GET /sitemap.xml] kotsyubynske skip:', err.message);
+    }
     res.set('Cache-Control', 'public, max-age=1800');
-    res.type('application/xml').send(sitemapXml({ categories, locations, areas: SITEMAP_AREAS }));
+    res.type('application/xml').send(
+      sitemapXml({ categories, locations, areas: SITEMAP_AREAS, extraPaths: localPaths })
+    );
   } catch (err) {
     console.error('[GET /sitemap.xml]', err);
     res.status(500).type('text/plain').send('sitemap error');
