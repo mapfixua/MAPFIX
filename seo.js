@@ -754,7 +754,404 @@ function legacyHostRedirectUrl(hostname, originalUrl) {
   return `${base}${suffix}`;
 }
 
-function sitemapXml({ categories = [], locations = [], areas = [] } = {}) {
+/** Same centre as the map’s initial setView in public/index.html. */
+const KOTSYUBYNSKE = {
+  slug: 'kotsyubynske',
+  hubH1: 'Майстри та послуги в Коцюбинському',
+  lat: 50.49,
+  lng: 30.33,
+  radiusKm: 3,
+  mapZoom: 14,
+};
+
+const KOTSYUBYNSKE_CATEGORY_SLUGS = {
+  beauty: 'krasa',
+  auto: 'avtoservis',
+  repair: 'remont',
+  pets: 'tvaryny',
+  home: 'dim',
+  education: 'navchannia',
+  sport: 'sport',
+  rental: 'orenda',
+  medical: 'medytsyna',
+  food: 'yizha',
+  furniture: 'mebli',
+};
+
+/** Search-intent pages that already exist as category/subcategory aliases. */
+const KOTSYUBYNSKE_EXTRA_PAGES = [
+  { slug: 'santekhnik', cat: 'home', sub: 'plumber', label: 'Сантехнік' },
+  { slug: 'elektryk', cat: 'home', sub: 'electrician', label: 'Електрик' },
+];
+
+function isPublicTestLocation(loc) {
+  if (!loc || typeof loc !== 'object') return false;
+  if (loc.isTest === true || loc.is_test === true) return true;
+  const title = String(loc.title || '').replace(/\s+/g, ' ').trim();
+  if (!title) return false;
+  if (/^test\b/i.test(title)) return true;
+  if (/^тестов/i.test(title)) return true;
+  if (/\b(qa|admin)\s+biz\b/i.test(title)) return true;
+  return false;
+}
+
+function haversineKm(lat1, lng1, lat2, lng2) {
+  const R = 6371;
+  const dLat = ((lat2 - lat1) * Math.PI) / 180;
+  const dLng = ((lng2 - lng1) * Math.PI) / 180;
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos((lat1 * Math.PI) / 180) * Math.cos((lat2 * Math.PI) / 180) * Math.sin(dLng / 2) * Math.sin(dLng / 2);
+  return R * (2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a)));
+}
+
+function translitSlug(value) {
+  const map = {
+    а: 'a', б: 'b', в: 'v', г: 'h', ґ: 'g', д: 'd', е: 'e', є: 'ie', ж: 'zh', з: 'z', и: 'y',
+    і: 'i', ї: 'i', й: 'i', к: 'k', л: 'l', м: 'm', н: 'n', о: 'o', п: 'p', р: 'r', с: 's',
+    т: 't', у: 'u', ф: 'f', х: 'kh', ц: 'ts', ч: 'ch', ш: 'sh', щ: 'shch', ь: '', ю: 'iu', я: 'ia',
+  };
+  const slug = String(value || '')
+    .toLowerCase()
+    .split('')
+    .map((ch) => (Object.prototype.hasOwnProperty.call(map, ch) ? map[ch] : ch))
+    .join('')
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+  return slug || 'kategoriia';
+}
+
+function placesWord(count) {
+  const n = Math.abs(Number(count) || 0);
+  const mod100 = n % 100;
+  const mod10 = n % 10;
+  if (mod100 > 10 && mod100 < 20) return 'місць';
+  if (mod10 === 1) return 'місце';
+  if (mod10 >= 2 && mod10 <= 4) return 'місця';
+  return 'місць';
+}
+
+function kotsyubynskeMapHref() {
+  const { lat, lng, mapZoom } = KOTSYUBYNSKE;
+  return `/?lat=${lat}&lng=${lng}&zoom=${mapZoom}`;
+}
+
+function addressMentionsKotsyubynske(loc) {
+  return /коцюбинськ/i.test(String(loc?.address || ''));
+}
+
+function isNearKotsyubynske(loc) {
+  const lat = Number(loc?.lat);
+  const lng = Number(loc?.lng);
+  if (Number.isFinite(lat) && Number.isFinite(lng)) {
+    if (haversineKm(KOTSYUBYNSKE.lat, KOTSYUBYNSKE.lng, lat, lng) <= KOTSYUBYNSKE.radiusKm) return true;
+  }
+  return addressMentionsKotsyubynske(loc);
+}
+
+function publicKotsyubynskeLocations(locations) {
+  return (locations || []).filter((loc) => {
+    if (!loc || !loc.id || loc.deletedAt) return false;
+    if (isPublicTestLocation(loc)) return false;
+    return isNearKotsyubynske(loc);
+  });
+}
+
+function localPageDefs(catalog) {
+  const defs = [];
+  const seen = new Set();
+  for (const [key, cat] of Object.entries(catalog || {})) {
+    const label = stripHeadingDecor(cat?.name) || key;
+    let slug = KOTSYUBYNSKE_CATEGORY_SLUGS[key] || translitSlug(label);
+    if (seen.has(slug)) slug = `${slug}-${translitSlug(key)}`;
+    seen.add(slug);
+    defs.push({ slug, cat: key, sub: '', label });
+  }
+  for (const extra of KOTSYUBYNSKE_EXTRA_PAGES) {
+    if (!catalog?.[extra.cat]) continue;
+    if (extra.sub && !catalog[extra.cat]?.subcats?.[extra.sub]) continue;
+    if (seen.has(extra.slug)) continue;
+    seen.add(extra.slug);
+    defs.push({ slug: extra.slug, cat: extra.cat, sub: extra.sub, label: extra.label });
+  }
+  return defs;
+}
+
+function locationsForLocalPage(locations, def) {
+  return publicKotsyubynskeLocations(locations).filter((loc) => {
+    if (def?.cat && loc.cat !== def.cat) return false;
+    if (def?.sub) {
+      const subs = Array.isArray(loc.subcats) ? loc.subcats : [];
+      if (!subs.includes(def.sub)) return false;
+    }
+    return true;
+  });
+}
+
+function resolveKotsyubynskeSlug(catalog, raw) {
+  const slug = String(raw || '').toLowerCase().trim();
+  if (!slug) return { page: null };
+  const defs = localPageDefs(catalog);
+  const direct = defs.find((def) => def.slug === slug);
+  if (direct) return { page: direct };
+  const byCat = defs.find((def) => def.cat === slug && !def.sub);
+  if (byCat) return { redirect: `/kotsyubynske/${byCat.slug}` };
+  const alias = PATH_ALIASES[slug];
+  if (alias) {
+    const exact = defs.find((def) => def.cat === alias.cat && (def.sub || '') === (alias.sub || ''));
+    if (exact) return { redirect: `/kotsyubynske/${exact.slug}` };
+    const catPage = defs.find((def) => def.cat === alias.cat && !def.sub);
+    if (catPage) return { redirect: `/kotsyubynske/${catPage.slug}` };
+  }
+  return null;
+}
+
+function kotsyubynskeSitemapPaths(catalog, locations) {
+  const paths = ['/kotsyubynske'];
+  for (const def of localPageDefs(catalog)) {
+    if (locationsForLocalPage(locations, def).length) paths.push(`/kotsyubynske/${def.slug}`);
+  }
+  return paths;
+}
+
+function categoryLabelOf(catalog, catKey) {
+  return stripHeadingDecor(catalog?.[catKey]?.name) || catKey || 'Послуга';
+}
+
+function sortByTitle(list) {
+  return list.slice().sort((a, b) => String(a.title || '').localeCompare(String(b.title || ''), 'uk'));
+}
+
+function phoneHref(phone) {
+  const raw = String(phone || '').trim();
+  if (!raw) return '';
+  const href = raw.replace(/[^\d+]/g, '');
+  return href ? `tel:${href}` : '';
+}
+
+function localBusinessNode(loc, catalog) {
+  const base = siteBaseUrl();
+  const node = {
+    '@type': 'LocalBusiness',
+    name: String(loc.title || 'Майстер'),
+    url: `${base}/p/${encodeURIComponent(loc.id)}`,
+  };
+  const phone = String(loc.phone || '').trim();
+  if (phone) node.telephone = phone;
+  if (loc.address) {
+    node.address = {
+      '@type': 'PostalAddress',
+      streetAddress: String(loc.address),
+      addressLocality: 'Коцюбинське',
+      addressCountry: 'UA',
+    };
+  }
+  const lat = Number(loc.lat);
+  const lng = Number(loc.lng);
+  if (Number.isFinite(lat) && Number.isFinite(lng)) {
+    node.geo = { '@type': 'GeoCoordinates', latitude: lat, longitude: lng };
+  }
+  const catName = categoryLabelOf(catalog, loc.cat);
+  if (catName) node.description = catName;
+  return node;
+}
+
+function itemListJsonLd(name, url, locations, catalog) {
+  return {
+    '@context': 'https://schema.org',
+    '@type': 'ItemList',
+    name,
+    url,
+    itemListElement: locations.map((loc, index) => ({
+      '@type': 'ListItem',
+      position: index + 1,
+      item: localBusinessNode(loc, catalog),
+    })),
+  };
+}
+
+const LOCAL_PAGE_CSS = `
+:root { --primary:#12c4b5; --dark:#0b0d10; --border:#e4e6eb; --bg:#eceef2; --ink:#0b0d10; --muted:#6b7280; }
+* { box-sizing: border-box; }
+body { margin:0; font-family:Manrope,"Segoe UI",sans-serif; background:var(--bg); color:var(--ink); }
+a { color:inherit; }
+.wrap { max-width:720px; margin:0 auto; padding:16px 16px 48px; }
+.top { display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:18px; }
+.brand { display:inline-flex; align-items:center; gap:8px; font-weight:800; text-decoration:none; font-size:18px; }
+.brand i { width:28px; height:28px; border-radius:8px; background:var(--primary); display:inline-flex; align-items:center; justify-content:center; font-style:normal; font-size:14px; }
+.crumb { font-size:13px; color:var(--muted); margin:0 0 8px; }
+.crumb a { color:var(--ink); font-weight:700; }
+h1 { font-size:1.55rem; line-height:1.25; margin:0 0 8px; }
+.lead { margin:0 0 14px; color:#374151; line-height:1.45; }
+.actions { display:flex; flex-wrap:wrap; gap:8px; margin:0 0 18px; }
+.btn { display:inline-flex; align-items:center; justify-content:center; min-height:44px; padding:10px 14px; border-radius:12px; font-weight:800; text-decoration:none; text-align:center; }
+.btn-primary { background:var(--primary); color:var(--dark); }
+.btn-ghost { background:#fff; border:1px solid var(--border); }
+.cats { list-style:none; padding:0; margin:0 0 8px; display:flex; flex-direction:column; gap:8px; }
+.cats a { display:flex; justify-content:space-between; align-items:center; gap:12px; min-height:48px; padding:12px 14px; background:#fff; border:1px solid var(--border); border-radius:14px; text-decoration:none; font-weight:800; }
+.count { color:var(--muted); font-weight:700; font-size:14px; white-space:nowrap; }
+h2 { font-size:1.15rem; margin:22px 0 10px; }
+.cards { display:flex; flex-direction:column; gap:10px; }
+.card { background:#fff; border:1px solid var(--border); border-radius:16px; padding:14px; }
+.card h3 { font-size:1.05rem; margin:0 0 6px; line-height:1.3; }
+.card h3 a { text-decoration:none; font-weight:800; }
+.card p { margin:0; color:#374151; font-size:14px; line-height:1.45; }
+.card .phone { margin-top:6px; }
+.card .phone a { font-weight:800; text-decoration:none; }
+.page-foot { margin-top:28px; font-size:13px; color:var(--muted); }
+.page-foot a { font-weight:700; }
+.empty { background:#fff; border:1px dashed var(--border); border-radius:16px; padding:16px; }
+@media (max-width:420px) {
+  h1 { font-size:1.35rem; }
+  .actions { flex-direction:column; }
+  .btn { width:100%; }
+}
+`;
+
+function renderLocalPageDocument({ title, description, canonicalPath: path, h1, body, noindex, jsonLd }) {
+  const base = siteBaseUrl();
+  const canonical = `${base}${path}`;
+  const robots = noindex ? '<meta name="robots" content="noindex, follow">' : '<meta name="robots" content="index, follow">';
+  const ld = jsonLd
+    ? `<script type="application/ld+json">${JSON.stringify(jsonLd).replace(/</g, '\\u003c')}</script>`
+    : '';
+  return `<!DOCTYPE html>
+<html lang="uk">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>${escapeHtml(title)}</title>
+<meta name="description" content="${escapeHtmlAttr(description)}">
+<link rel="canonical" href="${escapeHtmlAttr(canonical)}">
+${robots}
+<meta property="og:title" content="${escapeHtmlAttr(title)}">
+<meta property="og:description" content="${escapeHtmlAttr(description)}">
+<meta property="og:type" content="website">
+<meta property="og:locale" content="uk_UA">
+<meta property="og:url" content="${escapeHtmlAttr(canonical)}">
+<meta property="og:site_name" content="Mapfix">
+<meta name="theme-color" content="#12c4b5">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;700;800&display=swap" rel="stylesheet">
+<style>${LOCAL_PAGE_CSS}</style>
+${ld}
+</head>
+<body>
+<div class="wrap">
+<header class="top">
+  <a class="brand" href="/"><i>M</i>Mapfix</a>
+</header>
+${body}
+<footer class="page-foot"><a href="/">На карту</a> · <a href="/kotsyubynske">Коцюбинське</a></footer>
+</div>
+</body>
+</html>`;
+}
+
+function locationCardHtml(loc, catalog) {
+  const href = `/p/${encodeURIComponent(loc.id)}`;
+  const name = loc.title || 'Майстер';
+  const cat = categoryLabelOf(catalog, loc.cat);
+  const phone = String(loc.phone || '').trim();
+  const tel = phoneHref(phone);
+  const phoneHtml = phone
+    ? `<p class="phone">${tel ? `<a href="${escapeHtmlAttr(tel)}">${escapeHtml(phone)}</a>` : escapeHtml(phone)}</p>`
+    : '';
+  return `<article class="card">
+  <h3><a href="${escapeHtmlAttr(href)}">${escapeHtml(name)}</a></h3>
+  <p>${escapeHtml(cat)}</p>
+  ${phoneHtml}
+</article>`;
+}
+
+function renderKotsyubynskeHub({ catalog, locations } = {}) {
+  const nearby = sortByTitle(publicKotsyubynskeLocations(locations));
+  const groups = localPageDefs(catalog)
+    .map((def) => ({ def, count: locationsForLocalPage(locations, def).length }))
+    .filter((row) => row.count > 0)
+    .sort((a, b) => b.count - a.count || a.def.label.localeCompare(b.def.label, 'uk'));
+  const catList = groups.length
+    ? `<ul class="cats">${groups
+        .map(
+          ({ def, count }) =>
+            `<li><a href="/kotsyubynske/${escapeHtmlAttr(def.slug)}"><span>${escapeHtml(def.label)}</span><span class="count">${count} ${placesWord(count)}</span></a></li>`
+        )
+        .join('')}</ul>`
+    : '<p class="empty">Поки немає категорій із закладами поруч. Можна додати свій бізнес безкоштовно.</p>';
+  const cards = nearby.length
+    ? `<h2>Заклади поруч</h2><div class="cards">${nearby.map((loc) => locationCardHtml(loc, catalog)).join('')}</div>`
+    : '';
+  const description =
+    'Майстри та послуги в Коцюбинському: краса, автосервіс, сантехнік, електрик. Телефони закладів поруч на Mapfix — без комісій.';
+  const body = `<p class="crumb"><a href="/">Mapfix</a> · Коцюбинське</p>
+<h1>${escapeHtml(KOTSYUBYNSKE.hubH1)}</h1>
+<p class="lead">${nearby.length} ${placesWord(nearby.length)} у смт Коцюбинське та в радіусі ${KOTSYUBYNSKE.radiusKm} км. Телефонуйте напряму, без комісій.</p>
+<div class="actions"><a class="btn btn-ghost" href="${escapeHtmlAttr(kotsyubynskeMapHref())}">Показати на карті</a></div>
+<h2>Категорії</h2>
+${catList}
+${cards}`;
+  return {
+    noindex: false,
+    html: renderLocalPageDocument({
+      title: KOTSYUBYNSKE.hubH1,
+      description,
+      canonicalPath: '/kotsyubynske',
+      body,
+    }),
+  };
+}
+
+function renderKotsyubynskeCategory({ catalog, locations, slug } = {}) {
+  const resolved = resolveKotsyubynskeSlug(catalog, slug);
+  if (!resolved) return null;
+  if (resolved.redirect) return { redirect: resolved.redirect };
+  const def = resolved.page;
+  const list = sortByTitle(locationsForLocalPage(locations, def));
+  const h1 = `${def.label} у Коцюбинському`;
+  const empty = list.length === 0;
+  const description = empty
+    ? `${h1}. Додайте свій бізнес безкоштовно на Mapfix — без комісії з замовлень.`
+    : `${h1}: ${list.length} ${placesWord(list.length)}. Адреси й телефони на Mapfix, дзвоніть напряму без комісії.`;
+  const cards = empty
+    ? '<p class="empty">У цій категорії поки немає карток поруч із Коцюбинським.</p>'
+    : `<div class="cards">${list.map((loc) => locationCardHtml(loc, catalog)).join('')}</div>`;
+  const body = `<p class="crumb"><a href="/">Mapfix</a> · <a href="/kotsyubynske">Коцюбинське</a></p>
+<h1>${escapeHtml(h1)}</h1>
+<p class="lead">${escapeHtml(description)}</p>
+<div class="actions">
+  <a class="btn btn-primary" href="/register">Додати свій бізнес безкоштовно</a>
+  <a class="btn btn-ghost" href="${escapeHtmlAttr(kotsyubynskeMapHref())}">Показати на карті</a>
+</div>
+${cards}`;
+  const canonicalPath = `/kotsyubynske/${def.slug}`;
+  return {
+    noindex: empty,
+    html: renderLocalPageDocument({
+      title: h1,
+      description,
+      canonicalPath,
+      body,
+      noindex: empty,
+      jsonLd: empty ? null : itemListJsonLd(h1, `${siteBaseUrl()}${canonicalPath}`, list, catalog),
+    }),
+  };
+}
+
+function renderKotsyubynskeNotFound() {
+  return renderLocalPageDocument({
+    title: 'Сторінку не знайдено | Mapfix',
+    description: 'Такої категорії в Коцюбинському на Mapfix немає.',
+    canonicalPath: '/kotsyubynske',
+    noindex: true,
+    body: `<h1>Сторінку не знайдено</h1>
+<p class="lead">Такої категорії немає. Поверніться до списку майстрів у Коцюбинському.</p>
+<div class="actions"><a class="btn btn-primary" href="/kotsyubynske">Майстри в Коцюбинському</a></div>`,
+  });
+}
+
+function sitemapXml({ categories = [], locations = [], areas = [], extraPaths = [] } = {}) {
   const base = siteBaseUrl();
   const urls = [{ loc: `${base}/`, changefreq: 'weekly', priority: '1.0' }];
   const areaKeys = areas.length ? areas : SITEMAP_AREAS;
@@ -786,6 +1183,12 @@ function sitemapXml({ categories = [], locations = [], areas = [] } = {}) {
     for (const row of PRIORITY_SUBS) {
       pushUrl(canonicalPath({ area, cat: row.cat, sub: row.sub }), 'weekly', '0.65');
     }
+  }
+  for (const extra of extraPaths) {
+    const path = String(extra || '');
+    if (!path.startsWith('/')) continue;
+    const priority = path.split('/').filter(Boolean).length > 1 ? '0.7' : '0.8';
+    pushUrl(path, 'weekly', priority);
   }
   for (const loc of locations) {
     pushUrl(canonicalPath({ loc: loc.id }), 'weekly', '0.6', loc.lastmod);
@@ -835,4 +1238,11 @@ module.exports = {
   robotsTxt,
   sitemapXml,
   legacyHostRedirectUrl,
+  isPublicTestLocation,
+  KOTSYUBYNSKE,
+  kotsyubynskeSitemapPaths,
+  renderKotsyubynskeHub,
+  renderKotsyubynskeCategory,
+  renderKotsyubynskeNotFound,
+  resolveKotsyubynskeSlug,
 };

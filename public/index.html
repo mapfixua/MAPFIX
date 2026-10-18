@@ -295,6 +295,16 @@
         .hotline-filter-bar { display: flex; align-items: center; gap: 8px; font-size: 12px; font-weight: 700; color: #475569; margin: 0; }
         .hotline-filter-bar input[type="checkbox"] { width: 15px; height: 15px; cursor: pointer; accent-color: var(--primary); margin: 0; }
 
+        .site-footer {
+            flex-shrink: 0;
+            padding: 8px 14px;
+            border-top: 1px solid var(--border);
+            background: #fff;
+            font-size: 12px;
+            font-weight: 700;
+        }
+        .site-footer a { color: var(--ink); text-decoration: underline; text-underline-offset: 2px; }
+
         .sidebar-content {
             flex-grow: 1;
             min-height: 0;
@@ -1561,11 +1571,13 @@
         .import-message.success { color: var(--success); }
 
         #geo-btn {
-            position: absolute; bottom: 14px; right: 14px; z-index: 10;
-            width: 46px; height: 46px; background: white; border-radius: 50%; border: none;
-            box-shadow: 0 4px 15px rgba(0,0,0,0.15); cursor: pointer;
-            display: flex; align-items: center; justify-content: center; font-size: 18px;
-            touch-action: manipulation; color: var(--ink);
+            position: absolute; bottom: 18px; left: 14px; z-index: 10;
+            height: 40px; padding: 0 14px; border: none; border-radius: 999px;
+            background: #fff; color: var(--ink); font-family: inherit;
+            font-size: 13px; font-weight: 800; cursor: pointer;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.15);
+            display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+            touch-action: manipulation; white-space: nowrap;
         }
         #kyiv-btn {
             position: absolute; bottom: 18px; right: 68px; z-index: 10;
@@ -1761,8 +1773,8 @@
                 flex: 1;
             }
 
-            #geo-btn { bottom: 28px; right: 28px; }
-            #kyiv-btn { bottom: 32px; right: 84px; }
+            #geo-btn { bottom: 28px; left: 18px; }
+            #kyiv-btn { bottom: 32px; right: 28px; }
             .top-header { top: 18px; left: 18px; right: 18px; max-width: 860px; }
         }
 
@@ -2040,8 +2052,8 @@
                 max-width: 70px;
             }
 
-            #geo-btn { bottom: calc(14px + var(--chrome-nav-pad)); right: 14px; }
-            #kyiv-btn { bottom: calc(18px + var(--chrome-nav-pad)); right: 66px; height: 40px; }
+            #geo-btn { bottom: calc(18px + var(--chrome-nav-pad)); left: 12px; height: 40px; }
+            #kyiv-btn { bottom: calc(18px + var(--chrome-nav-pad)); right: 12px; height: 40px; }
 
             /* Compact mode — тільки мобільний */
             .sidebar-header {
@@ -2153,7 +2165,10 @@
         </header>
 
         <button id="kyiv-btn" type="button">Весь Київ</button>
-        <button id="geo-btn" type="button" aria-label="Моє місцезнаходження"><i class="fa-solid fa-location-crosshairs"></i></button>
+        <button id="geo-btn" type="button" aria-pressed="false">
+            <i class="fa-solid fa-location-crosshairs" aria-hidden="true"></i>
+            <span>Поруч зі мною</span>
+        </button>
         <div id="map" role="application" aria-label="Карта майстрів Києва"></div>
 
         <div class="data-load-banner" id="dataLoadBanner" role="alert">
@@ -2244,6 +2259,9 @@
                 </div>
                 <div class="sidebar-content" id="catalogNav"></div>
                 <div class="sidebar-content" id="sidebarContent" style="display:none"></div>
+                <footer class="site-footer">
+                    <a href="/kotsyubynske">Майстри в Коцюбинському</a>
+                </footer>
             </div>
 
             <div id="sidebar-detail-view" class="sidebar-view sheet-panel">
@@ -2383,6 +2401,7 @@
 
             const KOTSIUBYNSKE_CENTER = { lat: 50.49, lng: 30.33 };
             const KOTSIUBYNSKE_ZOOM = 14;
+            const NEAR_ME_RADIUS_KM = 3;
             const KYIV_CENTER = { lat: 50.4501, lng: 30.5234 };
             const KYIV_ZOOM = 11;
             const DEFAULT_CENTER = KOTSIUBYNSKE_CENTER;
@@ -2412,6 +2431,7 @@
                 onlyPrice: false,
                 onlyRated: false,
                 sortType: 'distance',
+                nearMe: false,
                 formRatingScore: 5,
                 currentUser: null,
                 favoriteIds: new Set(),
@@ -2475,9 +2495,46 @@
                 return !State.category && !State.subcategory && !State.service && !State.locationSearchQuery && !State.area;
             }
 
+            let nearCircle = null;
+
+            function setNearMeMode(on) {
+                State.nearMe = Boolean(on);
+                if (geoBtn) {
+                    geoBtn.classList.toggle('active', State.nearMe);
+                    geoBtn.setAttribute('aria-pressed', State.nearMe ? 'true' : 'false');
+                }
+                if (nearCircle) {
+                    map.removeLayer(nearCircle);
+                    nearCircle = null;
+                }
+                if (State.nearMe && State.geoReady) {
+                    nearCircle = L.circle([State.userCoords.lat, State.userCoords.lng], {
+                        radius: NEAR_ME_RADIUS_KM * 1000,
+                        color: '#12c4b5',
+                        weight: 2,
+                        fillColor: '#12c4b5',
+                        fillOpacity: 0.08,
+                        interactive: false,
+                    }).addTo(map);
+                }
+            }
+
+            function focusNearMe() {
+                const ll = L.latLng(State.userCoords.lat, State.userCoords.lng);
+                const bounds = typeof ll.toBounds === 'function'
+                    ? ll.toBounds(NEAR_ME_RADIUS_KM * 2000)
+                    : L.latLngBounds([
+                        [State.userCoords.lat - 0.03, State.userCoords.lng - 0.04],
+                        [State.userCoords.lat + 0.03, State.userCoords.lng + 0.04],
+                    ]);
+                map.fitBounds(bounds, { padding: [28, 28], animate: true, maxZoom: 16 });
+            }
+
             function showWholeKyiv() {
                 State.viewLock = 'kyiv';
+                setNearMeMode(false);
                 map.setView([KYIV_CENTER.lat, KYIV_CENTER.lng], KYIV_ZOOM, { animate: true });
+                try { syncMapMarkers(); } catch (_) {}
             }
 
             (function bootMapFromUrl() {
@@ -2517,10 +2574,14 @@
             function setUserLocation(lat, lng, { center = false, zoom = USER_FOCUS_ZOOM } = {}) {
                 State.userCoords = { lat: Number(lat), lng: Number(lng) };
                 State.geoReady = true;
-                if (geoBtn) geoBtn.classList.add('active');
                 drawUserMarker();
+                if (State.nearMe) setNearMeMode(true);
                 if (center) {
-                    map.setView([State.userCoords.lat, State.userCoords.lng], zoom, { animate: true });
+                    if (State.nearMe) focusNearMe();
+                    else map.setView([State.userCoords.lat, State.userCoords.lng], zoom, { animate: true });
+                }
+                if (State.nearMe) {
+                    try { syncMapMarkers(); } catch (_) {}
                 }
                 if (State.service || State.locationSearchQuery) {
                     try { renderLocationList(); } catch (_) {}
@@ -2529,6 +2590,8 @@
 
             function locateUser({ center = true, fromButton = false } = {}) {
                 if (!navigator.geolocation) {
+                    State.nearMe = false;
+                    try { setNearMeMode(false); } catch (_) {}
                     if (fromButton) alert('Геолокація не підтримується цим браузером');
                     return;
                 }
@@ -2543,6 +2606,9 @@
                     },
                     (err) => {
                         if (geoBtn) geoBtn.classList.remove('locating');
+                        State.nearMe = false;
+                        try { setNearMeMode(false); } catch (_) {}
+                        try { syncMapMarkers(); } catch (_) {}
                         console.warn('[geo]', err && err.message ? err.message : err);
                         if (fromButton) {
                             const denied = err && err.code === 1;
@@ -2563,13 +2629,12 @@
 
             if (geoBtn) {
                 geoBtn.addEventListener('click', () => {
-                    State.viewLock = null;
+                    State.viewLock = 'near';
+                    State.nearMe = true;
                     locateUser({ center: true, fromButton: true });
                 });
             }
             document.getElementById('kyiv-btn')?.addEventListener('click', showWholeKyiv);
-            // Show viewer location and center the map on first load
-            locateUser({ center: true });
 
             async function refreshMapData() {
                 await loadCatalogData();
@@ -3636,6 +3701,14 @@
                 if (State.onlyPhone && !String(loc.phone || '').trim()) return false;
                 if (State.onlyPrice && !Object.keys(loc.prices || {}).length) return false;
                 if (State.onlyRated && !(Number(loc.reviewsCount) > 0)) return false;
+                if (State.nearMe && State.geoReady) {
+                    const lat = Number(loc.lat);
+                    const lng = Number(loc.lng);
+                    if (!Number.isFinite(lat) || !Number.isFinite(lng)) return false;
+                    if (calculateDistance(State.userCoords.lat, State.userCoords.lng, lat, lng) > NEAR_ME_RADIUS_KM) {
+                        return false;
+                    }
+                }
                 return true;
             }
 
@@ -4680,10 +4753,11 @@
                 highlightSelectedMarker(State.selectedLocation?.id);
 
                 const shouldFit =
-                    State.service ||
+                    !State.nearMe &&
+                    (State.service ||
                     State.subcategory ||
                     State.category ||
-                    State.locationSearchQuery;
+                    State.locationSearchQuery);
                 if (shouldFit && visible.length > 0) {
                     const bounds = L.latLngBounds(visible.map((l) => [l.lat, l.lng]));
                     map.fitBounds(bounds, { padding: [60, 60], maxZoom: 13 });
@@ -4725,6 +4799,7 @@
                 State.onlyPhone = false;
                 State.onlyPrice = false;
                 State.onlyRated = false;
+                setNearMeMode(false);
                 const onlyOpenCheckbox = document.getElementById('onlyOpenCheckbox');
                 if (onlyOpenCheckbox) onlyOpenCheckbox.checked = false;
                 ['onlyPhoneCheckbox', 'onlyPriceCheckbox', 'onlyRatedCheckbox'].forEach((id) => {

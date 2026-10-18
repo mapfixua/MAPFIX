@@ -205,6 +205,61 @@ function checkSeoLanding() {
     serverLegacy: serverJs.includes('legacyHostRedirectUrl'),
     jsonldSlot: indexHtml.includes('<!--MAPFIX_JSONLD-->') && indexHtml.includes('twitter:image'),
     lightSitemap: serverJs.includes('fetchLocationSitemapRows'),
+    kotsyubynskeHub: (() => {
+      const hub = seo.renderKotsyubynskeHub({
+        catalog: {
+          beauty: { name: '✂️ Краса', subcats: {} },
+          auto: { name: '🚗 Авто', subcats: {} },
+          home: { name: '🏠 Дім', subcats: { plumber: { name: 'Сантехнік' }, electrician: { name: 'Електрик' } } },
+        },
+        locations: [
+          { id: 'a', title: 'Салон', cat: 'beauty', phone: '+380671112233', address: 'вул. Доківська, Коцюбинське', lat: 50.49, lng: 30.33 },
+          { id: 'b', title: 'Test salon', cat: 'beauty', phone: '1', address: 'Коцюбинське', lat: 50.49, lng: 30.33 },
+          { id: 'c', title: 'Далеко', cat: 'auto', address: 'Львів', lat: 49.84, lng: 24.03 },
+          { id: 'd', title: 'Сантехнік Іван', cat: 'home', subcats: ['plumber'], phone: '0670000000', address: 'Київ', lat: 50.492, lng: 30.331 },
+        ],
+      });
+      const cat = seo.renderKotsyubynskeCategory({
+        catalog: {
+          beauty: { name: '✂️ Краса', subcats: {} },
+          home: { name: 'Дім', subcats: { plumber: { name: 'Сантехнік' }, electrician: { name: 'Електрик' } } },
+        },
+        locations: [
+          { id: 'a', title: 'Салон', cat: 'beauty', phone: '+380671112233', address: 'Коцюбинське', lat: 50.49, lng: 30.33 },
+          { id: 'b', title: 'Test salon', cat: 'beauty', address: 'Коцюбинське', lat: 50.49, lng: 30.33 },
+          { id: 'd', title: 'Сантехнік Іван', cat: 'home', subcats: ['plumber'], phone: '0670000000', address: 'Київ', lat: 50.492, lng: 30.331 },
+        ],
+        slug: 'krasa',
+      });
+      const empty = seo.renderKotsyubynskeCategory({
+        catalog: { food: { name: 'Їжа', subcats: {} } },
+        locations: [],
+        slug: 'yizha',
+      });
+      const smLocal = seo.sitemapXml({ extraPaths: ['/kotsyubynske', '/kotsyubynske/krasa'] });
+      return (
+        hub.html.includes('Майстри та послуги в Коцюбинському') &&
+        hub.html.includes('https://www.mapfix.com.ua/kotsyubynske') &&
+        hub.html.includes('/kotsyubynske/krasa') &&
+        hub.html.includes('/p/a') &&
+        !hub.html.includes('Test salon') &&
+        !hub.html.includes('/p/c') &&
+        cat.html.includes('Краса у Коцюбинському') &&
+        cat.html.includes('ItemList') &&
+        cat.html.includes('LocalBusiness') &&
+        cat.html.includes('/register') &&
+        !cat.html.includes('Test salon') &&
+        empty.noindex === true &&
+        empty.html.includes('noindex') &&
+        empty.html.includes('Додати свій бізнес безкоштовно') &&
+        smLocal.includes('https://www.mapfix.com.ua/kotsyubynske</loc>') &&
+        smLocal.includes('https://www.mapfix.com.ua/kotsyubynske/krasa</loc>') &&
+        serverJs.includes("app.get('/kotsyubynske'") &&
+        indexHtml.includes('href="/kotsyubynske"') &&
+        indexHtml.includes('Поруч зі мною') &&
+        !/locateUser\(\{\s*center:\s*true\s*\}\s*;/.test(indexHtml)
+      );
+    })(),
   };
   const ok = Object.values(checks).every(Boolean);
   return {
