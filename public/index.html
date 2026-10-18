@@ -976,24 +976,37 @@
             color: var(--muted);
         }
         .profile-quick-actions {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
+            display: flex;
+            flex-direction: column;
             gap: 8px;
             margin-top: 2px;
         }
-        .profile-quick-actions.single {
-            grid-template-columns: 1fr;
+        .profile-quick-row {
+            display: grid;
+            gap: 8px;
         }
-        .profile-quick-actions > :last-child:nth-child(odd) {
-            grid-column: 1 / -1;
+        .profile-quick-row.row-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+        .profile-quick-row.row-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+        .profile-trust-pill {
+            display: inline-flex;
+            align-items: center;
+            background: #f0fdfa;
+            color: #0f766e;
+            border: 1px solid #99f6e4;
+            font-size: 10px;
+            font-weight: 800;
+            line-height: 1.2;
+            padding: 2px 7px;
+            border-radius: 999px;
+            white-space: nowrap;
         }
         .profile-quick-btn {
             width: 100%;
             min-width: 0;
             box-sizing: border-box;
-            height: 40px;
+            height: 38px;
             margin: 0;
-            padding: 0 8px;
+            padding: 0 6px;
             border-radius: 8px;
             border: none;
             appearance: none;
@@ -1003,9 +1016,9 @@
             display: inline-flex;
             align-items: center;
             justify-content: center;
-            gap: 6px;
+            gap: 4px;
             text-decoration: none;
-            font-size: 13px;
+            font-size: 12px;
             font-weight: 800;
             font-family: inherit;
             line-height: 1;
@@ -1013,7 +1026,8 @@
             cursor: pointer;
             box-shadow: none;
         }
-        .profile-quick-btn i { font-size: 13px; }
+        .profile-quick-row.row-2 .profile-quick-btn { font-size: 13px; gap: 6px; }
+        .profile-quick-btn i { font-size: 12px; }
         .profile-quick-btn[aria-disabled="true"] {
             opacity: 0.45;
             pointer-events: none;
@@ -1882,6 +1896,45 @@
             }
             #app-shell.sheet-dive #sidebar {
                 padding-bottom: 0;
+            }
+            /* Картка місця: шторка по висоті контенту, мапа з маркером лишається зверху. */
+            #app-shell.showing-location #map-container {
+                flex: 1 1 auto;
+                height: auto;
+                min-height: 240px;
+            }
+            #app-shell.showing-location #sidebar {
+                flex: 0 1 auto;
+                height: auto;
+                max-height: calc(100% - 240px);
+                min-height: 0;
+                overflow: hidden;
+            }
+            #app-shell.showing-location .sheet-body-host {
+                flex: 1 1 auto;
+                height: auto;
+                min-height: 0;
+                overflow-x: hidden;
+                overflow-y: auto;
+            }
+            #app-shell.showing-location #sidebar-list-view {
+                display: none;
+            }
+            #app-shell.showing-location #sidebar-detail-view,
+            #app-shell.showing-location #sidebar-detail-view.show {
+                position: relative;
+                inset: auto;
+                height: auto;
+                max-height: none;
+                transform: none;
+            }
+            #app-shell.showing-location #sidebar-detail-view.mode-dive .detail-scroll-body {
+                flex: 0 0 auto;
+                height: auto;
+                overflow: visible;
+            }
+            #app-shell.showing-location .sheet-drag-handle::after {
+                content: '';
             }
 
             #sidebar-detail-view {
@@ -3317,9 +3370,10 @@
                 }
                 setTimeout(() => {
                     const body = document.getElementById('detailBodyContent');
-                    if (body) body.scrollTo({ top: 0, behavior: 'smooth' });
+                    if (body) body.scrollTop = 0;
                     map.invalidateSize();
                 }, 80);
+                setTimeout(() => map.invalidateSize(), 420);
             }
 
             window.diveIntoSelectedDetail = function () {
@@ -3854,20 +3908,29 @@
                 const hasCoords = Number.isFinite(Number(loc.lat)) && Number.isFinite(Number(loc.lng));
                 const hasAddress = Boolean(String(loc.address || '').trim());
                 const locIdAttr = escapeHtml(loc.id);
+                const disabledQuick = (icon, label) =>
+                    `<button type="button" class="profile-quick-btn" aria-disabled="true" disabled><i class="fa-solid ${icon}"></i> ${label}</button>`;
 
                 const callBtn = phoneHref
                     ? `<a href="${phoneHref}" class="profile-quick-btn" title="Подзвонити" aria-label="Подзвонити" onclick="event.stopPropagation(); trackLocationClick('${locIdAttr}','call')"><i class="fa-solid fa-phone"></i> Подзвонити</a>`
-                    : '';
+                    : disabledQuick('fa-phone', 'Подзвонити');
                 const chatBtn = chatHref
                     ? `<a href="${escapeHtml(chatHref)}" target="_blank" rel="noopener" class="profile-quick-btn" title="Написати" aria-label="Написати" onclick="event.stopPropagation(); trackLocationClick('${locIdAttr}','chat')"><i class="fa-solid fa-comment"></i> Написати</a>`
-                    : '';
+                    : disabledQuick('fa-comment', 'Написати');
+                const orderBtn = `<button type="button" class="profile-quick-btn" title="Замовити" aria-label="Замовити" onclick="event.stopPropagation(); orderSelectedService('${locIdAttr}')"><i class="fa-solid fa-clipboard-check"></i> Замовити</button>`;
                 const routeBtn = hasCoords || hasAddress
                     ? `<button type="button" class="profile-quick-btn" title="Маршрут" aria-label="Маршрут" onclick="event.stopPropagation(); openGoogleMapsDirections('${locIdAttr}')"><i class="fa-solid fa-route"></i> Маршрут</button>`
-                    : '';
+                    : disabledQuick('fa-route', 'Маршрут');
                 const shareBtn = `<button type="button" class="profile-quick-btn" title="Поділитись" aria-label="Поділитись" onclick="event.stopPropagation(); shareLocation('${locIdAttr}')"><i class="fa-solid fa-share-nodes"></i> Поділитись</button>`;
-                const quickBtns = [callBtn, chatBtn, routeBtn, shareBtn].filter(Boolean);
-                const quickActionsHtml = quickBtns.length
-                    ? `<div class="profile-quick-actions${quickBtns.length === 1 ? ' single' : ''}">${quickBtns.join('')}</div>`
+                const quickActionsHtml = `<div class="profile-quick-actions">
+                        <div class="profile-quick-row row-3">${callBtn}${chatBtn}${orderBtn}</div>
+                        <div class="profile-quick-row row-2">${routeBtn}${shareBtn}</div>
+                    </div>`;
+                const trustPills = [];
+                if (loc.providerId) trustPills.push('Гарантія на роботу');
+                if (loc.openStatus === 'open') trustPills.push('Зараз працює');
+                const trustHtml = trustPills.length
+                    ? trustPills.map((t) => `<span class="profile-trust-pill">${escapeHtml(t)}</span>`).join('')
                     : '';
 
                 const headerBox = document.getElementById('detailHeaderContent');
@@ -3885,6 +3948,7 @@
                             </div>
                             ${tgUser ? `<p class="profile-handle">@${escapeHtml(tgUser)}</p>` : ''}
                             ${ratingRowHtml}
+                            ${trustHtml ? `<div class="profile-rating-row">${trustHtml}</div>` : ''}
                             ${specialty ? `<p class="profile-specialty">${escapeHtml(specialty)}</p>` : ''}
                         </div>
                     </div>
@@ -4179,14 +4243,8 @@
                 }
 
                 if (orderBar) {
-                    orderBar.hidden = false;
-                    const trustBits = [];
-                    if (loc.providerId) trustBits.push('Гарантія на роботу');
-                    if (loc.openStatus === 'open') trustBits.push('Зараз працює');
-                    orderBar.innerHTML = `
-                        ${trustBits.length ? `<div class="profile-trust">${trustBits.map((t) => `<span>${escapeHtml(t)}</span>`).join('')}</div>` : ''}
-                        <button type="button" class="btn-order-service" onclick="event.stopPropagation(); orderSelectedService('${escapeHtml(loc.id)}')">Замовити послугу</button>
-                    `;
+                    orderBar.hidden = true;
+                    orderBar.innerHTML = '';
                 }
 
                 setupFormStars();
@@ -4195,6 +4253,9 @@
             window.togglePriceAccordion = function (btn) {
                 const acc = btn && btn.closest('.price-accordion');
                 if (acc) acc.classList.toggle('is-collapsed');
+                if (typeof map !== 'undefined' && map && map.invalidateSize) {
+                    setTimeout(() => map.invalidateSize(), 40);
+                }
             };
 
             window.selectPriceRow = function (row, locId, serviceName) {
