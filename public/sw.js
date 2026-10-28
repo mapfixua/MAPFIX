@@ -1,5 +1,5 @@
 /* Mapfix offline shell — network first, never hijack sitemap/API. */
-const CACHE = 'mapfix-shell-v6';
+const CACHE = 'mapfix-shell-v7';
 const ASSETS = [
   '/',
   '/manifest.json',
@@ -7,6 +7,8 @@ const ASSETS = [
   '/icon-192.png',
   '/icon-512.png',
   '/apple-touch-icon.png',
+  '/css/mapfix-map.css',
+  '/js/mapfix-app.js',
 ];
 
 function shouldBypass(url) {

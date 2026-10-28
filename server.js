@@ -24,18 +24,14 @@ const {
   parseLanding,
   canonicalPath,
   keepTrackingQuery,
-  shouldRedirectLegacy,
-  shouldRedirectAlias,
   buildSeo,
   jsonLdGraph,
   crawlerHtml,
   landingBootScript,
-  SITEMAP_AREAS,
   isPublicTestLocation,
-  kotsyubynskeSitemapPaths,
-  renderKotsyubynskeHub,
-  renderKotsyubynskeCategory,
-  renderKotsyubynskeNotFound,
+  kotsyubynskeToKyivPath,
+  renderNotFoundPage,
+  resolveSeoRequest,
 } = require('./seo.js');
 const {
   supabaseClient,
@@ -100,7 +96,6 @@ const {
 } = require('./places-import.js');
 const {
   fetchLocationsFromSupabase,
-  fetchLocationSitemapRows,
   syncAllLocationsToSupabase,
   upsertLocationsToSupabase,
   deleteLocationsFromSupabase,
@@ -804,12 +799,19 @@ async function persistLocationsPatch(data, changedLocs) {
   return { ok: true };
 }
 
+function sendHtmlNotFound(res) {
+  res.set('Cache-Control', 'no-store');
+  res.set('X-Robots-Tag', 'noindex, follow');
+  res.status(404).type('html; charset=utf-8').send(renderNotFoundPage());
+}
+
+const SEO_PAGE_CACHE = 'public, s-maxage=300, stale-while-revalidate=86400, max-age=0';
+
 function sendPublicPage(res, filename) {
   const filePath = path.resolve(PUBLIC_DIR, filename);
   res.set('Cache-Control', 'no-store');
   if (
     filename === 'login.html' ||
-    filename === 'register.html' ||
     filename === 'forgot-password.html' ||
     filename === 'reset-password.html' ||
     filename === 'link-telegram.html' ||
@@ -835,37 +837,30 @@ async function serveMapPage(req, res) {
   }
   try {
     const data = await readData();
-    const landing = parseLanding({
+    const locations = publicLocations(data.mockLocations);
+    const decision = resolveSeoRequest({
       pathname: req.path,
       query: req.query,
       catalog: data.masterCatalog,
+      locations,
     });
-    if (shouldRedirectLegacy(req.path, req.query) || shouldRedirectAlias(req.path, landing)) {
-      const keep = keepTrackingQuery(req.query);
-      return res.redirect(301, canonicalPath(landing) + (keep ? `?${keep}` : ''));
-    }
-    if (req.path === '/kyiv' || req.path === '/kiev') {
-      const keep = keepTrackingQuery(req.query);
-      return res.redirect(301, '/' + (keep ? `?${keep}` : ''));
-    }
-    const seo = buildSeo(landing, {
-      masterCatalog: data.masterCatalog,
-      mockLocations: publicLocations(data.mockLocations),
-    });
+    if (decision.redirect) return res.redirect(301, decision.redirect);
+    if (decision.notFound) return sendHtmlNotFound(res);
+    const landing = decision.landing;
+    const seoData = { masterCatalog: data.masterCatalog, mockLocations: locations };
+    const seo = buildSeo(landing, seoData);
     const filePath = path.resolve(PUBLIC_DIR, 'index.html');
     let html = await fsPromises.readFile(filePath, 'utf8');
     html = injectSeoIntoHtml(html, seo, {
-      jsonLd: jsonLdGraph(seo, landing, {
-        masterCatalog: data.masterCatalog,
-        mockLocations: publicLocations(data.mockLocations),
-      }),
+      jsonLd: jsonLdGraph(seo, landing, seoData),
       bootScript: landingBootScript(landing),
-      crawlerHtml: crawlerHtml(seo, landing, {
-        masterCatalog: data.masterCatalog,
-        mockLocations: publicLocations(data.mockLocations),
-      }),
+      crawlerHtml: crawlerHtml(seo, landing, seoData),
+      noindex: Boolean(decision.noindex),
+      prevUrl: decision.prevUrl,
+      nextUrl: decision.nextUrl,
     });
-    res.set('Cache-Control', 'public, s-maxage=180, stale-while-revalidate=600, max-age=0');
+    res.set('Cache-Control', SEO_PAGE_CACHE);
+    if (decision.noindex) res.set('X-Robots-Tag', 'noindex, follow');
     res.set('Content-Type', 'text/html; charset=utf-8');
     res.send(html);
   } catch (err) {
@@ -897,21 +892,10 @@ async function serveKotsyubynske(req, res) {
   }
   try {
     const data = await readData();
-    const locations = data.mockLocations || [];
-    const catalog = data.masterCatalog || {};
-    const page = req.params.slug
-      ? renderKotsyubynskeCategory({ catalog, locations, slug: req.params.slug })
-      : renderKotsyubynskeHub({ catalog, locations });
-    if (!page) {
-      res.set('X-Robots-Tag', 'noindex, follow');
-      res.status(404).type('html').send(renderKotsyubynskeNotFound());
-      return;
-    }
-    if (page.redirect) return res.redirect(301, page.redirect);
-    res.set('Cache-Control', 'public, s-maxage=180, stale-while-revalidate=600, max-age=0');
-    res.set('Content-Type', 'text/html; charset=utf-8');
-    if (page.noindex) res.set('X-Robots-Tag', 'noindex, follow');
-    res.send(page.html);
+    const target = kotsyubynskeToKyivPath(data.masterCatalog || {}, req.params.slug);
+    if (!target) return sendHtmlNotFound(res);
+    const keep = keepTrackingQuery(req.query);
+    return res.redirect(301, target + (keep ? `?${keep}` : ''));
   } catch (err) {
     console.error('[kotsyubynske]', err);
     if (!res.headersSent) res.status(500).type('text/plain').send('Помилка сторінки');
@@ -933,64 +917,26 @@ app.get('/google8adca38c98f2ae5a.html', (_req, res) => {
 
 app.get('/sitemap.xml', async (_req, res) => {
   try {
-    let categories = [];
-    try {
-      const raw = await fsPromises.readFile(DATA_FILE, 'utf8');
-      const fileData = JSON.parse(raw);
-      categories = Object.keys(fileData.masterCatalog || {}).map((key) => ({ key }));
-    } catch (err) {
-      console.warn('[GET /sitemap.xml] catalog file skip:', err.message);
-    }
-
-    let locations = [];
-    const light = await fetchLocationSitemapRows().catch((err) => {
-      console.warn('[GET /sitemap.xml] light rows skip:', err.message);
-      return { ok: false, rows: [] };
-    });
-    if (light.ok && light.rows.length) {
-      const hasTitle = light.rows.some((row) => row && row.title);
-      let hiddenIds = null;
-      if (!hasTitle) {
-        const data = await readData();
-        hiddenIds = new Set(
-          (data.mockLocations || []).filter((loc) => isPublicTestLocation(loc)).map((loc) => loc.id)
-        );
-      }
-      locations = light.rows
-        .filter((row) => {
-          if (!row || !row.id || row.deletedAt) return false;
-          if (hasTitle) return !isPublicTestLocation(row);
-          return !hiddenIds.has(row.id);
-        })
-        .slice(0, 2000)
-        .map((row) => ({ id: row.id, lastmod: row.lastmod }));
-    } else {
-      const data = await readData();
-      if (!categories.length) {
-        categories = Object.keys(data.masterCatalog || {}).map((key) => ({ key }));
-      }
-      locations = publicLocations(data.mockLocations)
-        .filter((loc) => loc && loc.id)
-        .slice(0, 2000)
-        .map((loc) => ({
-          id: loc.id,
-          lastmod: String(loc.updatedAt || loc.claimedAt || loc.createdAt || '').slice(0, 10),
-        }));
-    }
-    let localPaths = ['/kotsyubynske'];
-    try {
-      const localData = await readData();
-      if (!categories.length) {
-        categories = Object.keys(localData.masterCatalog || {}).map((key) => ({ key }));
-      }
-      localPaths = kotsyubynskeSitemapPaths(localData.masterCatalog, publicLocations(localData.mockLocations));
-    } catch (err) {
-      console.warn('[GET /sitemap.xml] kotsyubynske skip:', err.message);
-    }
+    const data = await readData();
+    const categories = Object.keys(data.masterCatalog || {}).map((key) => ({ key }));
+    const locations = publicLocations(data.mockLocations)
+      .filter((loc) => loc && loc.id)
+      .slice(0, 5000)
+      .map((loc) => ({
+        id: loc.id,
+        title: loc.title || '',
+        lat: loc.lat,
+        lng: loc.lng,
+        cat: loc.cat,
+        subcats: loc.subcats,
+        address: loc.address || '',
+        updatedAt: loc.updatedAt,
+        claimedAt: loc.claimedAt,
+        createdAt: loc.createdAt,
+        lastmod: String(loc.updatedAt || loc.claimedAt || loc.createdAt || '').slice(0, 10),
+      }));
     res.set('Cache-Control', 'public, max-age=1800');
-    res.type('application/xml').send(
-      sitemapXml({ categories, locations, areas: SITEMAP_AREAS, extraPaths: localPaths })
-    );
+    res.type('application/xml').send(sitemapXml({ categories, locations }));
   } catch (err) {
     console.error('[GET /sitemap.xml]', err);
     res.status(500).type('text/plain').send('sitemap error');
@@ -5563,9 +5509,15 @@ app.use(express.static(PUBLIC_DIR, {
     // Static assets are not fingerprinted: short browser cache, longer CDN
     // cache (purged on every deploy). HTML stays uncached.
     if (/\.html?$/i.test(filePath)) return;
-    res.setHeader('Cache-Control', 'public, max-age=600, s-maxage=86400, stale-while-revalidate=604800');
+    res.setHeader('Cache-Control', 'public, max-age=86400, s-maxage=604800, stale-while-revalidate=2592000');
   },
 }));
+
+app.use((req, res, next) => {
+  if (req.method !== 'GET' && req.method !== 'HEAD') return next();
+  if (req.path === '/api' || req.path.startsWith('/api/')) return next();
+  sendHtmlNotFound(res);
+});
 
 async function validateStartupData() {
   const data = await readData();
