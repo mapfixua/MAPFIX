@@ -52,9 +52,12 @@ function parseCookie(setCookie) {
 
 async function checkMapStability() {
   const indexHtml = read('public/index.html');
-  const hasNoStore = /cache:\s*['"]no-store['"]/.test(indexHtml);
-  const hasApiData = indexHtml.includes('/api/data');
-  const hasBust = indexHtml.includes('Date.now()') && (indexHtml.includes('?t=') || indexHtml.includes('&t='));
+  const appJsPath = path.join(ROOT, 'public/js/mapfix-app.js');
+  const appJs = fs.existsSync(appJsPath) ? fs.readFileSync(appJsPath, 'utf8') : '';
+  const client = `${indexHtml}\n${appJs}`;
+  const hasNoStore = /cache:\s*['"]no-store['"]/.test(client);
+  const hasApiData = client.includes('/api/data');
+  const hasBust = client.includes("fetch('/api/data'");
   const hasSync = indexHtml.includes('mapfix-sync.js') && fs.existsSync(path.join(ROOT, 'public/mapfix-sync.js'));
 
   let liveOk = false;
@@ -75,7 +78,7 @@ async function checkMapStability() {
     details: [
       `fetch /api/data: ${hasApiData ? 'OK' : 'FAIL'}`,
       `cache: 'no-store' у клієнті: ${hasNoStore ? 'OK' : 'FAIL'}`,
-      `cache-bust ?t=: ${hasBust ? 'OK' : 'FAIL'}`,
+      `fetch('/api/data') у клієнті: ${hasBust ? 'OK' : 'FAIL'}`,
       `mapfix-sync.js: ${hasSync ? 'OK' : 'FAIL'}`,
       liveOk
         ? `сервер Cache-Control: ${cacheHeader}`
@@ -183,7 +186,20 @@ function checkSeoLanding() {
   const title = seo.stripHeadingDecor('🛠️ Ремонт та Побутові послуги');
   const sm = seo.sitemapXml({
     categories: [{ key: 'home' }, { key: 'auto' }],
-    locations: [{ id: 'loc-1', lastmod: '2026-01-02' }, { id: 'loc-2' }],
+    locations: [
+      {
+        id: 'loc-1',
+        title: 'Майстер',
+        lastmod: '2026-01-02',
+        lat: 50.49,
+        lng: 30.33,
+        cat: 'home',
+        subcats: ['plumber'],
+        address: 'Коцюбинське',
+      },
+      { id: 'loc-2', title: 'Авто', cat: 'auto', lat: 50.45, lng: 30.52 },
+      { id: 'loc-top-tyres', title: 'TopTyres', cat: 'auto', lat: 50.45, lng: 30.52 },
+    ],
   });
   const homeBlock = (sm.match(/<loc>https:\/\/www\.mapfix\.com\.ua\/<\/loc>[\s\S]*?<\/url>/) || [''])[0];
   const datedBlock = (sm.match(/<loc>[^<]*\/p\/loc-1<\/loc>[\s\S]*?<\/url>/) || [''])[0];
@@ -198,13 +214,101 @@ function checkSeoLanding() {
     aliasRedirect: seo.shouldRedirectAlias('/kyiv/santekhnik', plumber),
     kotsiubynske: area.area === 'kotsiubynske',
     emojiStrip: title.startsWith('Ремонт'),
-    sitemapPlumber: sm.includes('/kyiv/home/plumber') && sm.includes('/kyiv/kotsiubynske'),
-    sitemapLastmod: datedBlock.includes('<lastmod>2026-01-02</lastmod>') && !undatedBlock.includes('<lastmod>') && !homeBlock.includes('<lastmod>'),
+    sitemapPlumber: sm.includes('/kyiv/home/plumber') && sm.includes('/kyiv/kotsiubynske') && !sm.includes('/kotsyubynske</loc>') && !sm.includes('/p/loc-top-tyres'),
+    sitemapLastmod:
+      datedBlock.includes('<lastmod>2026-01-02</lastmod>') &&
+      !undatedBlock.includes('<lastmod>') &&
+      homeBlock.includes('<lastmod>2026-01-02</lastmod>'),
     legacyHost: legacy === 'https://www.mapfix.com.ua/kyiv/home/plumber?q=1',
-    serverAlias: serverJs.includes('shouldRedirectAlias') && serverJs.includes('/kyiv/:seg1/:seg2/:seg3'),
+    serverAlias: serverJs.includes('resolveSeoRequest') && serverJs.includes('/kyiv/:seg1/:seg2/:seg3'),
     serverLegacy: serverJs.includes('legacyHostRedirectUrl'),
     jsonldSlot: indexHtml.includes('<!--MAPFIX_JSONLD-->') && indexHtml.includes('twitter:image'),
-    lightSitemap: serverJs.includes('fetchLocationSitemapRows'),
+    lightSitemap: serverJs.includes('sitemapXml({ categories, locations })'),
+    branded404:
+      serverJs.includes('sendHtmlNotFound') &&
+      serverJs.includes('renderNotFoundPage') &&
+      seo.renderNotFoundPage().includes('Сторінку не знайдено') &&
+      seo.renderNotFoundPage().includes('noindex') &&
+      seo.resolveSeoRequest({
+        pathname: '/kyiv/foo',
+        query: {},
+        catalog: { home: { name: 'Дім', subcats: {} } },
+        locations: [],
+      }).notFound === true,
+    hideDemos:
+      seo.isPublicTestLocation({ id: 'loc-top-tyres', title: 'TopTyres Шиномонтаж на Подолі' }) &&
+      seo.isPublicTestLocation({ id: 'flagged', title: 'Справжній', demo: true }) &&
+      !seo.isPublicTestLocation({ id: 'loc-real', title: 'Майстер Іван' }),
+    districtFilter: (() => {
+      const listing = seo.buildListing({ area: 'kotsiubynske', cat: 'home', page: 1 }, [
+        { id: 'near', title: 'Поруч', cat: 'home', lat: 50.49, lng: 30.33, address: 'Коцюбинське' },
+        { id: 'far', title: 'Далеко', cat: 'home', lat: 50.45, lng: 30.52, address: 'Київ' },
+      ]);
+      const empty = seo.buildListing({ area: 'sviatoshyn', cat: 'food', page: 1 }, [
+        { id: 'far', title: 'Далеко', cat: 'home', lat: 50.45, lng: 30.52 },
+      ]);
+      return listing.filtered.length === 1 && listing.filtered[0].id === 'near' && empty.noindex === true;
+    })(),
+    noFakeRating: (() => {
+      const googleLoc = {
+        id: 'g',
+        title: 'Імпорт',
+        cat: 'home',
+        rating: 5,
+        reviewsCount: 3,
+        reviews: [{ rating: 5, text: 'Відгук з Google Maps', source: 'google_maps' }],
+      };
+      const ownedLoc = {
+        id: 'o',
+        title: 'Свій',
+        cat: 'home',
+        reviews: [{ rating: 4, text: 'Швидко і акуратно', userId: 'user-1', createdAt: '2026-02-01T00:00:00.000Z' }],
+      };
+      const catalog = { home: { name: 'Дім', subcats: {} } };
+      const googleLd = JSON.stringify(
+        seo.jsonLdGraph(seo.buildSeo({ loc: 'g' }, { masterCatalog: catalog, mockLocations: [googleLoc] }), { loc: 'g' }, {
+          masterCatalog: catalog,
+          mockLocations: [googleLoc],
+        })
+      );
+      const ownedLd = JSON.stringify(
+        seo.jsonLdGraph(seo.buildSeo({ loc: 'o' }, { masterCatalog: catalog, mockLocations: [ownedLoc] }), { loc: 'o' }, {
+          masterCatalog: catalog,
+          mockLocations: [ownedLoc],
+        })
+      );
+      return !googleLd.includes('AggregateRating') && ownedLd.includes('AggregateRating');
+    })(),
+    cardDetails: (() => {
+      const loc = {
+        id: 'card',
+        title: 'Майстер',
+        cat: 'home',
+        text: 'Міняю змішувачі',
+        subcats: ['plumber'],
+        prices: { 'Заміна змішувача': '800 грн' },
+        schedule: { 'Пн-Пт': '09:00 - 18:00' },
+        lat: 50.45,
+        lng: 30.52,
+      };
+      const catalog = { home: { name: 'Дім', subcats: { plumber: { name: 'Сантехнік' } } } };
+      const html = seo.crawlerHtml(seo.buildSeo({ loc: 'card' }, { masterCatalog: catalog, mockLocations: [loc] }), { loc: 'card' }, {
+        masterCatalog: catalog,
+        mockLocations: [loc],
+      });
+      return html.includes('Міняю змішувачі') && html.includes('800 грн') && html.includes('09:00 - 18:00') && html.includes('Сантехнік');
+    })(),
+    registerIndexable:
+      !read('public/register.html').includes('noindex') &&
+      read('public/register.html').includes('Додати бізнес безкоштовно') &&
+      read('public/register.html').includes('rel="canonical" href="https://www.mapfix.com.ua/register.html"') &&
+      read('public/login.html').includes('noindex') &&
+      !/filename === 'register\.html'/.test(serverJs) &&
+      sm.includes('/register.html'),
+    kotsCanonical: seo.kotsyubynskeToKyivPath(
+      { auto: { name: 'Авто', subcats: { tyres: { name: 'Шиномонтаж' } } }, beauty: { name: 'Краса', subcats: {} } },
+      'shynomontazh'
+    ) === '/kyiv/kotsiubynske/auto/tyres' && serverJs.includes('kotsyubynskeToKyivPath'),
     kotsyubynskeHub: (() => {
       const hub = seo.renderKotsyubynskeHub({
         catalog: {
@@ -255,7 +359,10 @@ function checkSeoLanding() {
         smLocal.includes('https://www.mapfix.com.ua/kotsyubynske</loc>') &&
         smLocal.includes('https://www.mapfix.com.ua/kotsyubynske/krasa</loc>') &&
         serverJs.includes("app.get('/kotsyubynske'") &&
-        indexHtml.includes('href="/kotsyubynske"') &&
+        indexHtml.includes('href="/kyiv/kotsiubynske"') &&
+        indexHtml.includes('/js/mapfix-app.js') &&
+        indexHtml.includes('/css/mapfix-map.css') &&
+        read('.gitignore').includes('.test-cookies.txt') &&
         indexHtml.includes('Поруч зі мною') &&
         !/locateUser\(\{\s*center:\s*true\s*\}\s*;/.test(indexHtml)
       );
