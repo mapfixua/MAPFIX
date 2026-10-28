@@ -305,10 +305,15 @@ function checkSeoLanding() {
       read('public/login.html').includes('noindex') &&
       !/filename === 'register\.html'/.test(serverJs) &&
       sm.includes('/register.html'),
-    kotsCanonical: seo.kotsyubynskeToKyivPath(
-      { auto: { name: 'Авто', subcats: { tyres: { name: 'Шиномонтаж' } } }, beauty: { name: 'Краса', subcats: {} } },
-      'shynomontazh'
-    ) === '/kyiv/kotsiubynske/auto/tyres' && serverJs.includes('kotsyubynskeToKyivPath'),
+    kotsCanonical:
+      seo.kotsyubynskeToKyivPath(null, '') === '/kyiv/kotsiubynske' &&
+      seo.kotsyubynskeToKyivPath(null, 'shynomontazh') === '/kyiv/kotsiubynske/auto/tyres' &&
+      seo.kotsyubynskeToKyivPath(null, 'krasa/') === '/kyiv/kotsiubynske/beauty' &&
+      serverJs.includes('kotsyubynskeToKyivPath') &&
+      serverJs.includes("app.get('/kotsiubynske'") &&
+      serverJs.includes("app.get('/kotsiubinske'") &&
+      read('public/sw.js').includes("p.startsWith('/kotsyubynske/')") &&
+      read('public/sw.js').includes('res.redirected'),
     kotsyubynskeHub: (() => {
       const hub = seo.renderKotsyubynskeHub({
         catalog: {
