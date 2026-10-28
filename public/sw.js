@@ -1,5 +1,5 @@
 /* Mapfix offline shell — network first, never hijack sitemap/API. */
-const CACHE = 'mapfix-shell-v7';
+const CACHE = 'mapfix-shell-v8';
 const ASSETS = [
   '/',
   '/manifest.json',
@@ -16,6 +16,20 @@ function shouldBypass(url) {
   if (url.origin !== self.location.origin) return true;
   if (p.startsWith('/api/')) return true;
   if (p === '/sitemap.xml' || p === '/robots.txt' || p === '/llms.txt') return true;
+  // Let the browser follow these 301s. Intercepting them hides the redirect.
+  if (
+    p === '/kotsyubynske' ||
+    p.startsWith('/kotsyubynske/') ||
+    p === '/kotsiubynske' ||
+    p.startsWith('/kotsiubynske/') ||
+    p === '/kotsiubinske' ||
+    p.startsWith('/kotsiubinske/') ||
+    p === '/index.html' ||
+    p === '/kiev' ||
+    p.startsWith('/kiev/')
+  ) {
+    return true;
+  }
   if (p.startsWith('/google') && p.endsWith('.html')) return true;
   if (
     p === '/login.html' ||
@@ -53,6 +67,11 @@ self.addEventListener('fetch', (event) => {
   event.respondWith(
     fetch(req)
       .then((res) => {
+        // fetch() follows redirects. Hand the final URL back as a 301 so the
+        // address bar changes instead of painting that page on the old URL.
+        if (req.mode === 'navigate' && res.redirected && res.url) {
+          return Response.redirect(res.url, 301);
+        }
         if (res.ok && ASSETS.includes(url.pathname)) {
           const copy = res.clone();
           caches.open(CACHE).then((c) => c.put(req, copy)).catch(() => {});

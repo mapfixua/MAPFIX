@@ -886,24 +886,32 @@ app.get('/index.html', (req, res) => {
 });
 
 async function serveKotsyubynske(req, res) {
-  if (req.path.length > 1 && req.path.endsWith('/')) {
-    const qi = req.originalUrl.indexOf('?');
-    return res.redirect(301, req.path.replace(/\/+$/, '') + (qi >= 0 ? req.originalUrl.slice(qi) : ''));
+  const slug = String(req.params.slug || '').replace(/\/+$/, '');
+  const keep = keepTrackingQuery(req.query);
+  const withQuery = (target) => target + (keep ? `?${keep}` : '');
+  // Known slugs redirect before any database read, including /kotsyubynske/.
+  let target = kotsyubynskeToKyivPath(null, slug);
+  if (!target) {
+    try {
+      const data = await readData();
+      target = kotsyubynskeToKyivPath(data.masterCatalog || {}, slug);
+    } catch (err) {
+      console.error('[kotsyubynske]', err);
+      if (!res.headersSent) res.status(500).type('text/plain').send('Помилка сторінки');
+      return;
+    }
   }
-  try {
-    const data = await readData();
-    const target = kotsyubynskeToKyivPath(data.masterCatalog || {}, req.params.slug);
-    if (!target) return sendHtmlNotFound(res);
-    const keep = keepTrackingQuery(req.query);
-    return res.redirect(301, target + (keep ? `?${keep}` : ''));
-  } catch (err) {
-    console.error('[kotsyubynske]', err);
-    if (!res.headersSent) res.status(500).type('text/plain').send('Помилка сторінки');
-  }
+  if (!target) return sendHtmlNotFound(res);
+  res.set('Cache-Control', 'public, max-age=3600');
+  return res.redirect(301, withQuery(target));
 }
 
 app.get('/kotsyubynske', serveKotsyubynske);
 app.get('/kotsyubynske/:slug', serveKotsyubynske);
+app.get('/kotsiubynske', serveKotsyubynske);
+app.get('/kotsiubynske/:slug', serveKotsyubynske);
+app.get('/kotsiubinske', serveKotsyubynske);
+app.get('/kotsiubinske/:slug', serveKotsyubynske);
 
 app.get('/robots.txt', (_req, res) => {
   res.set('Cache-Control', 'public, max-age=3600');

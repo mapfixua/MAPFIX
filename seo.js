@@ -1622,9 +1622,52 @@ function resolveSeoRequest({ pathname, query, catalog, locations } = {}) {
   return { notFound: true };
 }
 
+/** Old /kotsyubynske slugs that must 301 even when the catalog has not loaded. */
+const KOTSYUBYNSKE_STATIC_REDIRECTS = {
+  krasa: '/kyiv/kotsiubynske/beauty',
+  beauty: '/kyiv/kotsiubynske/beauty',
+  manikiur: '/kyiv/kotsiubynske/beauty',
+  barbershop: '/kyiv/kotsiubynske/beauty',
+  'salon-krasy': '/kyiv/kotsiubynske/beauty',
+  avtoservis: '/kyiv/kotsiubynske/auto',
+  auto: '/kyiv/kotsiubynske/auto',
+  sto: '/kyiv/kotsiubynske/auto',
+  shynomontazh: '/kyiv/kotsiubynske/auto/tyres',
+  shinmontazh: '/kyiv/kotsiubynske/auto/tyres',
+  remont: '/kyiv/kotsiubynske/repair',
+  repair: '/kyiv/kotsiubynske/repair',
+  'remont-tehniky': '/kyiv/kotsiubynske/repair',
+  tvaryny: '/kyiv/kotsiubynske/pets',
+  pets: '/kyiv/kotsiubynske/pets',
+  dim: '/kyiv/kotsiubynske/home',
+  home: '/kyiv/kotsiubynske/home',
+  santekhnik: '/kyiv/kotsiubynske/home/plumber',
+  santehnik: '/kyiv/kotsiubynske/home/plumber',
+  elektryk: '/kyiv/kotsiubynske/home/electrician',
+  elektrik: '/kyiv/kotsiubynske/home/electrician',
+  'majster-dodomu': '/kyiv/kotsiubynske/home/handyman',
+  'cholovik-na-godynu': '/kyiv/kotsiubynske/home/handyman',
+  navchannia: '/kyiv/kotsiubynske/education',
+  education: '/kyiv/kotsiubynske/education',
+  sport: '/kyiv/kotsiubynske/sport',
+  orenda: '/kyiv/kotsiubynske/rental',
+  rental: '/kyiv/kotsiubynske/rental',
+  medytsyna: '/kyiv/kotsiubynske/medical',
+  medical: '/kyiv/kotsiubynske/medical',
+  yizha: '/kyiv/kotsiubynske/food',
+  food: '/kyiv/kotsiubynske/food',
+  mebli: '/kyiv/kotsiubynske/furniture',
+  furniture: '/kyiv/kotsiubynske/furniture',
+};
+
 function kotsyubynskeToKyivPath(catalog, rawSlug) {
-  if (!rawSlug) return '/kyiv/kotsiubynske';
-  const slug = String(rawSlug).toLowerCase().trim();
+  const slug = String(rawSlug || '')
+    .toLowerCase()
+    .trim()
+    .replace(/\/+$/, '');
+  if (!slug) return '/kyiv/kotsiubynske';
+  if (KOTSYUBYNSKE_STATIC_REDIRECTS[slug]) return KOTSYUBYNSKE_STATIC_REDIRECTS[slug];
+  if (!catalog) return '';
   const alias = resolvePathAlias(slug);
   const cats = catalogKeysFrom(catalog);
   if (alias && cats.has(alias.cat)) {
@@ -1797,6 +1840,7 @@ module.exports = {
   buildListing,
   resolveSeoRequest,
   kotsyubynskeToKyivPath,
+  KOTSYUBYNSKE_STATIC_REDIRECTS,
   renderNotFoundPage,
   mapfixReviews,
   KOTSYUBYNSKE,
