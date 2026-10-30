@@ -839,7 +839,7 @@
 
             window.shareLocation = async function(locationId) {
                 const loc = window.mockLocations.find((l) => l.id === locationId);
-                const url = `${location.origin}/p/${encodeURIComponent(locationId)}`;
+                const url = `${location.origin}/p/${encodeURIComponent(locationId)}?utm_source=share&utm_medium=button&utm_campaign=card`;
                 const title = loc?.title || 'Mapfix';
                 const text = loc ? `${loc.title} — ${loc.address || 'на Mapfix'}` : 'Mapfix';
                 trackLocationClick(locationId, 'share');
@@ -855,6 +855,29 @@
                 } catch (_) {
                     prompt('Скопіюйте посилання:', url);
                 }
+            };
+
+            window.showLocationQr = function(locationId) {
+                trackLocationClick(locationId, 'share');
+                const loc = window.mockLocations.find((l) => l.id === locationId);
+                const src = `/api/qr/${encodeURIComponent(locationId)}.svg`;
+                const old = document.getElementById('mf-qr-modal');
+                if (old) old.remove();
+                const wrap = document.createElement('div');
+                wrap.id = 'mf-qr-modal';
+                wrap.setAttribute('role', 'dialog');
+                wrap.setAttribute('aria-label', 'QR-код картки');
+                wrap.style.cssText = 'position:fixed;inset:0;z-index:99999;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center;padding:16px';
+                wrap.innerHTML = `<div style="background:#fff;border-radius:16px;padding:20px;max-width:340px;width:100%;text-align:center;color:#111">
+                    <div style="font-weight:700;margin-bottom:6px">${escapeHtml(loc?.title || 'Mapfix')}</div>
+                    <div style="font-size:13px;color:#555;margin-bottom:12px">Покажіть клієнту або роздрукуйте — QR відкриває цю картку на Mapfix</div>
+                    <img src="${src}" alt="QR-код" style="width:240px;height:240px">
+                    <div style="display:flex;gap:8px;justify-content:center;margin-top:14px">
+                        <a href="${src}" download="mapfix-qr-${escapeHtml(locationId)}.svg" class="profile-quick-btn">Завантажити</a>
+                        <button type="button" class="profile-quick-btn" data-close>Закрити</button>
+                    </div></div>`;
+                wrap.addEventListener('click', (e) => { if (e.target === wrap || e.target.hasAttribute('data-close')) wrap.remove(); });
+                document.body.appendChild(wrap);
             };
 
             window.reportLocation = async function(locationId) {
@@ -1726,10 +1749,10 @@
                 const routeBtn = hasCoords || hasAddress
                     ? `<button type="button" class="profile-quick-btn" title="Маршрут" aria-label="Маршрут" onclick="event.stopPropagation(); openGoogleMapsDirections('${locIdAttr}')"><i class="fa-solid fa-route"></i> Маршрут</button>`
                     : disabledQuick('fa-route', 'Маршрут');
-                const shareBtn = `<button type="button" class="profile-quick-btn" title="Поділитись" aria-label="Поділитись" onclick="event.stopPropagation(); shareLocation('${locIdAttr}')"><i class="fa-solid fa-share-nodes"></i> Поділитись</button>`;
+                const shareBtn = `<button type="button" class="profile-quick-btn" title="Поділитись" aria-label="Поділитись" onclick="event.stopPropagation(); shareLocation('${locIdAttr}')"><i class="fa-solid fa-share-nodes"></i> Поділитись</button><button type="button" class="profile-quick-btn" title="QR-код" aria-label="QR-код" onclick="event.stopPropagation(); showLocationQr('${locIdAttr}')"><i class="fa-solid fa-qrcode"></i> QR</button>`;
                 const quickActionsHtml = `<div class="profile-quick-actions">
                         <div class="profile-quick-row row-3">${callBtn}${chatBtn}${orderBtn}</div>
-                        <div class="profile-quick-row row-2">${routeBtn}${shareBtn}</div>
+                        <div class="profile-quick-row row-3">${routeBtn}${shareBtn}</div>
                     </div>`;
                 const trustPills = [];
                 if (loc.providerId) trustPills.push('Гарантія на роботу');

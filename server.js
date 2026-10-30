@@ -923,6 +923,22 @@ app.get('/google8adca38c98f2ae5a.html', (_req, res) => {
   res.type('html').send('google-site-verification: google8adca38c98f2ae5a.html\n');
 });
 
+/** QR code (SVG) for a public card link with share UTM. Only /p/<id> on this site is encoded. */
+app.get('/api/qr/:locId.svg', async (req, res) => {
+  const id = String(req.params.locId || '');
+  if (!/^[A-Za-z0-9_-]{1,80}$/.test(id)) return res.status(400).end();
+  try {
+    const QRCode = require('qrcode');
+    const target = `https://www.mapfix.com.ua/p/${encodeURIComponent(id)}?utm_source=share&utm_medium=qr&utm_campaign=card`;
+    const svg = await QRCode.toString(target, { type: 'svg', margin: 1, width: 512, errorCorrectionLevel: 'M' });
+    res.set('Content-Type', 'image/svg+xml');
+    res.set('Cache-Control', 'public, max-age=86400, s-maxage=604800');
+    return res.send(svg);
+  } catch (err) {
+    return res.status(500).end();
+  }
+});
+
 app.get('/sitemap.xml', async (_req, res) => {
   try {
     const data = await readData();
