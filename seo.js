@@ -128,7 +128,32 @@ const PRIORITY_SUBS = [
   { cat: 'home', sub: 'electrician' },
   { cat: 'home', sub: 'handyman' },
   { cat: 'auto', sub: 'tyres' },
+  { cat: 'auto', sub: 'auto_repair' },
+  { cat: 'auto', sub: 'auto_electric' },
+  { cat: 'auto', sub: 'wash' },
+  { cat: 'beauty', sub: 'nails' },
+  { cat: 'beauty', sub: 'barber' },
+  { cat: 'beauty', sub: 'hair' },
+  { cat: 'beauty', sub: 'massage' },
+  { cat: 'home', sub: 'cleaning' },
+  { cat: 'home', sub: 'locksmith' },
+  { cat: 'repair', sub: 'appliances' },
+  { cat: 'repair', sub: 'phones' },
+  { cat: 'pets', sub: 'grooming' },
 ];
+
+/** A district listing needs at least this many cards to be indexed and listed in the sitemap. */
+const MIN_AREA_LISTING = 2;
+
+function simpleSubCopy(name, task, keywords) {
+  return {
+    h1: (p) => `${name}${p}`,
+    title: (p) => `${name}${p} — ${task} | Mapfix`,
+    description: (p) =>
+      `${name}${p}: ${task}. Дивіться майстрів на карті Mapfix, графік і телефон — дзвоніть напряму, без комісії.`,
+    keywords,
+  };
+}
 
 const CAT_COPY = {
   home: {
@@ -233,6 +258,49 @@ const SUB_COPY = {
     keywords: 'шиномонтаж Київ, заміна шин, балансування, шиномонтаж поруч',
   },
 };
+
+Object.assign(SUB_COPY, {
+  'auto/auto_repair': simpleSubCopy('СТО і ремонт авто', 'ходова, двигун, ТО', 'СТО, ремонт авто, автосервіс поруч'),
+  'auto/auto_electric': simpleSubCopy('Автоелектрик', 'генератор, стартер, проводка', 'автоелектрик, ремонт генератора, стартер'),
+  'auto/wash': simpleSubCopy('Автомийка', 'мийка кузова й салону', 'автомийка, мийка авто поруч'),
+  'beauty/nails': simpleSubCopy('Манікюр', 'манікюр, педикюр, нарощування', 'манікюр, педикюр, майстер манікюру поруч'),
+  'beauty/barber': simpleSubCopy('Барбершоп', 'чоловіча стрижка й борода', 'барбершоп, чоловіча стрижка, барбер'),
+  'beauty/hair': simpleSubCopy('Перукар', 'стрижка, фарбування, укладка', 'перукар, перукарня, стрижка поруч'),
+  'beauty/massage': simpleSubCopy('Масаж', 'класичний і лікувальний масаж', 'масаж, масажист поруч'),
+  'home/cleaning': simpleSubCopy('Прибирання', 'квартири, після ремонту, вікна', 'прибирання квартири, клінінг'),
+  'home/locksmith': simpleSubCopy('Відкриття і заміна замків', 'аварійне відкриття, заміна личинки', 'відкрити замок, заміна замка'),
+  'repair/appliances': simpleSubCopy('Ремонт побутової техніки', 'пральна машина, холодильник, плита', 'ремонт пральної машини, ремонт холодильника'),
+  'repair/phones': simpleSubCopy('Ремонт телефонів', 'екран, батарея, роз\'єм', 'ремонт телефонів, заміна екрана'),
+  'pets/grooming': simpleSubCopy('Грумінг', 'стрижка й догляд за тваринами', 'грумінг, стрижка собак'),
+});
+
+/** Unique intro and FAQ for "service + district" pages, so they are not thin copies of the city page. */
+function areaServiceContent(seo, landing, listing) {
+  if (!landing.area || !landing.cat) return null;
+  const area = SEO_AREAS[resolveAreaKey(landing.area)];
+  if (!area) return null;
+  const name = seo.h1.replace(placeBit(landing.area), '').trim() || seo.h1;
+  const lower = name.charAt(0).toLowerCase() + name.slice(1);
+  const count = listing.filtered.length;
+  const sample = listing.filtered.slice(0, 3).map((l) => stripHeadingDecor(l.title || '')).filter(Boolean);
+  const radius = AREA_RADIUS_KM[area.key];
+  const intro = `${name} на ${area.on}: ${count} ${placesWord(count)} у радіусі близько ${radius} км від центру району ${area.name}${sample.length ? `, зокрема ${sample.join(', ')}` : ''}. Номери телефонів, адреси й маршрут — на картці кожного майстра. Ви домовляєтесь напряму, Mapfix не бере комісії.`;
+  const faq = [
+    {
+      q: `Як швидко знайти: ${lower} на ${area.on}?`,
+      a: `Відкрийте цю сторінку або карту Mapfix з фільтром «${name}», оберіть найближчого майстра й зателефонуйте з картки. Тут зібрано ${count} ${placesWord(count)} саме на ${area.on}.`,
+    },
+    {
+      q: 'Скільки коштують послуги?',
+      a: 'Ціни встановлює сам майстер. Якщо прайс є, він видно на картці; якщо ні — уточнюйте телефоном. Mapfix не додає націнки.',
+    },
+    {
+      q: `Я надаю послугу «${lower}» на ${area.on}. Як потрапити на карту?`,
+      a: 'Зареєструйтесь безкоштовно на mapfix.com.ua/register.html і додайте картку з адресою, телефоном і прайсом. Якщо ваш заклад уже є на карті — відкрийте картку й підтвердіть її своїм номером.',
+    },
+  ];
+  return { intro, faq };
+}
 
 const DEFAULT_SEO = {
   h1: 'Майстри та ремонт у Києві',
@@ -590,6 +658,17 @@ function jsonLdGraph(seo, landing, data) {
     });
     const listingLd = itemListForLanding(seo, landing, data?.mockLocations || []);
     if (listingLd) graph.push(listingLd);
+    const local = areaServiceContent(seo, landing, buildListing(landing, data?.mockLocations || []));
+    if (local && (Number(landing.page) || 1) === 1) {
+      graph.push({
+        '@type': 'FAQPage',
+        mainEntity: local.faq.map((row) => ({
+          '@type': 'Question',
+          name: row.q,
+          acceptedAnswer: { '@type': 'Answer', text: row.a },
+        })),
+      });
+    }
   } else {
     graph.push({
       '@type': 'FAQPage',
@@ -669,13 +748,15 @@ function crawlerHtml(seo, landing, data) {
       return `<li><a href="${escapeHtmlAttr(href)}">${escapeHtml(row.title || 'Майстер')}</a>${escapeHtml(addr)}</li>`;
     })
     .join('');
-  const where = place ? ` на ${place}` : ' у Києві';
+  const where = placeBit(landing.area);
   const countLine = listing.filtered.length
     ? `<p>На карті зараз ${listing.filtered.length} ${placesWord(listing.filtered.length)}${landing.cat ? ' у цій категорії' : ''}${escapeHtml(where)}.</p>`
     : '<p>У цьому доборі поки немає карток. Додайте свій бізнес безкоштовно — без комісії з замовлень.</p>';
   const pagesNav = paginationNav(listing, landing);
-  const faq =
-    !landing.cat && (Number(landing.page) || 1) === 1
+  const local = (Number(landing.page) || 1) === 1 ? areaServiceContent(seo, landing, listing) : null;
+  const faq = local
+    ? `<h2>Питання</h2>${local.faq.map((row) => `<h3>${escapeHtml(row.q)}</h3><p>${escapeHtml(row.a)}</p>`).join('')}`
+    : !landing.cat && (Number(landing.page) || 1) === 1
       ? `<h2>Питання</h2>
   <h3>Як знайти сантехніка в Києві?</h3>
   <p>Оберіть категорію «Дім» або відкрийте сторінку сантехніка, порівняйте майстрів на карті й зателефонуйте напряму.</p>
@@ -687,6 +768,7 @@ function crawlerHtml(seo, landing, data) {
 
   return `<section id="seo-static" class="seo-static" aria-label="Каталог Mapfix">
   <p>${escapeHtml(seo.description)}</p>
+  ${local ? `<p>${escapeHtml(local.intro)}</p>` : ''}
   ${countLine}
   <h2>Популярні запити</h2>
   <ul>${intentLinks}</ul>
@@ -1323,7 +1405,7 @@ function buildListing(landing, locations) {
   const pageItems = outOfRange ? [] : filtered.slice((page - 1) * LISTING_PAGE_SIZE, page * LISTING_PAGE_SIZE);
   let noindex = false;
   if (landing.area && !landing.loc) {
-    if (!filtered.length) noindex = true;
+    if (filtered.length < MIN_AREA_LISTING) noindex = true;
     else {
       const city = all.filter((loc) => locationMatchesListing(loc, { ...landing, area: '' }));
       if (sameLocationIds(filtered, city)) noindex = true;
@@ -1814,6 +1896,8 @@ module.exports = {
   KNOWN_CATS,
   PATH_ALIASES,
   PRIORITY_SUBS,
+  MIN_AREA_LISTING,
+  areaServiceContent,
   parseLanding,
   canonicalPath,
   canonicalUrl,
