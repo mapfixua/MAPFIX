@@ -1128,17 +1128,21 @@
                 else browseBottomSheet();
             }
 
+            function lowerOpenCard() {
+                if (!State.selectedLocation) return false;
+                if (State.detailMode !== 'preview' && State.detailMode !== 'dive') return false;
+                closeMasterDetail({ fromSwipe: true });
+                return true;
+            }
+
             function lowerSheetLevel() {
+                if (State.selectedLocation && (State.detailMode === 'preview' || State.detailMode === 'dive')) {
+                    lowerOpenCard();
+                    return;
+                }
                 const level = getSheetLevel();
                 if (level >= 2) {
-                    if (State.detailMode === 'dive') {
-                        // З dive не скидаємо картку — лише трохи зменшуємо шторку
-                        appShell.classList.remove('sheet-dive', 'sheet-browse');
-                        appShell.classList.add('sheet-expanded');
-                        setTimeout(() => map.invalidateSize(), 400);
-                    } else {
-                        expandBottomSheet();
-                    }
+                    expandBottomSheet();
                 } else if (level === 1) {
                     collapseBottomSheet();
                 }
@@ -1164,13 +1168,24 @@
                 appShell.classList.add('showing-location');
                 if (isMobileLayout()) {
                     appShell.classList.add('sheet-expanded', 'sheet-dive');
-                    appShell.classList.remove('sheet-browse');
+                    appShell.classList.remove('sheet-browse', 'sheet-peek');
                 }
                 setTimeout(() => {
                     const body = document.getElementById('detailBodyContent');
                     if (body) body.scrollTop = 0;
                     map.invalidateSize();
                 }, 80);
+                setTimeout(() => map.invalidateSize(), 420);
+            }
+
+            function enterDetailPreview() {
+                State.detailMode = 'preview';
+                const detailView = document.getElementById('sidebar-detail-view');
+                detailView.classList.add('show', 'mode-preview');
+                detailView.classList.remove('mode-dive');
+                appShell.classList.add('showing-location', 'sheet-peek');
+                appShell.classList.remove('sheet-dive', 'sheet-browse');
+                setTimeout(() => map.invalidateSize(), 80);
                 setTimeout(() => map.invalidateSize(), 420);
             }
 
@@ -1181,10 +1196,79 @@
             };
 
             const detailViewEl = document.getElementById('sidebar-detail-view');
+            const sidebarEl = document.getElementById('sidebar');
+            const sheetHandleEl = document.getElementById('sheetHandle');
+            let suppressDetailClick = false;
+            let cardDragStartY = 0;
+            let cardDragArmed = false;
+            let cardDragMoved = false;
+            let cardPointerId = null;
             detailViewEl.addEventListener('click', (e) => {
+                if (suppressDetailClick) {
+                    suppressDetailClick = false;
+                    return;
+                }
+                if (cardDragMoved) return;
                 if (State.detailMode !== 'preview' || !State.selectedLocation) return;
                 if (e.target.closest('a, button, input, textarea, select, label')) return;
                 diveIntoSelectedDetail();
+            });
+            function cardSheetIsOpen() {
+                return Boolean(
+                    State.selectedLocation &&
+                    (State.detailMode === 'preview' || State.detailMode === 'dive')
+                );
+            }
+            function beginCardDrag(e) {
+                if (!isMobileLayout() || !cardSheetIsOpen()) return;
+                if (e.pointerType === 'mouse' && e.button !== 0) return;
+                if (e.target.closest('a, button, input, textarea, select, label')) return;
+                const scroller = document.querySelector('#app-shell.showing-location .sheet-body-host');
+                const inBody = e.target.closest('#detailBodyContent');
+                if (inBody && scroller && scroller.scrollTop > 8) return;
+                cardDragArmed = true;
+                cardDragMoved = false;
+                cardPointerId = e.pointerId;
+                cardDragStartY = e.clientY;
+                sidebarEl.style.transition = 'none';
+                if (e.currentTarget.setPointerCapture) {
+                    try { e.currentTarget.setPointerCapture(e.pointerId); } catch (_) {}
+                }
+            }
+            function moveCardDrag(e) {
+                if (!cardDragArmed || e.pointerId !== cardPointerId) return;
+                const dy = e.clientY - cardDragStartY;
+                if (dy <= 0) return;
+                cardDragMoved = dy > 10;
+                if (e.cancelable) e.preventDefault();
+                sidebarEl.style.transform = 'translateY(' + Math.min(dy, 420) + 'px)';
+            }
+            function finishCardDrag(e) {
+                if (!cardDragArmed || (e && e.pointerId !== cardPointerId)) return;
+                const dy = (e ? e.clientY : cardDragStartY) - cardDragStartY;
+                cardDragArmed = false;
+                cardPointerId = null;
+                if (dy > 64) {
+                    suppressDetailClick = true;
+                    sheetDragging = true;
+                    sidebarEl.style.transition = 'transform 0.18s ease';
+                    sidebarEl.style.transform = 'translateY(110%)';
+                    window.setTimeout(() => {
+                        sidebarEl.style.transition = '';
+                        sidebarEl.style.transform = '';
+                        lowerOpenCard();
+                    }, 180);
+                    return;
+                }
+                sidebarEl.style.transition = 'transform 0.18s ease';
+                sidebarEl.style.transform = '';
+            }
+            [sheetHandleEl, document.getElementById('detailHeaderContent'), detailViewEl].forEach((el) => {
+                if (!el) return;
+                el.addEventListener('pointerdown', beginCardDrag);
+                el.addEventListener('pointermove', moveCardDrag);
+                el.addEventListener('pointerup', finishCardDrag);
+                el.addEventListener('pointercancel', finishCardDrag);
             });
 
             function pulseSheetContent() {
@@ -1761,7 +1845,69 @@
                     ? trustPills.map((t) => `<span class="profile-trust-pill">${escapeHtml(t)}</span>`).join('')
                     : '';
 
+                const previewMobile = mode === 'preview' && isMobileLayout();
+                let distanceLabel = '';
+                if (State.geoReady && hasCoords) {
+                    const km = calculateDistance(
+                        State.userCoords.lat,
+                        State.userCoords.lng,
+                        Number(loc.lat),
+                        Number(loc.lng)
+                    );
+                    if (Number.isFinite(km)) {
+                        distanceLabel = km < 1
+                            ? `${Math.max(50, Math.round(km * 1000 / 50) * 50)} м від вас`
+                            : `${km.toFixed(1).replace('.', ',')} км від вас`;
+                    }
+                }
+                const priceValues = Object.values(loc.prices || {})
+                    .map((value) => formatDisplayPrice(value))
+                    .filter(Boolean);
+                const numericPrices = priceValues
+                    .map((label) => ({
+                        label,
+                        amount: parseInt(String(label).replace(/\D/g, ''), 10),
+                    }))
+                    .filter((row) => Number.isFinite(row.amount) && row.amount > 0)
+                    .sort((a, b) => a.amount - b.amount);
+                const previewPrice = numericPrices.length
+                    ? `від ${numericPrices[0].label.replace(/^від\s*/i, '')}`
+                    : (priceValues[0] || '');
+                const whereLine = [distanceLabel, hasAddress ? String(loc.address).trim() : '']
+                    .filter(Boolean)
+                    .join(' · ');
+
                 const headerBox = document.getElementById('detailHeaderContent');
+                if (previewMobile) {
+                    headerBox.innerHTML = `
+                    <div class="map-preview">
+                        <div class="map-preview-main">
+                            <div class="profile-avatar map-preview-avatar">${locationAvatarHtml(loc)}</div>
+                            <div class="map-preview-copy">
+                                <h2 class="profile-name">${escapeHtml(displayName)}</h2>
+                                ${specialty ? `<p class="profile-specialty">${escapeHtml(specialty)}</p>` : ''}
+                                ${whereLine ? `<p class="map-preview-where">${escapeHtml(whereLine)}</p>` : ''}
+                                <div class="map-preview-meta">
+                                    ${ratingRowHtml}
+                                    ${previewPrice ? `<span class="map-preview-price">${escapeHtml(previewPrice)}</span>` : ''}
+                                </div>
+                            </div>
+                        </div>
+                        <div class="map-preview-actions">
+                            ${callBtn.replace('class="profile-quick-btn"', 'class="profile-quick-btn" style="height:52px;min-height:52px"')}
+                            ${chatBtn.replace('class="profile-quick-btn"', 'class="profile-quick-btn" style="height:52px;min-height:52px"')}
+                        </div>
+                        <p class="detail-preview-hint">Торкніться картки, щоб відкрити деталі</p>
+                    </div>`;
+                    renderDetailBody(loc, { claimBannerHtml, mode });
+                    const detailView = document.getElementById('sidebar-detail-view');
+                    detailView.classList.add('show', 'mode-preview');
+                    detailView.classList.remove('mode-dive');
+                    enterDetailPreview();
+                    highlightSelectedMarker(loc.id);
+                    map.panTo([loc.lat, loc.lng]);
+                    return;
+                }
                 headerBox.innerHTML = `
                     <button class="back-btn" onclick="event.stopPropagation(); closeMasterDetail()">⬅️ Назад</button>
                     <div class="profile-identity">
@@ -2152,10 +2298,15 @@
                 }
             };
 
-            window.closeMasterDetail = function() {
+            window.closeMasterDetail = function(opts = {}) {
                 const detailView = document.getElementById('sidebar-detail-view');
                 detailView.classList.remove('show', 'mode-preview', 'mode-dive');
-                appShell.classList.remove('sheet-dive', 'showing-location');
+                appShell.classList.remove('sheet-dive', 'sheet-peek', 'showing-location');
+                if (opts.fromSwipe) {
+                    appShell.classList.remove('sheet-expanded', 'sheet-browse');
+                }
+                const headerBox = document.getElementById('detailHeaderContent');
+                if (headerBox) headerBox.innerHTML = '';
                 const heroBox = document.getElementById('detailHeroContent');
                 if (heroBox) heroBox.innerHTML = '';
                 const orderBar = document.getElementById('detailOrderBar');
@@ -2166,7 +2317,7 @@
                 State.selectedLocation = null;
                 State.detailMode = null;
                 highlightSelectedMarker(null);
-                if (State.service || State.subcategory || State.category || State.locationSearchQuery) {
+                if (!opts.fromSwipe && (State.service || State.subcategory || State.category || State.locationSearchQuery)) {
                     if (isMobileLayout()) browseBottomSheet();
                 }
                 if (State.service) {
@@ -2493,7 +2644,10 @@
                     });
                     loc.markerInstance.on('click', (e) => {
                         L.DomEvent.stopPropagation(e);
-                        openMasterDetail(loc.id, { fromMarker: true });
+                        openMasterDetail(loc.id, {
+                            fromMarker: true,
+                            mode: isMobileLayout() ? 'preview' : 'dive',
+                        });
                     });
                     loc.markerInstance.on('dblclick', (e) => {
                         L.DomEvent.stopPropagation(e);
@@ -3008,7 +3162,7 @@
             }, { passive: true });
 
             sheetHandle.addEventListener('touchend', (e) => {
-                if (!isMobileLayout()) return;
+                if (!isMobileLayout() || cardSheetIsOpen() || cardDragMoved) return;
                 const diff = e.changedTouches[0].clientY - sheetDragStartY;
                 if (Math.abs(diff) < 36) return;
                 if (diff < 0) raiseSheetLevel();
