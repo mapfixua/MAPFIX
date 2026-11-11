@@ -1164,13 +1164,24 @@
                 appShell.classList.add('showing-location');
                 if (isMobileLayout()) {
                     appShell.classList.add('sheet-expanded', 'sheet-dive');
-                    appShell.classList.remove('sheet-browse');
+                    appShell.classList.remove('sheet-browse', 'sheet-peek');
                 }
                 setTimeout(() => {
                     const body = document.getElementById('detailBodyContent');
                     if (body) body.scrollTop = 0;
                     map.invalidateSize();
                 }, 80);
+                setTimeout(() => map.invalidateSize(), 420);
+            }
+
+            function enterDetailPreview() {
+                State.detailMode = 'preview';
+                const detailView = document.getElementById('sidebar-detail-view');
+                detailView.classList.add('show', 'mode-preview');
+                detailView.classList.remove('mode-dive');
+                appShell.classList.add('showing-location', 'sheet-peek');
+                appShell.classList.remove('sheet-dive', 'sheet-browse');
+                setTimeout(() => map.invalidateSize(), 80);
                 setTimeout(() => map.invalidateSize(), 420);
             }
 
@@ -1761,7 +1772,69 @@
                     ? trustPills.map((t) => `<span class="profile-trust-pill">${escapeHtml(t)}</span>`).join('')
                     : '';
 
+                const previewMobile = mode === 'preview' && isMobileLayout();
+                let distanceLabel = '';
+                if (State.geoReady && hasCoords) {
+                    const km = calculateDistance(
+                        State.userCoords.lat,
+                        State.userCoords.lng,
+                        Number(loc.lat),
+                        Number(loc.lng)
+                    );
+                    if (Number.isFinite(km)) {
+                        distanceLabel = km < 1
+                            ? `${Math.max(50, Math.round(km * 1000 / 50) * 50)} м від вас`
+                            : `${km.toFixed(1).replace('.', ',')} км від вас`;
+                    }
+                }
+                const priceValues = Object.values(loc.prices || {})
+                    .map((value) => formatDisplayPrice(value))
+                    .filter(Boolean);
+                const numericPrices = priceValues
+                    .map((label) => ({
+                        label,
+                        amount: parseInt(String(label).replace(/\D/g, ''), 10),
+                    }))
+                    .filter((row) => Number.isFinite(row.amount) && row.amount > 0)
+                    .sort((a, b) => a.amount - b.amount);
+                const previewPrice = numericPrices.length
+                    ? `від ${numericPrices[0].label.replace(/^від\s*/i, '')}`
+                    : (priceValues[0] || '');
+                const whereLine = [distanceLabel, hasAddress ? String(loc.address).trim() : '']
+                    .filter(Boolean)
+                    .join(' · ');
+
                 const headerBox = document.getElementById('detailHeaderContent');
+                if (previewMobile) {
+                    headerBox.innerHTML = `
+                    <div class="map-preview">
+                        <div class="map-preview-main">
+                            <div class="profile-avatar map-preview-avatar">${locationAvatarHtml(loc)}</div>
+                            <div class="map-preview-copy">
+                                <h2 class="profile-name">${escapeHtml(displayName)}</h2>
+                                ${specialty ? `<p class="profile-specialty">${escapeHtml(specialty)}</p>` : ''}
+                                ${whereLine ? `<p class="map-preview-where">${escapeHtml(whereLine)}</p>` : ''}
+                                <div class="map-preview-meta">
+                                    ${ratingRowHtml}
+                                    ${previewPrice ? `<span class="map-preview-price">${escapeHtml(previewPrice)}</span>` : ''}
+                                </div>
+                            </div>
+                        </div>
+                        <div class="map-preview-actions">
+                            ${callBtn.replace('class="profile-quick-btn"', 'class="profile-quick-btn" style="height:52px;min-height:52px"')}
+                            ${chatBtn.replace('class="profile-quick-btn"', 'class="profile-quick-btn" style="height:52px;min-height:52px"')}
+                        </div>
+                        <p class="detail-preview-hint">Торкніться картки, щоб відкрити деталі</p>
+                    </div>`;
+                    renderDetailBody(loc, { claimBannerHtml, mode });
+                    const detailView = document.getElementById('sidebar-detail-view');
+                    detailView.classList.add('show', 'mode-preview');
+                    detailView.classList.remove('mode-dive');
+                    enterDetailPreview();
+                    highlightSelectedMarker(loc.id);
+                    map.panTo([loc.lat, loc.lng]);
+                    return;
+                }
                 headerBox.innerHTML = `
                     <button class="back-btn" onclick="event.stopPropagation(); closeMasterDetail()">⬅️ Назад</button>
                     <div class="profile-identity">
@@ -2155,7 +2228,7 @@
             window.closeMasterDetail = function() {
                 const detailView = document.getElementById('sidebar-detail-view');
                 detailView.classList.remove('show', 'mode-preview', 'mode-dive');
-                appShell.classList.remove('sheet-dive', 'showing-location');
+                appShell.classList.remove('sheet-dive', 'sheet-peek', 'showing-location');
                 const heroBox = document.getElementById('detailHeroContent');
                 if (heroBox) heroBox.innerHTML = '';
                 const orderBar = document.getElementById('detailOrderBar');
@@ -2493,7 +2566,10 @@
                     });
                     loc.markerInstance.on('click', (e) => {
                         L.DomEvent.stopPropagation(e);
-                        openMasterDetail(loc.id, { fromMarker: true });
+                        openMasterDetail(loc.id, {
+                            fromMarker: true,
+                            mode: isMobileLayout() ? 'preview' : 'dive',
+                        });
                     });
                     loc.markerInstance.on('dblclick', (e) => {
                         L.DomEvent.stopPropagation(e);

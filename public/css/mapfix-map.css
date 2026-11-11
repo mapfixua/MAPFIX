@@ -1744,8 +1744,8 @@
                 max-width: 520px;
                 margin: 0 auto;
                 box-shadow: 0 0 40px rgba(0,0,0,0.08);
-                --map-h: 62vh;
-                --sheet-h: 38vh;
+                --map-h: 70vh;
+                --sheet-h: 30vh;
                 --safe-bottom: env(safe-area-inset-bottom, 0px);
                 transition: --map-h 0.38s var(--ease-sheet), --sheet-h 0.38s var(--ease-sheet);
             }
@@ -1762,6 +1762,47 @@
                 --map-h: 16dvh;
                 --sheet-h: calc(100dvh - 16dvh);
             }
+            #app-shell:not(.sheet-expanded):not(.sheet-browse):not(.showing-location) .sidebar-header,
+            #app-shell:not(.sheet-expanded):not(.sheet-browse):not(.showing-location) .site-footer {
+                display: none !important;
+            }
+            .hotline-filter-bar {
+                flex-wrap: nowrap;
+                overflow-x: auto;
+                gap: 8px;
+                padding-bottom: 4px;
+            }
+            .hotline-filter-bar label {
+                flex: 0 0 auto;
+                min-height: 44px;
+                padding: 0 14px;
+                border-radius: 999px;
+                border: 1px solid var(--border);
+                background: #fff;
+                font-size: 13px;
+            }
+            .profile-quick-btn { min-height: 48px; height: 48px; font-size: 13px; }
+            .map-preview { display: flex; flex-direction: column; gap: 10px; }
+            .map-preview-main { display: flex; gap: 10px; align-items: flex-start; }
+            #sidebar-detail-view.mode-preview .map-preview-avatar { width: 52px; height: 52px; flex: 0 0 52px; font-size: 20px; }
+            .map-preview-copy { min-width: 0; flex: 1; }
+            .map-preview-where { margin: 2px 0 0; font-size: 13px; font-weight: 700; color: var(--muted); line-height: 1.3; }
+            .map-preview-meta { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 4px; }
+            .map-preview-price { font-size: 14px; font-weight: 800; }
+            .map-preview-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+            .map-preview-actions .profile-quick-btn { min-height: 52px; height: 52px; font-size: 15px; border-radius: 14px; }
+            #app-shell.sheet-peek { --map-h: 68vh; --sheet-h: 32vh; }
+            #app-shell.showing-location.sheet-peek #map-container {
+                flex: 1 1 auto;
+                height: var(--map-h);
+                min-height: 180px;
+            }
+            #app-shell.showing-location.sheet-peek #sidebar {
+                flex: 0 0 auto;
+                height: auto;
+                max-height: 46vh;
+            }
+            #sidebar-detail-view.mode-preview .profile-quick-row { display: none; }
             #app-shell.showing-location .category-strip-wrap {
                 display: none;
             }
@@ -2003,8 +2044,8 @@
                 max-width: 70px;
             }
 
-            #geo-btn { bottom: calc(18px + var(--chrome-nav-pad)); left: 12px; height: 40px; }
-            #kyiv-btn { bottom: calc(18px + var(--chrome-nav-pad)); right: 12px; height: 40px; }
+            #geo-btn { bottom: calc(18px + var(--chrome-nav-pad)); left: 12px; height: 48px; }
+            #kyiv-btn { bottom: calc(18px + var(--chrome-nav-pad)); right: 12px; height: 48px; }
 
             /* Compact mode — тільки мобільний */
             .sidebar-header {
