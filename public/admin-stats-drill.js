@@ -29,6 +29,7 @@
     donate: ['💛', 'Клік «Донат»', 'Кліки «Донат»'],
     subscribe: ['⭐', 'Клік «Pro»', 'Кліки «Pro»'],
     support: ['🛟', 'Звернення', 'Звернення в підтримку'],
+    pwa: ['📲', 'Встановлення на екран', 'Встановлення на екран'],
   };
   const LOCATION_TYPES = ['call', 'chat', 'directions', 'map_focus', 'share', 'favorite', 'order', 'claim', 'review', 'report', 'dive', 'view'];
   const ROLE_LABEL = { provider: 'майстер', client: 'клієнт', admin: 'адмін', guest: 'гість' };
@@ -332,6 +333,9 @@
     if (e.type === 'search' && e.meta?.q) extra.push(`«${h(e.meta.q)}»${e.meta.matched ? ' <span class="dr-badge ok">знайдено</span>' : ''}`);
     if (e.type === 'page_view' && e.path) extra.push(`<code>${h(e.path)}</code>`);
     if ((e.type === 'login' || e.type === 'register') && e.meta?.method) extra.push(`спосіб: ${h(e.meta.method)}`);
+    if (e.type === 'pwa') extra.push(e.meta?.kind === 'install' ? 'встановлення' : 'клік банера');
+    if (e.meta?.returning) extra.push('повторний візит');
+    if (e.meta?.standalone) extra.push('з екрана');
     const details = [e.device, e.source ? `джерело: ${e.source}` : ''].filter(Boolean).map(h).join(' · ');
     const legacy = e.legacy
       ? `<div class="m"><span class="dr-badge warn">старі дані</span>${e.meta?.counter > 1 ? 'час — останнього з кількох кліків' : 'до запуску детальної статистики'}</div>`

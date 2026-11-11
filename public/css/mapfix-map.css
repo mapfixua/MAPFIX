@@ -2154,4 +2154,44 @@
             .profile-avatar-wrap, .profile-avatar { width: 72px; height: 72px; }
             .profile-name { font-size: 16px; }
         }
+
+        .recent-viewed {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 6px 12px;
+            background: #fff;
+            border-bottom: 1px solid var(--border);
+            min-width: 0;
+        }
+        .recent-viewed[hidden] { display: none !important; }
+        .recent-viewed-label {
+            flex: none;
+            font-size: 12px;
+            font-weight: 700;
+            color: var(--muted);
+        }
+        .recent-viewed-list {
+            display: flex;
+            gap: 6px;
+            overflow-x: auto;
+            min-width: 0;
+        }
+        .recent-viewed-item {
+            flex: none;
+            max-width: 160px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            border: 1px solid var(--border);
+            background: #f8fafc;
+            color: var(--dark);
+            border-radius: 999px;
+            padding: 4px 10px;
+            min-height: 32px;
+            font: inherit;
+            font-size: 12px;
+            font-weight: 600;
+            cursor: pointer;
+        }
     

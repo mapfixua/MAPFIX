@@ -606,16 +606,19 @@
                 const loginBtn = document.getElementById('loginHeaderBtn');
                 profileBtn.classList.toggle('logged-in', !!u);
                 profileBtn.classList.remove('hidden');
-                if (loginBtn) loginBtn.classList.toggle('hidden', !!u);
+                if (loginBtn) {
+                    loginBtn.classList.toggle('hidden', !!u);
+                    loginBtn.href = withTrackingQuery('/login.html');
+                }
                 profileBtn.title = u ? u.login : 'Меню';
                 profileBtn.textContent = u ? '👤' : '☰';
 
                 if (!u) {
                     userMenu.innerHTML = `
                         <div class="user-menu-header">Гість</div>
-                        <a class="user-menu-item" href="/login.html">Увійти</a>
-                        <a class="user-menu-item" href="/register.html">Реєстрація</a>
-                        <a class="user-menu-item" href="/register.html?role=provider">Реєстрація майстра</a>
+                        <a class="user-menu-item" href="${escapeHtml(withTrackingQuery('/login.html'))}">Увійти</a>
+                        <a class="user-menu-item" href="${escapeHtml(withTrackingQuery('/register.html'))}">Реєстрація</a>
+                        <a class="user-menu-item" href="${escapeHtml(withTrackingQuery('/register.html?role=provider'))}">Реєстрація майстра</a>
                         <button type="button" class="user-menu-item" id="siteBugMenuBtn">🐞 Повідомити про помилку</button>
                         ${pwaInstallMenuItemHtml()}`;
                     bindInstallAppMenuBtn();
@@ -675,11 +678,11 @@
             window.startAddBusinessFlow = function() {
                 const u = State.currentUser;
                 if (!u) {
-                    window.location.href = '/register.html?role=provider&next=' + encodeURIComponent('/admin?newLocation=1');
+                    window.location.href = withTrackingQuery('/register.html?role=provider&next=' + encodeURIComponent('/admin?newLocation=1'));
                     return;
                 }
                 if (u.role === 'client') {
-                    window.location.href = '/register.html?role=provider&next=' + encodeURIComponent('/admin?newLocation=1');
+                    window.location.href = withTrackingQuery('/register.html?role=provider&next=' + encodeURIComponent('/admin?newLocation=1'));
                     return;
                 }
                 openGoogleImport();
@@ -802,7 +805,7 @@
                 const backToLoc = '/p/' + encodeURIComponent(locationId);
                 if (!State.currentUser) {
                     if (confirm('Увійдіть як клієнт, щоб замовити послугу. Перейти до входу?')) {
-                        window.location.href = '/login.html?next=' + encodeURIComponent(backToLoc);
+                        window.location.href = withTrackingQuery('/login.html?next=' + encodeURIComponent(backToLoc));
                     }
                     return;
                 }
@@ -884,7 +887,7 @@
                 const backToLoc = '/p/' + encodeURIComponent(locationId);
                 if (!State.currentUser) {
                     if (confirm('Увійдіть, щоб надіслати скаргу. Перейти до входу?')) {
-                        location.href = '/login.html?next=' + encodeURIComponent(backToLoc);
+                        location.href = withTrackingQuery('/login.html?next=' + encodeURIComponent(backToLoc));
                     }
                     return;
                 }
@@ -983,7 +986,7 @@
             window.toggleFavorite = async function(locationId) {
                 if (!State.currentUser || State.currentUser.role !== 'client') {
                     if (confirm('Увійдіть як клієнт. Перейти до реєстрації?')) {
-                        window.location.href = '/register.html';
+                        window.location.href = withTrackingQuery('/register.html');
                     }
                     return;
                 }
@@ -1331,12 +1334,34 @@
                 }).catch(() => {});
             }
 
-            function mfSid() {
+            function analyticsContext() {
                 try {
-                    return window.MapfixAnalytics?.sid || localStorage.getItem('mf_sid') || undefined;
-                } catch (_) {
-                    return undefined;
-                }
+                    if (window.MapfixAnalytics && typeof window.MapfixAnalytics.context === 'function') {
+                        return window.MapfixAnalytics.context() || {};
+                    }
+                } catch (_) {}
+                let sid;
+                try { sid = localStorage.getItem('mf_sid') || undefined; } catch (_) {}
+                return { sid, path: location.pathname || '/' };
+            }
+
+            function analyticsBody() {
+                const ctx = analyticsContext();
+                const body = { path: ctx.path || location.pathname || '/' };
+                if (ctx.sid) body.sid = ctx.sid;
+                if (ctx.utm) body.utm = ctx.utm;
+                if (ctx.ref) body.ref = ctx.ref;
+                if (ctx.meta && Object.keys(ctx.meta).length) body.meta = ctx.meta;
+                return body;
+            }
+
+            function withTrackingQuery(href) {
+                try {
+                    if (window.MapfixAnalytics && typeof window.MapfixAnalytics.withTracking === 'function') {
+                        return window.MapfixAnalytics.withTracking(href);
+                    }
+                } catch (_) {}
+                return href;
             }
 
             function trackLocationClick(locationId, type) {
@@ -1347,11 +1372,38 @@
                     method: 'POST',
                     credentials: 'same-origin',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ type: t, sid: mfSid() }),
+                    body: JSON.stringify(Object.assign({ type: t }, analyticsBody())),
                     keepalive: true,
                 }).catch(() => {});
             }
             window.trackLocationClick = trackLocationClick;
+
+            function renderRecentViewed() {
+                const box = document.getElementById('recentViewed');
+                const listEl = document.getElementById('recentViewedList');
+                if (!box || !listEl) return;
+                const items = window.MapfixAnalytics?.readRecent?.() || [];
+                const cardOpen = State.selectedLocation || /^\/p\/[^/]+$/.test(location.pathname);
+                if (!items.length || cardOpen) {
+                    box.hidden = true;
+                    listEl.innerHTML = '';
+                    return;
+                }
+                listEl.innerHTML = items
+                    .map(
+                        (item) =>
+                            `<button type="button" class="recent-viewed-item" data-recent-id="${escapeHtml(item.id)}">${escapeHtml(item.title)}</button>`
+                    )
+                    .join('');
+                box.hidden = false;
+            }
+
+            document.getElementById('recentViewed')?.addEventListener('click', (event) => {
+                const btn = event.target.closest('[data-recent-id]');
+                if (!btn) return;
+                const id = btn.getAttribute('data-recent-id');
+                if (id && window.openMasterDetail) window.openMasterDetail(id);
+            });
 
             const QUICK_CHIP_DEFS = [
                 { label: 'Сантехнік', cat: 'home', sub: 'plumber' },
@@ -1753,6 +1805,7 @@
                 const sameSelected = State.selectedLocation?.id === locId;
                 const mode = opts.mode || 'dive';
                 if (!opts.forceMode && sameSelected && State.detailMode === 'dive' && opts.fromMarker) {
+                    window.MapfixAnalytics?.rememberRecent?.({ id: loc.id, title: loc.title });
                     enterDetailDive();
                     map.panTo([loc.lat, loc.lng]);
                     highlightSelectedMarker(locId);
@@ -1763,7 +1816,7 @@
                     method: 'POST',
                     credentials: 'same-origin',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ sid: mfSid() }),
+                    body: JSON.stringify(analyticsBody()),
                 }).then(async (r) => {
                     if (!r.ok) return;
                     const j = await r.json().catch(() => ({}));
@@ -1772,6 +1825,8 @@
 
                 State.selectedLocation = loc;
                 State.detailMode = mode;
+                window.MapfixAnalytics?.rememberRecent?.({ id: loc.id, title: loc.title });
+                renderRecentViewed();
                 State.formRatingScore = 5;
 
                 const catName = categoryLabel(
@@ -1961,7 +2016,7 @@
             }
 
             function claimLoginUrl(locationId) {
-                return '/login.html?next=' + encodeURIComponent(claimReturnUrl(locationId));
+                return withTrackingQuery('/login.html?next=' + encodeURIComponent(claimReturnUrl(locationId)));
             }
 
             function locationHasClaimPhone(locationId) {
@@ -2025,7 +2080,7 @@
                     const data = await res.json().catch(() => ({}));
                     if (!res.ok) throw new Error(data.error || 'Не вдалося забрати заклад');
                     if (data.needsRegister && data.registerUrl) {
-                        location.href = data.registerUrl;
+                        location.href = withTrackingQuery(data.registerUrl);
                         return;
                     }
                     await loadSession();
@@ -2275,7 +2330,7 @@
                 if (!text) { alert('Будь ласка, введіть текст вашого відгуку.'); return; }
                 if (!State.currentUser || State.currentUser.role !== 'client') {
                     if (confirm('Відгуки можуть залишати клієнти. Увійти?')) {
-                        location.href = '/login.html?next=' + encodeURIComponent('/p/' + encodeURIComponent(locId));
+                        location.href = withTrackingQuery('/login.html?next=' + encodeURIComponent('/p/' + encodeURIComponent(locId)));
                     }
                     return;
                 }
@@ -2328,6 +2383,7 @@
                     syncMapMarkers();
                 }
                 applyPageSeoFromState();
+                renderRecentViewed();
             };
 
             window.panToMaster = function(lat, lng) {
@@ -2519,7 +2575,7 @@
                 const cur = new URLSearchParams(window.location.search);
                 const next = new URLSearchParams();
                 if (State.selectedLocation && cur.get('claim') === '1') next.set('claim', '1');
-                ['add', 'feedback', 'utm_source', 'utm_medium', 'utm_campaign', 'utm_content', 'utm_term'].forEach((k) => {
+                ['add', 'feedback', 'utm_source', 'utm_medium', 'utm_campaign', 'utm_content', 'utm_term', 'fbclid', 'gclid', 'ttclid', 'yclid'].forEach((k) => {
                     const v = cur.get(k);
                     if (v) next.set(k, v);
                 });
@@ -2605,6 +2661,7 @@
             function syncUI() {
                 renderCatalogNav();
                 applyPageSeoFromState();
+                renderRecentViewed();
             }
 
             function buildLocationIcon(loc) {
@@ -3340,6 +3397,7 @@
                 });
 
                 window.addEventListener('appinstalled', () => {
+                    window.MapfixAnalytics?.pwa?.('install');
                     deferredPrompt = null;
                     hideBanner();
                     closeModal();
@@ -3353,6 +3411,7 @@
                 });
 
                 document.getElementById('pwaInstallBannerBtn')?.addEventListener('click', () => {
+                    window.MapfixAnalytics?.pwa?.('banner');
                     promptInstall();
                 });
                 document.getElementById('installAppHeaderBtn')?.addEventListener('click', () => {

@@ -85,6 +85,7 @@
       <p class="mf-links" style="text-align:center;margin-top:14px"><a href="/privacy.html">Конфіденційність</a> · <a href="/terms.html">Умови</a> · <a href="/?feedback=1">Повідомити про помилку</a></p>
   </div>
 
+  <script src="/mf-analytics.js"></script>
   <script>
     const roleSel = document.getElementById('role');
     const providerFields = document.getElementById('providerFields');
@@ -150,7 +151,19 @@
           if (v) u.searchParams.set(k, v);
         });
       }
-      return u.pathname + u.search;
+      const built = u.pathname + u.search;
+      return window.MapfixAnalytics?.withTracking ? window.MapfixAnalytics.withTracking(built) : built;
+    }
+
+    function analyticsFields() {
+      const ctx = window.MapfixAnalytics?.context?.() || {};
+      const extra = {};
+      if (ctx.sid) extra.sid = ctx.sid;
+      if (ctx.utm) extra.utm = ctx.utm;
+      if (ctx.ref) extra.ref = ctx.ref;
+      if (ctx.path) extra.path = ctx.path;
+      if (ctx.meta && Object.keys(ctx.meta).length) extra.meta = ctx.meta;
+      return extra;
     }
 
     document.querySelectorAll('a[href="/login.html"]').forEach((a) => {
@@ -206,7 +219,7 @@
         method: 'POST',
         credentials: 'same-origin',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
+        body: JSON.stringify(Object.assign({}, body, analyticsFields())),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.message || data.error || 'Помилка OAuth');
@@ -369,6 +382,7 @@
         companyName: document.getElementById('companyName').value.trim(),
         categoryKey: document.getElementById('categoryKey').value,
       };
+      Object.assign(body, analyticsFields());
       const ctrl = new AbortController();
       const timer = setTimeout(() => ctrl.abort(), 28000);
       try {

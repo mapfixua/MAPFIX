@@ -24,7 +24,7 @@ const CTA_TYPES = [
   'dive',
 ];
 
-const OTHER_TYPES = ['view', 'page_view', 'search', 'login', 'register', 'donate', 'subscribe', 'support'];
+const OTHER_TYPES = ['view', 'page_view', 'search', 'login', 'register', 'donate', 'subscribe', 'support', 'pwa'];
 
 const EVENT_TYPES = new Set([...CTA_TYPES, ...OTHER_TYPES]);
 
@@ -114,6 +114,43 @@ function normalizeUtm(utm) {
   };
 }
 
+/** Click ids and extra UTM fields have no columns; they live in meta. */
+function attributionMeta(utm) {
+  if (!utm || typeof utm !== 'object') return {};
+  const out = {};
+  const content = cleanToken(utm.content || utm.utm_content, 48);
+  const term = cleanToken(utm.term || utm.utm_term, 48);
+  const fbclid = cleanToken(utm.fbclid, 140);
+  const gclid = cleanToken(utm.gclid, 140);
+  if (content) out.content = content;
+  if (term) out.term = term;
+  if (fbclid) out.fbclid = fbclid;
+  if (gclid) out.gclid = gclid;
+  return out;
+}
+
+/** Flags the browser may set. Anything else in body.meta is ignored. */
+function clientEventMeta(meta) {
+  if (!meta || typeof meta !== 'object' || Array.isArray(meta)) return {};
+  const out = {};
+  if (meta.returning === 1 || meta.returning === '1' || meta.returning === true) out.returning = 1;
+  if (meta.standalone === 1 || meta.standalone === '1' || meta.standalone === true) out.standalone = 1;
+  return out;
+}
+
+function buildEventFields({ utm, meta, body } = {}) {
+  const source = utm !== undefined ? utm : body && typeof body === 'object' ? body.utm : undefined;
+  const explicit = meta && typeof meta === 'object' && !Array.isArray(meta) ? meta : {};
+  return {
+    columns: normalizeUtm(source),
+    meta: safeMeta({
+      ...attributionMeta(source),
+      ...clientEventMeta(body && typeof body === 'object' ? body.meta : null),
+      ...explicit,
+    }),
+  };
+}
+
 function safeMeta(meta) {
   if (!meta || typeof meta !== 'object') return {};
   const out = {};
@@ -147,6 +184,7 @@ async function logEvent(req, { type, locationId = null, meta = null, sid, utm, r
     const body = req?.body && typeof req.body === 'object' ? req.body : {};
     const who = user || req?.authUser || null;
     const device = parseDevice(ua);
+    const fields = buildEventFields({ utm, meta, body });
     const row = {
       event_type: t,
       location_id: locationId ? clip(locationId, 80) : null,
@@ -155,11 +193,11 @@ async function logEvent(req, { type, locationId = null, meta = null, sid, utm, r
       session_id: cleanToken(sid !== undefined ? sid : body.sid, 64),
       path: clip(path !== undefined ? path : body.path, 160),
       referrer_host: referrerHost(ref !== undefined ? ref : body.ref),
-      ...normalizeUtm(utm !== undefined ? utm : body.utm),
+      ...fields.columns,
       device_type: device.deviceType,
       os: device.os,
       browser: device.browser,
-      meta: safeMeta(meta),
+      meta: fields.meta,
     };
     const { error } = await withTimeout(supabaseClient.from(TABLE).insert(row), 1500);
     if (error) {
@@ -531,6 +569,10 @@ module.exports = {
   parseDevice,
   referrerHost,
   logEvent,
+  normalizeUtm,
+  attributionMeta,
+  clientEventMeta,
+  buildEventFields,
   parseRange,
   resolveTypes,
   fetchEvents,
