@@ -464,6 +464,68 @@
                 );
             }
 
+            /** Same predicate as mapfixReviews() in seo.js: a Google import is not a MapFix review. */
+            function isMapfixReview(rev) {
+                if (!rev || typeof rev !== 'object') return false;
+                const source = String(rev.source || '').toLowerCase();
+                if (source && source !== 'mapfix') return false;
+                const collectedHere = source === 'mapfix' || Boolean(rev.userId) || Boolean(rev.createdAt);
+                if (!collectedHere) return false;
+                const rating = Number(rev.rating);
+                const text = String(rev.text || '').trim();
+                return text.length >= 3 && Number.isFinite(rating) && rating > 0 && rating <= 5;
+            }
+
+            function splitCardReviews(loc) {
+                const own = [];
+                const google = [];
+                const reviews = Array.isArray(loc?.reviews) ? loc.reviews : [];
+                for (const rev of reviews) {
+                    if (!rev || typeof rev !== 'object') continue;
+                    if (String(rev.source || '').toLowerCase() === 'google_maps') google.push(rev);
+                    else if (isMapfixReview(rev)) own.push(rev);
+                }
+                return { own, google };
+            }
+
+            function showsGoogleRating(loc, own) {
+                if (own.length) return false;
+                const count = Number(loc?.reviewsCount) || 0;
+                if (count <= 0) return false;
+                const reviews = Array.isArray(loc?.reviews) ? loc.reviews : [];
+                if (!reviews.length) return true;
+                if (reviews.some((rev) => String(rev?.source || '').toLowerCase() === 'google_maps')) return true;
+                if (loc?.googlePlaceId || loc?.importMeta?.placeId || loc?.importMeta?.mapsUrl) return true;
+                return false;
+            }
+
+            function cardRatingRowHtml(loc) {
+                const split = splitCardReviews(loc);
+                if (split.own.length) {
+                    const avg = split.own.reduce((sum, rev) => sum + Number(rev.rating), 0) / split.own.length;
+                    const score = (Math.round(avg * 10) / 10).toFixed(1);
+                    return `<div class="profile-rating-row"><span>${score}</span>${ratingStarsHtml(avg)}<span class="reviews-count">(${split.own.length} на MapFix)</span></div>`;
+                }
+                if (showsGoogleRating(loc, split.own)) {
+                    const score = Number(loc.rating || 0).toFixed(1);
+                    return `<div class="profile-rating-row profile-rating-google"><span>${score}</span>${ratingStarsHtml(loc.rating)}<span class="reviews-count">Оцінка в Google</span></div>`;
+                }
+                if ((Number(loc?.reviewsCount) || 0) > 0) {
+                    const score = Number(loc.rating || 0).toFixed(1);
+                    return `<div class="profile-rating-row"><span>${score}</span>${ratingStarsHtml(loc.rating)}</div>`;
+                }
+                return `<div class="profile-rating-row"><span class="profile-new-badge">Новий на MapFix</span></div>`;
+            }
+
+            function cardReviewsTitle(loc, split) {
+                const imported = Number(loc?.reviewsCount) || 0;
+                if (split.own.length) return `Відгуки на MapFix (${split.own.length})`;
+                if (split.google.length) return `Відгуки Google Maps (${imported || split.google.length})`;
+                if (showsGoogleRating(loc, split.own)) return 'Оцінка в Google';
+                if (imported > 0) return `Відгуки (${imported})`;
+                return 'Відгуки';
+            }
+
             function defaultOrderServiceName(loc) {
                 if (State.service?.name) return State.service.name;
                 const keys = Object.keys(loc?.prices || {});
@@ -530,7 +592,7 @@
                     ${place.address ? `${escapeHtml(place.address)}<br>` : ''}
                     ${place.phone ? `${escapeHtml(place.phone)}<br>` : ''}
                     Координати: ${Number(place.lat).toFixed(5)}, ${Number(place.lng).toFixed(5)}
-                    ${place.rating ? `<br>★ ${Number(place.rating).toFixed(1)} (${Number(place.reviewsCount) || 0} відгуків)` : ''}
+                    ${place.rating ? `<br>★ ${Number(place.rating).toFixed(1)} · оцінка в Google (${Number(place.reviewsCount) || 0})` : ''}
                     ${schedule ? `<p><strong>Графік роботи</strong><br>${schedule}</p>` : ''}
                     ${partialNotice}
                     <label for="googleImportCategory">Категорія</label>
@@ -932,6 +994,77 @@
                     alert('Скаргу надіслано. Дякуємо!');
                 } catch (err) {
                     alert(err.message);
+                }
+            };
+
+            const STALE_PHONE_KEY = 'mf_stale_phone';
+            const stalePhonePending = new Set();
+
+            function readStalePhoneIds() {
+                try {
+                    const raw = sessionStorage.getItem(STALE_PHONE_KEY);
+                    const ids = raw ? JSON.parse(raw) : [];
+                    return Array.isArray(ids) ? ids.map((id) => String(id)) : [];
+                } catch (_) {
+                    return [];
+                }
+            }
+
+            function stalePhoneReported(locationId) {
+                return readStalePhoneIds().includes(String(locationId));
+            }
+
+            function markStalePhoneReported(locationId) {
+                try {
+                    const ids = readStalePhoneIds();
+                    const id = String(locationId);
+                    if (!ids.includes(id)) ids.push(id);
+                    sessionStorage.setItem(STALE_PHONE_KEY, JSON.stringify(ids.slice(-40)));
+                } catch (_) {}
+            }
+
+            function showStalePhoneDone(btn) {
+                if (!btn) return;
+                btn.disabled = true;
+                btn.textContent = 'Дякуємо, ми перевіримо номер';
+            }
+
+            window.reportStalePhone = async function(locationId) {
+                const btn = document.getElementById('stalePhoneBtn');
+                const note = document.getElementById('stalePhoneNote');
+                if (note) {
+                    note.hidden = true;
+                    note.textContent = '';
+                }
+                if (stalePhoneReported(locationId)) {
+                    showStalePhoneDone(btn);
+                    return;
+                }
+                if (stalePhonePending.has(locationId)) return;
+                stalePhonePending.add(locationId);
+                if (btn) btn.disabled = true;
+                try {
+                    const res = await fetch('/api/reports', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        credentials: 'same-origin',
+                        body: JSON.stringify({
+                            locationId,
+                            reason: 'stale_phone',
+                            page: location.pathname + location.search,
+                        }),
+                    });
+                    const data = await res.json().catch(() => ({}));
+                    if (!res.ok) throw new Error(data.error || 'Не вдалося надіслати');
+                    markStalePhoneReported(locationId);
+                    showStalePhoneDone(btn);
+                } catch (err) {
+                    stalePhonePending.delete(locationId);
+                    if (btn) btn.disabled = false;
+                    if (note) {
+                        note.hidden = false;
+                        note.textContent = err.message || 'Не вдалося надіслати';
+                    }
                 }
             };
 
@@ -1895,10 +2028,12 @@
                 const tgUser = getTelegramUsername(loc);
                 const chatHref = getChatHref(loc);
                 const specialty = State.service?.name || catName;
-                const reviewsN = Number(loc.reviewsCount) || 0;
-                const ratingRowHtml = reviewsN > 0
-                    ? `<div class="profile-rating-row"><span>${Number(loc.rating || 0).toFixed(1)}</span>${ratingStarsHtml(loc.rating)}<span class="reviews-count">(${reviewsN} відгуків)</span></div>`
-                    : `<div class="profile-rating-row"><span class="profile-new-badge">Новий на MapFix</span></div>`;
+                const ratingRowHtml = cardRatingRowHtml(loc);
+                const ownerPillHtml = loc.providerId
+                    ? '<span class="profile-owner-pill">Картку веде майстер</span>'
+                    : '';
+                const directCallCopy = 'Дзвінок напряму майстру, MapFix комісію не бере';
+                const staleReported = stalePhoneReported(loc.id);
                 const phoneHref = loc.phone ? `tel:${escapeHtml(loc.phone)}` : '';
                 const hasCoords = Number.isFinite(Number(loc.lat)) && Number.isFinite(Number(loc.lng));
                 const hasAddress = Boolean(String(loc.address || '').trim());
@@ -1922,7 +2057,6 @@
                         <div class="profile-quick-row row-3">${routeBtn}${shareBtn}</div>
                     </div>`;
                 const trustPills = [];
-                if (loc.providerId) trustPills.push('Гарантія на роботу');
                 if (loc.openStatus === 'open') trustPills.push('Зараз працює');
                 const trustHtml = trustPills.length
                     ? trustPills.map((t) => `<span class="profile-trust-pill">${escapeHtml(t)}</span>`).join('')
@@ -1975,6 +2109,7 @@
                                 ${whereLine ? `<p class="map-preview-where">${escapeHtml(whereLine)}</p>` : ''}
                                 <div class="map-preview-meta">
                                     ${ratingRowHtml}
+                                    ${ownerPillHtml}
                                     ${previewPrice ? `<span class="map-preview-price">${escapeHtml(previewPrice)}</span>` : ''}
                                 </div>
                             </div>
@@ -1982,6 +2117,11 @@
                         <div class="map-preview-actions">
                             ${callBtn.replace('class="profile-quick-btn"', 'class="profile-quick-btn" style="height:52px;min-height:52px"')}
                             ${chatBtn.replace('class="profile-quick-btn"', 'class="profile-quick-btn" style="height:52px;min-height:52px"')}
+                        </div>
+                        <div class="map-preview-trust">
+                            <p class="map-preview-direct">${directCallCopy}</p>
+                            <button type="button" class="map-preview-stale" id="stalePhoneBtn"${staleReported ? ' disabled' : ''} onclick="event.stopPropagation(); reportStalePhone('${locIdAttr}')">${staleReported ? 'Дякуємо, ми перевіримо номер' : 'Номер неактуальний'}</button>
+                            <p class="map-preview-stale-note" id="stalePhoneNote" hidden></p>
                         </div>
                         <p class="detail-preview-hint">Натисніть назву ще раз, щоб відкрити графік, ціни й опис</p>
                     </div>`;
@@ -1994,18 +2134,17 @@
                     map.panTo([loc.lat, loc.lng]);
                     return;
                 }
-            if (!opts.keepServerSeo) seoListingTouched = true;
-            headerBox.innerHTML = `
+                if (!opts.keepServerSeo) seoListingTouched = true;
+                headerBox.innerHTML = `
                     <button class="back-btn" onclick="event.stopPropagation(); closeMasterDetail()">⬅️ Назад</button>
                     <div class="profile-identity">
                         <div class="profile-avatar-wrap">
                             <div class="profile-avatar">${locationAvatarHtml(loc)}</div>
-                            ${loc.providerId ? '<span class="profile-verified-dot" title="Перевірено"><i class="fa-solid fa-check"></i></span>' : ''}
                         </div>
                         <div class="profile-copy">
                             <div class="profile-name-row">
                                 <h2 class="profile-name" title="${escapeHtml(displayName)}">${escapeHtml(displayName)}</h2>
-                                ${loc.providerId ? '<span class="profile-verified-pill"><i class="fa-solid fa-shield-halved"></i> Verified</span>' : ''}
+                                ${ownerPillHtml}
                             </div>
                             ${tgUser ? `<p class="profile-handle">@${escapeHtml(tgUser)}</p>` : ''}
                             ${ratingRowHtml}
@@ -2014,6 +2153,7 @@
                         </div>
                     </div>
                     ${quickActionsHtml}
+                    <p class="profile-direct-call">${directCallCopy}</p>
                 `;
 
                 renderDetailBody(loc, { claimBannerHtml, mode });
@@ -2181,10 +2321,13 @@
                     scheduleRowsHtml = '<div style="font-size:12px;color:#94a3b8;">Графік не вказано</div>';
                 }
 
+                const reviewSplit = splitCardReviews(loc);
+                const reviewsTitle = cardReviewsTitle(loc, reviewSplit);
                 let reviewsHtml = '';
                 if (loc.reviews && loc.reviews.length > 0) {
                     loc.reviews.forEach(rev => {
                         const rating = Math.max(0, Math.min(5, Number(rev.rating) || 0));
+                        const fromGoogle = String(rev.source || '').toLowerCase() === 'google_maps';
                         reviewsHtml += `
                             <div class="review-item">
                                 <div class="review-top-line">
@@ -2192,6 +2335,7 @@
                                     <span>${escapeHtml(rev.date || '')}</span>
                                 </div>
                                 <div class="review-text">"${escapeHtml(rev.text || '')}"</div>
+                                ${fromGoogle ? '<div class="review-source">Google Maps</div>' : ''}
                             </div>`;
                     });
                 } else if (Number(loc.reviewsCount) > 0) {
@@ -2255,7 +2399,7 @@
                                 <div class="schedule-table">${scheduleRowsHtml}</div>
                             </div>
                             <div class="detail-section">
-                                <h4 class="section-title">⭐ Відгуки (${Number(loc.reviewsCount) || 0})</h4>
+                                <h4 class="section-title">⭐ ${escapeHtml(reviewsTitle)}</h4>
                                 <div style="display:flex; flex-direction:column; gap:6px;">${reviewsHtml}</div>
                             </div>
                             <div class="detail-section" style="background:#fdfdfd; border-color:#cbd5e1">

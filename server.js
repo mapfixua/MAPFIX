@@ -2460,27 +2460,75 @@ app.post('/api/locations/:id/reviews', requireAuth, requireClient, async (req, r
   }
 });
 
-app.post('/api/reports', requireAuth, supportRateLimit, async (req, res) => {
+const STALE_PHONE_REASON = 'stale_phone';
+const STALE_PHONE_DEDUPE_MS = 15 * 60 * 1000;
+const stalePhoneRecent = new Map();
+
+function clientIp(req) {
+  return String(req.ip || req.headers['x-forwarded-for'] || req.socket?.remoteAddress || 'unknown')
+    .split(',')[0]
+    .trim();
+}
+
+function requireAuthUnlessStalePhone(req, res, next) {
+  if (String(req.body?.reason || '').trim() === STALE_PHONE_REASON) return next();
+  return requireAuth(req, res, next);
+}
+
+app.post('/api/reports', requireAuthUnlessStalePhone, supportRateLimit, async (req, res) => {
+  let staleKey = '';
   try {
+    const reason = String(req.body?.reason || '').trim().slice(0, 40);
     const user = getSessionUser(req);
-    const locationId = String(req.body?.locationId || '').trim();
+    const stalePhone = reason === STALE_PHONE_REASON;
+    if (!stalePhone && !user) {
+      return res.status(401).json({ error: 'Потрібен вхід у систему' });
+    }
+    const locationId = String(req.body?.locationId || '').trim().slice(0, 200);
     let locationTitle = '';
+    if (stalePhone && !locationId) {
+      return res.status(400).json({ error: 'Не вказано картку' });
+    }
     if (locationId) {
       const data = await readData();
-      locationTitle = findLocation(data, locationId)?.title || '';
+      const loc = findLocation(data, locationId);
+      if (stalePhone && (!loc || isLocationTrashed(loc))) {
+        return res.status(404).json({ error: 'Локацію не знайдено' });
+      }
+      locationTitle = loc?.title || '';
+    }
+    if (stalePhone) {
+      const now = Date.now();
+      staleKey = `${clientIp(req)}|${locationId}`;
+      const prev = stalePhoneRecent.get(staleKey);
+      if (prev && now - prev < STALE_PHONE_DEDUPE_MS) {
+        staleKey = '';
+        return res.json({ ok: true, duplicate: true });
+      }
+      stalePhoneRecent.set(staleKey, now);
+      if (stalePhoneRecent.size > 5000) {
+        for (const [key, at] of stalePhoneRecent) {
+          if (now - at >= STALE_PHONE_DEDUPE_MS) stalePhoneRecent.delete(key);
+        }
+      }
+    }
+    let message = req.body?.message;
+    if (stalePhone && String(message || '').trim().length < 5) {
+      message = 'Номер на картці неактуальний';
     }
     const report = await reportsMod.createReport({
-      user,
+      user: user || null,
       locationId,
       locationTitle,
-      reason: req.body?.reason,
-      message: req.body?.message,
+      reason,
+      message,
       contact: req.body?.contact,
       page: req.body?.page,
     });
     opsMonitor.notifyAdminNewReport(report).catch((err) => console.warn('[ops] report email', err.message));
     res.status(201).json({ ok: true, report });
   } catch (err) {
+    if (staleKey) stalePhoneRecent.delete(staleKey);
     res.status(400).json({ error: err.message || 'Не вдалося надіслати скаргу' });
   }
 });
