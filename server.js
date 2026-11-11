@@ -21,6 +21,7 @@ const {
   robotsTxt,
   sitemapXml,
   legacyHostRedirectUrl,
+  apexHostRedirectUrl,
   parseLanding,
   canonicalPath,
   keepTrackingQuery,
@@ -141,9 +142,14 @@ const app = express();
 if (IS_VERCEL) app.set('trust proxy', 1);
 app.use((req, res, next) => {
   if (req.method !== 'GET' && req.method !== 'HEAD') return next();
-  const target = legacyHostRedirectUrl(req.hostname, req.originalUrl);
-  if (!target) return next();
-  res.redirect(301, target);
+  const legacy = legacyHostRedirectUrl(req.hostname, req.originalUrl);
+  if (legacy) {
+    res.redirect(301, legacy);
+    return;
+  }
+  const apex = apexHostRedirectUrl(req.hostname, req.originalUrl);
+  if (!apex) return next();
+  res.redirect(301, apex);
 });
 const PORT = process.env.PORT || 3000;
 const ROOT = resolveProjectRoot();
@@ -855,6 +861,8 @@ async function serveMapPage(req, res) {
       jsonLd: jsonLdGraph(seo, landing, seoData),
       bootScript: landingBootScript(landing),
       crawlerHtml: crawlerHtml(seo, landing, seoData),
+      landing,
+      seoData,
       noindex: Boolean(decision.noindex),
       prevUrl: decision.prevUrl,
       nextUrl: decision.nextUrl,
@@ -972,8 +980,10 @@ app.get('/login.html', (req, res) => {
 });
 
 app.get('/login', (req, res) => {
-  const next = req.query.next ? `?next=${encodeURIComponent(req.query.next)}` : '';
-  res.redirect('/login.html' + next);
+  const params = new URLSearchParams(keepTrackingQuery(req.query));
+  if (req.query.next) params.set('next', String(req.query.next).slice(0, 300));
+  const qs = params.toString();
+  res.redirect('/login.html' + (qs ? `?${qs}` : ''));
 });
 
 /** Keep ?role=provider, ?next=, ?token= etc. when redirecting pretty URLs to .html pages. */
@@ -1065,6 +1075,11 @@ app.get('/api/me', async (req, res) => {
     res.json({ loggedIn: true, user });
   }
 });
+
+function attributionArgs(req) {
+  const body = req?.body && typeof req.body === 'object' ? req.body : {};
+  return { sid: body.sid, utm: body.utm, ref: body.ref, path: body.path };
+}
 
 app.post('/api/register', async (req, res) => {
   try {
@@ -1192,6 +1207,7 @@ app.post('/api/register', async (req, res) => {
       type: 'register',
       user: newUser,
       meta: { method: 'password' },
+      ...attributionArgs(req),
     });
 
     let claimedOnRegister = [];
@@ -1250,7 +1266,7 @@ app.get('/api/auth/oauth-config', (_req, res) => {
   res.json(oauthPublicConfig());
 });
 
-async function finishOauthSignIn(res, result) {
+async function finishOauthSignIn(req, res, result) {
   if (!result.ok) {
     const status =
       result.error === 'google_not_configured' || result.error === 'apple_not_configured'
@@ -1292,6 +1308,7 @@ async function finishOauthSignIn(res, result) {
     type: result.created ? 'register' : 'login',
     user: result.user,
     meta: { method: String(result.provider || 'oauth') },
+    ...attributionArgs(req),
   });
   const data = await readData();
   return res.json({
@@ -1309,7 +1326,7 @@ app.post('/api/auth/google', authRateLimit, async (req, res) => {
       role: req.body?.role,
       companyName: req.body?.companyName,
     });
-    await finishOauthSignIn(res, result);
+    await finishOauthSignIn(req, res, result);
   } catch (err) {
     console.error('[POST /api/auth/google]', err);
     res.status(500).json({ error: 'Помилка Google-входу' });
@@ -1325,7 +1342,7 @@ app.post('/api/auth/apple', authRateLimit, async (req, res) => {
       companyName: req.body?.companyName,
       name: req.body?.name || req.body?.fullName,
     });
-    await finishOauthSignIn(res, result);
+    await finishOauthSignIn(req, res, result);
   } catch (err) {
     console.error('[POST /api/auth/apple]', err);
     res.status(500).json({ error: 'Помилка Apple-входу' });
@@ -1353,7 +1370,12 @@ app.post('/api/login', authRateLimit, async (req, res) => {
     setSessionUser(res, user);
     const data = await readData();
     analytics.bumpTotal('logins').catch(() => {});
-    await analyticsEvents.logEvent(req, { type: 'login', user, meta: { method: 'password' } });
+    await analyticsEvents.logEvent(req, {
+      type: 'login',
+      user,
+      meta: { method: 'password' },
+      ...attributionArgs(req),
+    });
     res.json({ ok: true, user: await toPublicUserWithProfile(user, data) });
   } catch (err) {
     console.error(err);
@@ -1609,6 +1631,13 @@ app.post('/api/analytics/event', async (req, res) => {
       map_focus: 'mapFocusClicks',
     };
     if (map[name]) await analytics.bumpTotal(map[name]);
+    if (name === 'pwa_banner' || name === 'pwa_install') {
+      await analyticsEvents.logEvent(req, {
+        type: 'pwa',
+        meta: { kind: name === 'pwa_install' ? 'install' : 'banner' },
+        ...attributionArgs(req),
+      });
+    }
     res.json({ ok: true });
   } catch (err) {
     res.json({ ok: true, skipped: true });
@@ -1644,7 +1673,7 @@ app.get('/api/admin/analytics', requireAuth, requireAdmin, async (req, res) => {
 
 /**
  * Drill-down: individual events with grouping by card / day / device / source.
- * ?type=call | call,directions | cta | location | page_view | view | search | register | login | donate | subscribe | all
+ * ?type=call | call,directions | cta | location | page_view | view | search | register | login | pwa | donate | subscribe | all
  * &range=today|yesterday|7d|30d|90d|all  or  &from=YYYY-MM-DD&to=YYYY-MM-DD  (Kyiv days)
  * &locationId=… &userId=… &limit=50 (max 200) &offset=0 &includeAdmin=1
  */
@@ -2316,7 +2345,7 @@ app.post('/api/locations/:id/view', async (req, res) => {
     loc.views = (Number(loc.views) || 0) + 1;
     await Promise.all([
       persistLocationsPatch(data, [loc]),
-      analyticsEvents.logEvent(req, { type: 'view', locationId: id }),
+      analyticsEvents.logEvent(req, { type: 'view', locationId: id, ...attributionArgs(req) }),
     ]);
     analytics.bumpTotal('locationOpens').catch(() => {});
     res.json({ ok: true, views: loc.views });
@@ -2356,6 +2385,8 @@ app.post('/api/locations/:id/click', async (req, res) => {
 
     const clickKey = locationClickKey(id, type);
     const result = await incrementCatalogClick(clickKey);
+    // The call/chat row is the ads denominator. Record it even if the counter table is down.
+    await analyticsEvents.logEvent(req, { type, locationId: id, ...attributionArgs(req) });
     if (!result.ok) {
       if (result.missing) {
         return res.status(503).json({
@@ -2368,7 +2399,6 @@ app.post('/api/locations/:id/click', async (req, res) => {
 
     const totalField = LOCATION_CLICK_TOTAL_FIELD[type];
     if (totalField) analytics.bumpTotal(totalField).catch(() => {});
-    await analyticsEvents.logEvent(req, { type, locationId: id });
 
     res.json({
       ok: true,
