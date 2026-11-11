@@ -254,6 +254,59 @@
       }
     };
 
+    const GUEST_FAV_KEY = 'mf_guest_favs';
+
+    function readGuestFavIds() {
+      try {
+        const raw = JSON.parse(localStorage.getItem(GUEST_FAV_KEY) || '[]');
+        if (!Array.isArray(raw)) return [];
+        const ids = [];
+        for (const item of raw) {
+          const id = String(item || '').trim();
+          if (!id || id.length > 80 || !/^[\w.-]+$/.test(id) || ids.includes(id)) continue;
+          ids.push(id);
+          if (ids.length >= 30) break;
+        }
+        return ids;
+      } catch (_) {
+        return [];
+      }
+    }
+
+    function writeGuestFavIds(ids) {
+      try {
+        const next = [];
+        for (const item of ids || []) {
+          const id = String(item || '').trim();
+          if (!id || id.length > 80 || !/^[\w.-]+$/.test(id) || next.includes(id)) continue;
+          next.push(id);
+          if (next.length >= 30) break;
+        }
+        if (!next.length) localStorage.removeItem(GUEST_FAV_KEY);
+        else localStorage.setItem(GUEST_FAV_KEY, JSON.stringify(next));
+      } catch (_) {}
+    }
+
+    async function mergeGuestFavorites() {
+      const ids = readGuestFavIds();
+      if (!ids.length) return;
+      const remaining = [];
+      for (const locationId of ids) {
+        try {
+          const res = await fetch('/api/client/favorites', {
+            method: 'POST',
+            credentials: 'same-origin',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ locationId }),
+          });
+          if (!res.ok && res.status !== 404 && res.status !== 400) remaining.push(locationId);
+        } catch (_) {
+          remaining.push(locationId);
+        }
+      }
+      writeGuestFavIds(remaining);
+    }
+
     async function load() {
       const meRes = await fetch('/api/me');
       const me = await meRes.json();
@@ -262,13 +315,32 @@
         return;
       }
       document.getElementById('userInfo').textContent = me.user.login;
+      await mergeGuestFavorites();
 
-      const res = await fetch('/api/client/dashboard');
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error);
+      const res = await fetch('/api/client/dashboard', { credentials: 'same-origin' });
+      let data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        const [favRes, catalogRes] = await Promise.all([
+          fetch('/api/client/favorites', { credentials: 'same-origin' }),
+          fetch('/api/data', { credentials: 'same-origin' }),
+        ]);
+        const favData = await favRes.json().catch(() => ({}));
+        const catalog = await catalogRes.json().catch(() => ({}));
+        const byId = new Map((catalog.mockLocations || []).map((loc) => [loc.id, loc]));
+        data = {
+          orders: [],
+          favorites: (favData.locationIds || []).map((id) => {
+            const loc = byId.get(id);
+            return { id, title: loc?.title || 'Збережена точка', address: loc?.address || '' };
+          }),
+          ordersNote: data.error || 'Історію замовлень зараз не вдалося завантажити.',
+        };
+      }
 
       const ordersEl = document.getElementById('ordersList');
-      if (!data.orders.length) {
+      if (data.ordersNote && !data.orders.length) {
+        ordersEl.innerHTML = `<p class="empty">${escapeHtml(data.ordersNote)}</p>`;
+      } else if (!data.orders.length) {
         ordersEl.innerHTML = '<p class="empty">Замовлень ще немає. Оберіть послугу на карті та натисніть «Замовити».</p>';
       } else {
         ordersEl.innerHTML = data.orders
@@ -306,13 +378,24 @@
 
         favEl.querySelectorAll('[data-unfav]').forEach((btn) => {
           btn.onclick = async () => {
-            await fetch('/api/client/favorites/' + btn.dataset.unfav, { method: 'DELETE' });
+            await fetch('/api/client/favorites/' + encodeURIComponent(btn.dataset.unfav), {
+              method: 'DELETE',
+              credentials: 'same-origin',
+            });
+            writeGuestFavIds(readGuestFavIds().filter((id) => id !== btn.dataset.unfav));
             load();
           };
         });
       }
 
-      await loadSupport();
+      try {
+        await loadSupport();
+      } catch (_) {
+        const supportEl = document.getElementById('supportList');
+        if (supportEl && supportEl.textContent.includes('Порожньо')) {
+          supportEl.innerHTML = '<p class="empty">Звернення зараз не вдалося завантажити.</p>';
+        }
+      }
     }
 
     load().catch((e) => alert(e.message));

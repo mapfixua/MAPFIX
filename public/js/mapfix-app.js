@@ -355,18 +355,97 @@
                 syncMapMarkers();
             }
 
+            const GUEST_FAV_KEY = 'mf_guest_favs';
+            const GUEST_FAV_MAX = 30;
+
+            function guestFavId(value) {
+                const id = String(value || '').trim();
+                if (!id || id.length > 80 || !/^[\w.-]+$/.test(id)) return '';
+                return id;
+            }
+
+            function readGuestFavs() {
+                try {
+                    const raw = JSON.parse(localStorage.getItem(GUEST_FAV_KEY) || '[]');
+                    if (!Array.isArray(raw)) return [];
+                    const ids = [];
+                    for (const item of raw) {
+                        const id = guestFavId(item);
+                        if (!id || ids.includes(id)) continue;
+                        ids.push(id);
+                        if (ids.length >= GUEST_FAV_MAX) break;
+                    }
+                    return ids;
+                } catch (_) {
+                    return [];
+                }
+            }
+
+            function writeGuestFavs(ids) {
+                try {
+                    const next = [];
+                    for (const item of ids || []) {
+                        const id = guestFavId(item);
+                        if (!id || next.includes(id)) continue;
+                        next.push(id);
+                        if (next.length >= GUEST_FAV_MAX) break;
+                    }
+                    if (!next.length) localStorage.removeItem(GUEST_FAV_KEY);
+                    else localStorage.setItem(GUEST_FAV_KEY, JSON.stringify(next));
+                } catch (_) {}
+            }
+
+            async function mergeGuestFavorites() {
+                const ids = readGuestFavs();
+                if (!ids.length) return;
+                const remaining = [];
+                for (const locationId of ids) {
+                    try {
+                        const res = await fetch('/api/client/favorites', {
+                            method: 'POST',
+                            credentials: 'same-origin',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ locationId }),
+                        });
+                        if (!res.ok && res.status !== 404 && res.status !== 400) remaining.push(locationId);
+                    } catch (_) {
+                        remaining.push(locationId);
+                    }
+                }
+                writeGuestFavs(remaining);
+            }
+
+            function paintFavoriteState(locationId) {
+                const on = State.favoriteIds.has(locationId);
+                document.querySelectorAll('[data-fav-for]').forEach((btn) => {
+                    if (btn.getAttribute('data-fav-for') !== locationId) return;
+                    btn.classList.toggle('active', on);
+                    btn.setAttribute('aria-pressed', on ? 'true' : 'false');
+                    if (btn.getAttribute('data-fav-compact') === '1') {
+                        btn.textContent = on ? '★' : '☆';
+                        btn.setAttribute('aria-label', on ? 'Прибрати з обраного' : 'Зберегти в обране');
+                    } else {
+                        btn.textContent = on ? '★ Обране' : '☆ В обране';
+                    }
+                });
+            }
+
             async function loadSession() {
+                State.favoriteIds = new Set(readGuestFavs());
                 try {
                     const meRes = await fetch('/api/me', { credentials: 'same-origin', cache: 'no-store' });
                     const me = await meRes.json();
                     if (me.loggedIn) {
                         State.currentUser = me.user;
                         if (me.user.role === 'client') {
+                            await mergeGuestFavorites();
                             const favRes = await fetch('/api/client/favorites', { credentials: 'same-origin', cache: 'no-store' });
                             const favData = await favRes.json();
                             if (favRes.ok) {
                                 State.favoriteIds = new Set(favData.locationIds || []);
                             }
+                        } else {
+                            State.favoriteIds = new Set();
                         }
                     }
                 } catch (_) {}
@@ -650,9 +729,10 @@
                 document.getElementById('logoutMenuBtn').onclick = async () => {
                     await fetch('/api/logout', { method: 'POST' }).catch(() => {});
                     State.currentUser = null;
-                    State.favoriteIds = new Set();
+                    State.favoriteIds = new Set(readGuestFavs());
                     closeUserMenu();
                     updateHeaderAuthUI();
+                    if (State.selectedLocation) paintFavoriteState(State.selectedLocation.id);
                 };
             }
 
@@ -981,34 +1061,46 @@
             });
 
             window.toggleFavorite = async function(locationId) {
-                if (!State.currentUser || State.currentUser.role !== 'client') {
+                const id = String(locationId || '').trim();
+                if (!id) return;
+                const user = State.currentUser;
+                if (user && user.role !== 'client') {
                     if (confirm('Увійдіть як клієнт. Перейти до реєстрації?')) {
                         window.location.href = '/register.html';
                     }
                     return;
                 }
-                const isFav = State.favoriteIds.has(locationId);
+                const isFav = State.favoriteIds.has(id);
+                if (!user) {
+                    const ids = readGuestFavs();
+                    writeGuestFavs(isFav ? ids.filter((item) => item !== id) : ids.concat(id));
+                    if (isFav) State.favoriteIds.delete(id);
+                    else {
+                        State.favoriteIds.add(id);
+                        trackLocationClick(id, 'favorite');
+                    }
+                    paintFavoriteState(id);
+                    return;
+                }
                 const url = isFav
-                    ? `/api/client/favorites/${locationId}`
+                    ? `/api/client/favorites/${encodeURIComponent(id)}`
                     : '/api/client/favorites';
                 const res = await fetch(url, {
                     method: isFav ? 'DELETE' : 'POST',
+                    credentials: 'same-origin',
                     headers: { 'Content-Type': 'application/json' },
-                    body: isFav ? undefined : JSON.stringify({ locationId }),
+                    body: isFav ? undefined : JSON.stringify({ locationId: id }),
                 });
-                const data = await res.json();
+                const data = await res.json().catch(() => ({}));
                 if (!res.ok) return alert(data.error || 'Помилка');
-                if (isFav) State.favoriteIds.delete(locationId);
-                else {
-                    State.favoriteIds.add(locationId);
-                    trackLocationClick(locationId, 'favorite');
+                if (isFav) {
+                    State.favoriteIds.delete(id);
+                    writeGuestFavs(readGuestFavs().filter((item) => item !== id));
+                } else {
+                    State.favoriteIds.add(id);
+                    trackLocationClick(id, 'favorite');
                 }
-                if (State.selectedLocation?.id === locationId) {
-                    openMasterDetail(locationId, {
-                        mode: State.detailMode || 'dive',
-                        forceMode: true,
-                    });
-                }
+                paintFavoriteState(id);
             };
 
             const appShell = document.getElementById('app-shell');
@@ -1210,7 +1302,7 @@
                 }
                 if (cardDragMoved) return;
                 if (State.detailMode !== 'preview' || !State.selectedLocation) return;
-                if (e.target.closest('a, button, input, textarea, select, label')) return;
+                if (e.target.closest('a, button, input, textarea, select, label, .map-preview-claimbox, #previewClaimSlot')) return;
                 diveIntoSelectedDetail();
             });
             function cardSheetIsOpen() {
@@ -1222,7 +1314,7 @@
             function beginCardDrag(e) {
                 if (!isMobileLayout() || !cardSheetIsOpen()) return;
                 if (e.pointerType === 'mouse' && e.button !== 0) return;
-                if (e.target.closest('a, button, input, textarea, select, label')) return;
+                if (e.target.closest('a, button, input, textarea, select, label, .map-preview-claimbox, #previewClaimSlot')) return;
                 const scroller = document.querySelector('#app-shell.showing-location .sheet-body-host');
                 const inBody = e.target.closest('#detailBodyContent');
                 if (inBody && scroller && scroller.scrollTop > 8) return;
@@ -1339,15 +1431,54 @@
                 }
             }
 
+            // Same memory as mf-analytics.js (URL, then sessionStorage mf_utm). Shape matches logEvent.normalizeUtm.
+            function readVisitUtm() {
+                try {
+                    const params = new URLSearchParams(window.location.search);
+                    const source = (params.get('utm_source') || '').trim();
+                    if (source) {
+                        return {
+                            source: source.slice(0, 48),
+                            medium: (params.get('utm_medium') || '').trim().slice(0, 48),
+                            campaign: (params.get('utm_campaign') || '').trim().slice(0, 48),
+                            content: (params.get('utm_content') || '').trim().slice(0, 48),
+                            term: (params.get('utm_term') || '').trim().slice(0, 48),
+                        };
+                    }
+                    const stored = sessionStorage.getItem('mf_utm');
+                    if (!stored) return null;
+                    const parsed = JSON.parse(stored);
+                    if (!parsed || typeof parsed !== 'object' || !String(parsed.source || '').trim()) return null;
+                    return parsed;
+                } catch (_) {
+                    return null;
+                }
+            }
+
+            function analyticsClickContext() {
+                const ctx = { path: (location.pathname || '/') + (location.search || '') };
+                const sid = mfSid();
+                if (sid) ctx.sid = sid;
+                const utm = readVisitUtm();
+                if (utm) ctx.utm = utm;
+                try {
+                    const ref = sessionStorage.getItem('mf_ref');
+                    if (ref) ctx.ref = String(ref).slice(0, 300);
+                } catch (_) {}
+                return ctx;
+            }
+
             function trackLocationClick(locationId, type) {
                 const id = String(locationId || '').trim();
                 const t = String(type || '').trim();
                 if (!id || !t) return;
+                const body = { type: t, sid: mfSid() };
+                if (t === 'favorite') Object.assign(body, analyticsClickContext());
                 fetch('/api/locations/' + encodeURIComponent(id) + '/click', {
                     method: 'POST',
                     credentials: 'same-origin',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ type: t, sid: mfSid() }),
+                    body: JSON.stringify(body),
                     keepalive: true,
                 }).catch(() => {});
             }
@@ -1778,29 +1909,7 @@
                     window.masterCatalog?.[loc.cat]?.name || loc.cat || ''
                 );
                 const canOfferClaim = !loc.providerId;
-                const locPhoneDigits = String(loc.phone || '').replace(/\D/g, '');
-                const locHasClaimPhone = locPhoneDigits.length >= 10;
-                const locIdEsc = escapeHtml(loc.id);
-                const claimBannerHtml = canOfferClaim
-                    ? `<div class="claim-owner-banner" id="claimOwnerBanner" onclick="event.stopPropagation()">
-                        <strong>Це ваш заклад?</strong>
-                        <p>${
-                          locHasClaimPhone
-                            ? 'Введіть телефон з картки. Якщо збігається — заклад одразу ваш.'
-                            : 'У точки немає телефону для підтвердження. Напишіть нам через «Повідомити про помилку» — призначимо вручну.'
-                        }</p>
-                        ${
-                          locHasClaimPhone
-                            ? `<form class="claim-phone-form" id="claimByPhoneForm" onsubmit="event.preventDefault(); event.stopPropagation(); submitClaimByPhone(event, '${locIdEsc}')">
-                                <input type="tel" id="claimPhoneInput" inputmode="tel" autocomplete="tel" placeholder="+380XXXXXXXXX" required>
-                                <p class="claim-phone-error" id="claimPhoneError" hidden></p>
-                                <button type="submit" class="action-btn btn-claim" id="claimLocBtn">Забрати заклад</button>
-                                <p class="claim-phone-login">Уже є акаунт? <a href="${escapeHtml(claimLoginUrl(loc.id))}">Увійти</a></p>
-                               </form>`
-                            : `<button type="button" class="action-btn btn-claim" id="claimLocBtn" onclick="event.stopPropagation(); submitClaimByPhone(event, '${locIdEsc}')">Повідомити, що це мій заклад</button>`
-                        }
-                       </div>`
-                    : '';
+                const claimBannerHtml = claimBannerHtmlFor(loc);
 
                 renderLocationHero(loc);
 
@@ -1820,6 +1929,8 @@
                 const hasCoords = Number.isFinite(Number(loc.lat)) && Number.isFinite(Number(loc.lng));
                 const hasAddress = Boolean(String(loc.address || '').trim());
                 const locIdAttr = escapeHtml(loc.id);
+                const isFav = State.favoriteIds.has(loc.id);
+                const previewFavBtn = `<button type="button" class="btn-fav-header${isFav ? ' active' : ''}" data-fav-for="${locIdAttr}" data-fav-compact="1" aria-pressed="${isFav ? 'true' : 'false'}" aria-label="${isFav ? 'Прибрати з обраного' : 'Зберегти в обране'}" onclick="event.stopPropagation(); toggleFavorite('${locIdAttr}')" style="width:36px;height:36px;min-height:36px;padding:0;flex:0 0 36px;line-height:1;align-self:flex-start">${isFav ? '★' : '☆'}</button>`;
                 const disabledQuick = (icon, label) =>
                     `<button type="button" class="profile-quick-btn" aria-disabled="true" disabled><i class="fa-solid ${icon}"></i> ${label}</button>`;
 
@@ -1880,7 +1991,7 @@
                 const headerBox = document.getElementById('detailHeaderContent');
                 if (previewMobile) {
                     headerBox.innerHTML = `
-                    <div class="map-preview">
+                    <div class="map-preview" style="max-width:100%;min-width:0">
                         <div class="map-preview-main">
                             <div class="profile-avatar map-preview-avatar">${locationAvatarHtml(loc)}</div>
                             <div class="map-preview-copy">
@@ -1895,14 +2006,16 @@
                                     ${previewPrice ? `<span class="map-preview-price">${escapeHtml(previewPrice)}</span>` : ''}
                                 </div>
                             </div>
+                            ${previewFavBtn}
                         </div>
                         <div class="map-preview-actions">
                             ${callBtn.replace('class="profile-quick-btn"', 'class="profile-quick-btn" style="height:52px;min-height:52px"')}
                             ${chatBtn.replace('class="profile-quick-btn"', 'class="profile-quick-btn" style="height:52px;min-height:52px"')}
                         </div>
+                        ${canOfferClaim ? `<button type="button" id="previewClaimLine" onclick="event.stopPropagation(); revealPreviewClaim(event)" style="display:block;box-sizing:border-box;width:100%;max-width:calc(100vw - 32px);min-width:0;margin:0;padding:4px 0;border:0;background:transparent;text-align:left;font:inherit;font-size:13px;font-weight:800;line-height:1.35;color:var(--ink);text-decoration:underline;text-underline-offset:2px;cursor:pointer;white-space:normal;overflow-wrap:anywhere">Це ваш заклад? Підтвердити номером з картки</button><div id="previewClaimSlot" hidden></div>` : ''}
                         <p class="detail-preview-hint">Натисніть назву ще раз, щоб відкрити графік, ціни й опис</p>
                     </div>`;
-                    renderDetailBody(loc, { claimBannerHtml, mode });
+                    renderDetailBody(loc, { claimBannerHtml: '', mode });
                     const detailView = document.getElementById('sidebar-detail-view');
                     detailView.classList.add('show', 'mode-preview');
                     detailView.classList.remove('mode-dive');
@@ -1950,6 +2063,59 @@
                 applyPageSeoFromState();
             };
 
+            function claimBannerHtmlFor(loc, opts = {}) {
+                if (!loc || loc.providerId) return '';
+                const locHasClaimPhone = String(loc.phone || '').replace(/\D/g, '').length >= 10;
+                const locIdEsc = escapeHtml(loc.id);
+                const preview = Boolean(opts.preview);
+                const wrapClass = preview ? 'map-preview-claimbox' : 'claim-owner-banner';
+                const wrapStyle = preview
+                    ? ' style="display:flex;flex-direction:column;gap:6px;padding:10px 12px;border-radius:10px;border:1.5px solid var(--ink);background:var(--primary-light);margin:0;max-width:100%;min-width:0;box-sizing:border-box"'
+                    : '';
+                const titleStyle = preview ? ' style="font-size:14px;font-weight:800;line-height:1.3"' : '';
+                const textStyle = preview
+                    ? ' style="margin:0;font-size:12px;font-weight:600;line-height:1.4;color:var(--muted)"'
+                    : '';
+                const intro = locHasClaimPhone
+                    ? 'Введіть телефон з картки. Якщо збігається — заклад одразу ваш.'
+                    : 'У точки немає телефону для підтвердження. Напишіть нам через «Повідомити про помилку» — призначимо вручну.';
+                const controls = locHasClaimPhone
+                    ? `<form class="claim-phone-form" id="claimByPhoneForm" onsubmit="event.preventDefault(); event.stopPropagation(); submitClaimByPhone(event, '${locIdEsc}')">
+                        <input type="tel" id="claimPhoneInput" inputmode="tel" autocomplete="tel" placeholder="+380XXXXXXXXX" required>
+                        <p class="claim-phone-error" id="claimPhoneError" hidden></p>
+                        <button type="submit" class="action-btn btn-claim" id="claimLocBtn">Забрати заклад</button>
+                        <p class="claim-phone-login">Уже є акаунт? <a href="${escapeHtml(claimLoginUrl(loc.id))}">Увійти</a></p>
+                       </form>`
+                    : `<button type="button" class="action-btn btn-claim" id="claimLocBtn" onclick="event.stopPropagation(); submitClaimByPhone(event, '${locIdEsc}')">Повідомити, що це мій заклад</button>`;
+                return `<div class="${wrapClass}" id="claimOwnerBanner"${wrapStyle} onclick="event.stopPropagation()">
+                    <strong${titleStyle}>Це ваш заклад?</strong>
+                    <p${textStyle}>${intro}</p>
+                    ${controls}
+                </div>`;
+            }
+
+            window.revealPreviewClaim = function (event) {
+                if (event) {
+                    event.preventDefault?.();
+                    event.stopPropagation?.();
+                }
+                const loc = State.selectedLocation;
+                const slot = document.getElementById('previewClaimSlot');
+                if (!loc || !slot || slot.dataset.open === '1') return;
+                const html = claimBannerHtmlFor(loc, { preview: true });
+                if (!html) return;
+                slot.innerHTML = html;
+                slot.hidden = false;
+                slot.dataset.open = '1';
+                const line = document.getElementById('previewClaimLine');
+                if (line) {
+                    line.hidden = true;
+                    line.style.display = 'none';
+                }
+                document.getElementById('claimPhoneInput')?.focus();
+                setTimeout(() => map.invalidateSize(), 40);
+            };
+
             function refreshClaimButton(loc) {
                 const banner = document.getElementById('claimOwnerBanner');
                 if (!banner) return;
@@ -1960,8 +2126,41 @@
                 return '/p/' + encodeURIComponent(locationId) + '?claim=1';
             }
 
+            function withCurrentUtm(url) {
+                try {
+                    const dest = new URL(url, window.location.origin);
+                    const current = new URLSearchParams(window.location.search);
+                    ['utm_source', 'utm_medium', 'utm_campaign', 'utm_content', 'utm_term'].forEach((key) => {
+                        const value = (current.get(key) || '').trim();
+                        if (value && !dest.searchParams.get(key)) dest.searchParams.set(key, value.slice(0, 80));
+                    });
+                    if (!dest.searchParams.get('utm_source')) {
+                        const stored = readVisitUtm();
+                        if (stored && stored.source) {
+                            dest.searchParams.set('utm_source', String(stored.source).slice(0, 48));
+                            if (stored.medium && !dest.searchParams.get('utm_medium')) {
+                                dest.searchParams.set('utm_medium', String(stored.medium).slice(0, 48));
+                            }
+                            if (stored.campaign && !dest.searchParams.get('utm_campaign')) {
+                                dest.searchParams.set('utm_campaign', String(stored.campaign).slice(0, 48));
+                            }
+                            if (stored.content && !dest.searchParams.get('utm_content')) {
+                                dest.searchParams.set('utm_content', String(stored.content).slice(0, 48));
+                            }
+                            if (stored.term && !dest.searchParams.get('utm_term')) {
+                                dest.searchParams.set('utm_term', String(stored.term).slice(0, 48));
+                            }
+                        }
+                    }
+                    if (dest.origin === window.location.origin) return dest.pathname + dest.search + dest.hash;
+                    return dest.toString();
+                } catch (_) {
+                    return url;
+                }
+            }
+
             function claimLoginUrl(locationId) {
-                return '/login.html?next=' + encodeURIComponent(claimReturnUrl(locationId));
+                return withCurrentUtm('/login.html?next=' + encodeURIComponent(claimReturnUrl(locationId)));
             }
 
             function locationHasClaimPhone(locationId) {
@@ -2025,7 +2224,7 @@
                     const data = await res.json().catch(() => ({}));
                     if (!res.ok) throw new Error(data.error || 'Не вдалося забрати заклад');
                     if (data.needsRegister && data.registerUrl) {
-                        location.href = data.registerUrl;
+                        location.href = withCurrentUtm(data.registerUrl);
                         return;
                     }
                     await loadSession();
@@ -2189,7 +2388,7 @@
                                 </div>
                             </div>
                             <div class="detail-secondary-row">
-                                <button type="button" class="action-btn btn-fav-header ${isFav ? 'active' : ''}" onclick="event.stopPropagation(); toggleFavorite('${escapeHtml(loc.id)}')">${isFav ? '★ Обране' : '☆ В обране'}</button>
+                                <button type="button" class="action-btn btn-fav-header ${isFav ? 'active' : ''}" data-fav-for="${escapeHtml(loc.id)}" aria-pressed="${isFav ? 'true' : 'false'}" onclick="event.stopPropagation(); toggleFavorite('${escapeHtml(loc.id)}')">${isFav ? '★ Обране' : '☆ В обране'}</button>
                                 <button type="button" class="action-btn btn-report" onclick="event.stopPropagation(); reportLocation('${escapeHtml(loc.id)}')">⚑ Скарга</button>
                                 ${manageLocationBtnHtml(loc)}
                             </div>
