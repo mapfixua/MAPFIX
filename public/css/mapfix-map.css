@@ -2154,4 +2154,65 @@
             .profile-avatar-wrap, .profile-avatar { width: 72px; height: 72px; }
             .profile-name { font-size: 16px; }
         }
+
+        .profile-owner-pill {
+            display: inline-flex;
+            align-items: center;
+            max-width: 100%;
+            background: var(--primary-light);
+            color: #0f766e;
+            font-size: 11px;
+            font-weight: 700;
+            line-height: 1.25;
+            padding: 2px 8px;
+            border-radius: 999px;
+        }
+        .profile-direct-call,
+        .map-preview-direct {
+            margin: 0;
+            font-size: 12px;
+            font-weight: 600;
+            line-height: 1.35;
+            color: #4b5563;
+        }
+        .map-preview-trust {
+            display: flex;
+            flex-direction: column;
+            align-items: flex-start;
+            gap: 2px;
+        }
+        .map-preview-stale {
+            margin: 0;
+            padding: 2px 0;
+            border: 0;
+            background: transparent;
+            color: #475569;
+            font: inherit;
+            font-size: 13px;
+            font-weight: 700;
+            line-height: 1.3;
+            text-align: left;
+            text-decoration: underline;
+            text-underline-offset: 2px;
+            cursor: pointer;
+            min-height: 32px;
+        }
+        .map-preview-stale:disabled {
+            color: #0f766e;
+            text-decoration: none;
+            cursor: default;
+        }
+        .map-preview-stale-note {
+            margin: 0;
+            font-size: 12px;
+            font-weight: 600;
+            line-height: 1.35;
+            color: #b91c1c;
+        }
+        .review-source {
+            font-size: 11px;
+            font-weight: 700;
+            line-height: 1.3;
+            color: #475569;
+        }
     
