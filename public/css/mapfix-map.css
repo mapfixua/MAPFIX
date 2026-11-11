@@ -248,11 +248,24 @@
 
         .site-footer {
             flex-shrink: 0;
+            position: static;
+            max-height: 92px;
+            overflow: auto;
             padding: 8px 14px;
             border-top: 1px solid var(--border);
             background: #fff;
             font-size: 12px;
             font-weight: 700;
+        }
+        .site-footer:empty { display: none; }
+        .site-footer nav { margin: 0; }
+        .site-footer ul {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px 10px;
+            margin: 0;
+            padding: 0;
+            list-style: none;
         }
         .site-footer a { color: var(--ink); text-decoration: underline; text-underline-offset: 2px; }
 
@@ -271,6 +284,14 @@
         }
 
         .nav-title { font-size: 15px; font-weight: 800; color: var(--dark); margin: 0; line-height: 1.3; }
+        .listing-count {
+            margin: 0;
+            font-size: 13px;
+            font-weight: 700;
+            color: var(--muted);
+            line-height: 1.35;
+        }
+        .listing-count[hidden] { display: none !important; }
         .nav-item-title { font-size: inherit; font-weight: 700; margin: 0; line-height: 1.3; color: inherit; }
         .sidebar-header .back-btn {
             margin: 0;

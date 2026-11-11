@@ -568,6 +568,113 @@ function mapfixReviews(loc) {
   });
 }
 
+const WEEKDAY_TOKENS = [
+  [/^(пн|пон)/i, 'Monday'],
+  [/^(вт|вів)/i, 'Tuesday'],
+  [/^(ср|сер)/i, 'Wednesday'],
+  [/^(чт|чет)/i, 'Thursday'],
+  [/^(пт|п['\u2019\u02bc]ят)/i, 'Friday'],
+  [/^(сб|суб)/i, 'Saturday'],
+  [/^(нд|нед)/i, 'Sunday'],
+];
+
+const SITE_ICON_RE = /\/(?:icon-512|icon-192|apple-touch-icon|favicon)\.(?:png|svg|ico)(?:$|\?)/i;
+
+function weekdayName(label) {
+  const value = String(label || '').trim().toLowerCase();
+  for (const [re, day] of WEEKDAY_TOKENS) {
+    if (re.test(value)) return day;
+  }
+  return '';
+}
+
+function hourRanges(text) {
+  const raw = String(text || '').trim();
+  if (!raw || /вихід|зачин|closed/i.test(raw)) return [];
+  const ranges = [];
+  const re = /(\d{1,2})[:.](\d{2})\s*[-–—]\s*(\d{1,2})[:.](\d{2})/g;
+  let match = re.exec(raw);
+  while (match) {
+    ranges.push({
+      opens: `${match[1].padStart(2, '0')}:${match[2]}`,
+      closes: `${match[3].padStart(2, '0')}:${match[4]}`,
+    });
+    match = re.exec(raw);
+  }
+  return ranges;
+}
+
+function workingHourEntries(text) {
+  return String(text || '')
+    .split(/[;\n]+/)
+    .map((part) => {
+      const idx = part.indexOf(':');
+      if (idx <= 0) return null;
+      return [part.slice(0, idx).trim(), part.slice(idx + 1).trim()];
+    })
+    .filter(Boolean);
+}
+
+function specsFromRows(rows) {
+  const specs = [];
+  for (const [dayLabel, hours] of rows) {
+    const day = weekdayName(dayLabel);
+    if (!day) continue;
+    for (const range of hourRanges(hours)) {
+      specs.push({
+        '@type': 'OpeningHoursSpecification',
+        dayOfWeek: day,
+        opens: range.opens,
+        closes: range.closes,
+      });
+    }
+  }
+  return specs;
+}
+
+function openingHoursSpecification(loc) {
+  const schedule = loc?.schedule;
+  const scheduleRows =
+    schedule && typeof schedule === 'object' && !Array.isArray(schedule) ? Object.entries(schedule) : [];
+  const fromSchedule = specsFromRows(scheduleRows);
+  if (fromSchedule.length) return fromSchedule;
+  return specsFromRows(workingHourEntries(loc?.workingHours));
+}
+
+/** Real master photo only. The site icon is not a photo of the business. */
+function businessPhotoUrl(loc) {
+  const photos = Array.isArray(loc?.photos) ? loc.photos : [];
+  for (const photo of photos) {
+    const raw = String(photo?.url || '').trim();
+    if (!raw || SITE_ICON_RE.test(raw)) continue;
+    if (/^https?:\/\//i.test(raw)) return raw;
+    if (raw.startsWith('/') && !raw.startsWith('//')) return siteBaseUrl() + raw;
+  }
+  return '';
+}
+
+function addressLocalityFor(loc) {
+  return locationAreaKeys(loc).includes('kotsiubynske') ? 'Коцюбинське' : 'Київ';
+}
+
+function preferredAreaKeys(loc) {
+  const keys = locationAreaKeys(loc);
+  const ordered = [];
+  if (keys.includes('kotsiubynske')) ordered.push('kotsiubynske');
+  for (const key of keys) {
+    if (!ordered.includes(key)) ordered.push(key);
+  }
+  return ordered;
+}
+
+function indexableDistrictCategory(loc, locations) {
+  if (!loc?.cat) return '';
+  for (const key of preferredAreaKeys(loc)) {
+    if (isIndexableListing({ loc: '', cat: loc.cat, area: key, sub: '', page: 1 }, locations)) return key;
+  }
+  return '';
+}
+
 function jsonLdGraph(seo, landing, data) {
   const base = siteBaseUrl();
   const catalog = data?.masterCatalog || {};
@@ -607,11 +714,15 @@ function jsonLdGraph(seo, landing, data) {
         address: {
           '@type': 'PostalAddress',
           streetAddress: loc.address || undefined,
-          addressLocality: 'Київ',
+          addressLocality: addressLocalityFor(loc),
           addressCountry: 'UA',
         },
       };
       if (loc.phone) node.telephone = loc.phone;
+      const photo = businessPhotoUrl(loc);
+      if (photo) node.image = photo;
+      const hours = openingHoursSpecification(loc);
+      if (hours.length) node.openingHoursSpecification = hours;
       const lat = Number(loc.lat);
       const lng = Number(loc.lng);
       if (Number.isFinite(lat) && Number.isFinite(lng)) {
@@ -628,6 +739,13 @@ function jsonLdGraph(seo, landing, data) {
         };
       }
       graph.push(node);
+      const districtKey = indexableDistrictCategory(loc, data?.mockLocations || []);
+      const crumbName = districtKey
+        ? `${categoryLabelOf(catalog, loc.cat)} на ${SEO_AREAS[districtKey].on}`
+        : stripHeadingDecor(catalog[loc.cat]?.name || loc.cat || 'Послуги');
+      const crumbUrl = districtKey
+        ? base + canonicalPath({ cat: loc.cat, area: districtKey })
+        : base + canonicalPath({ cat: loc.cat });
       graph.push({
         '@type': 'BreadcrumbList',
         itemListElement: [
@@ -635,8 +753,8 @@ function jsonLdGraph(seo, landing, data) {
           {
             '@type': 'ListItem',
             position: 2,
-            name: stripHeadingDecor(catalog[loc.cat]?.name || loc.cat || 'Послуги'),
-            item: base + canonicalPath({ cat: loc.cat }),
+            name: crumbName,
+            item: crumbUrl,
           },
           { '@type': 'ListItem', position: 3, name: loc.title, item: seo.url },
         ],
@@ -910,6 +1028,15 @@ function injectSeoIntoHtml(html, seo, extras = {}) {
   if (extras.prevUrl) paging.push(`<link rel="prev" href="${escapeHtmlAttr(extras.prevUrl)}">`);
   if (extras.nextUrl) paging.push(`<link rel="next" href="${escapeHtmlAttr(extras.nextUrl)}">`);
   if (paging.length) out = out.replace(/<\/head>/i, `    ${paging.join('\n    ')}\n</head>`);
+  if (extras.landing && extras.seoData) {
+    const footer = indexableFooterHtml(extras.landing, extras.seoData);
+    if (/<footer class="site-footer"/i.test(out)) {
+      out = out.replace(
+        /<footer class="site-footer"[^>]*>[\s\S]*?<\/footer>/i,
+        `<footer class="site-footer" id="siteFooter">${footer}</footer>`
+      );
+    }
+  }
   return out;
 }
 
@@ -1504,7 +1631,20 @@ function similarLocations(loc, locations, limit) {
 
 function cardCrawlerHtml(seo, loc, catalog, locations) {
   const catName = categoryLabelOf(catalog, loc.cat);
-  const catHref = loc.cat ? canonicalPath({ cat: loc.cat }) : '';
+  const districtKey = indexableDistrictCategory(loc, locations);
+  const catBits = [];
+  if (districtKey) {
+    catBits.push(
+      `<a href="${escapeHtmlAttr(canonicalPath({ cat: loc.cat, area: districtKey }))}">${escapeHtml(
+        `${catName} на ${SEO_AREAS[districtKey].on}`
+      )}</a>`
+    );
+  }
+  if (loc.cat && isIndexableListing({ loc: '', cat: loc.cat, area: '', sub: '', page: 1 }, locations)) {
+    catBits.push(
+      `<a href="${escapeHtmlAttr(canonicalPath({ cat: loc.cat }))}">${escapeHtml(`${catName} у Києві`)}</a>`
+    );
+  }
   const services = (Array.isArray(loc.subcats) ? loc.subcats : [])
     .map((key) => subcatLabel(catalog, loc.cat, key))
     .filter(Boolean);
@@ -1517,6 +1657,7 @@ function cardCrawlerHtml(seo, loc, catalog, locations) {
     isIndexableListing({ area: key, cat: '', sub: '', page: 1 }, locations)
   );
   const similar = similarLocations(loc, locations, 6);
+  // MapFix reviews only. Google Maps bodies stay out of #seo-static.
   const reviews = mapfixReviews(loc);
   const serviceHtml = services.length
     ? `<h2>Послуги</h2><ul>${services.map((name) => `<li>${escapeHtml(name)}</li>`).join('')}</ul>`
@@ -1554,7 +1695,7 @@ function cardCrawlerHtml(seo, loc, catalog, locations) {
     : '';
   return `<section id="seo-static" class="seo-static" aria-label="Картка майстра">
   <p>${escapeHtml(seo.description)}</p>
-  ${catHref ? `<p>Категорія: <a href="${escapeHtmlAttr(catHref)}">${escapeHtml(catName)}</a></p>` : ''}
+  ${catBits.length ? `<p>Категорія: ${catBits.join(', ')}</p>` : ''}
   ${loc.address ? `<p>Адреса: ${escapeHtml(loc.address)}</p>` : ''}
   ${areaHtml}
   ${phoneHtml}
@@ -1565,6 +1706,105 @@ function cardCrawlerHtml(seo, loc, catalog, locations) {
   ${reviewHtml}
   ${similarHtml}
 </section>`;
+}
+
+function footerContext(landing, locs) {
+  if (landing?.loc) {
+    const loc = locs.find((row) => row && row.id === landing.loc);
+    if (!loc) return { area: '', cat: '', sub: '' };
+    const keys = preferredAreaKeys(loc);
+    return { area: keys[0] || '', cat: loc.cat || '', sub: '' };
+  }
+  return { area: landing?.area || '', cat: landing?.cat || '', sub: landing?.sub || '' };
+}
+
+function priorityServiceLabel(cat, sub, areaKey, catalog) {
+  const copy = SUB_COPY[`${cat}/${sub}`];
+  if (copy) return copy.h1(placeBit(areaKey));
+  const name = subcatLabel(catalog, cat, sub);
+  const on = SEO_AREAS[areaKey]?.on || areaName(areaKey);
+  return on ? `${name} на ${on}` : name;
+}
+
+/**
+ * Visible footer: neighbouring districts of the same category, plus up to 8
+ * priority services of this district. Only URLs that already pass the index
+ * threshold. No new districts and no full Kyiv category dump.
+ */
+function indexableFooterHtml(landing, data) {
+  const locs = visibleLocations(data?.mockLocations || []);
+  const catalog = data?.masterCatalog || {};
+  const context = footerContext(landing, locs);
+  const selfHref = landing?.loc
+    ? canonicalPath({ loc: landing.loc })
+    : canonicalPath({ cat: landing?.cat || '', area: landing?.area || '', sub: landing?.sub || '' });
+  const links = [];
+  const seen = new Set();
+
+  function add(target, label) {
+    const text = String(label || '').trim();
+    if (!text) return false;
+    const clean = { loc: '', cat: target.cat || '', area: target.area || '', sub: target.sub || '' };
+    if (!isIndexableListing({ ...clean, page: 1 }, locs)) return false;
+    const href = canonicalPath(clean);
+    if (!href || href === selfHref || seen.has(href)) return false;
+    seen.add(href);
+    links.push({ href, label: text });
+    return true;
+  }
+
+  function addPriorityServices(area, currentCat) {
+    const ordered = [];
+    if (currentCat) {
+      for (const row of PRIORITY_SUBS) {
+        if (row.cat === currentCat) ordered.push(row);
+      }
+    }
+    for (const row of PRIORITY_SUBS) {
+      if (!currentCat || row.cat !== currentCat) ordered.push(row);
+    }
+    let added = 0;
+    for (const row of ordered) {
+      if (added >= 8) break;
+      const label = priorityServiceLabel(row.cat, row.sub, area, catalog);
+      if (add({ area, cat: row.cat, sub: row.sub }, label)) added += 1;
+    }
+  }
+
+  const { area, cat, sub } = context;
+  if (!area && !cat) {
+    for (const key of SITEMAP_AREAS) {
+      add({ area: key }, `Майстри на ${SEO_AREAS[key].on}`);
+    }
+  } else if (area && !cat) {
+    for (const key of SITEMAP_AREAS) {
+      if (key === area) continue;
+      add({ area: key }, `Майстри на ${SEO_AREAS[key].on}`);
+    }
+    addPriorityServices(area, '');
+  } else if (cat && !area) {
+    for (const key of SITEMAP_AREAS) {
+      const label = sub
+        ? priorityServiceLabel(cat, sub, key, catalog)
+        : `${categoryLabelOf(catalog, cat)} на ${SEO_AREAS[key].on}`;
+      add({ area: key, cat, sub: sub || '' }, label);
+    }
+  } else {
+    for (const key of SITEMAP_AREAS) {
+      if (key === area) continue;
+      const label = sub
+        ? priorityServiceLabel(cat, sub, key, catalog)
+        : `${categoryLabelOf(catalog, cat)} на ${SEO_AREAS[key].on}`;
+      add({ area: key, cat, sub: sub || '' }, label);
+    }
+    addPriorityServices(area, cat);
+  }
+
+  if (!links.length) return '';
+  const items = links
+    .map((link) => `<li><a href="${escapeHtmlAttr(link.href)}">${escapeHtml(link.label)}</a></li>`)
+    .join('');
+  return `<nav aria-label="Райони і послуги"><ul>${items}</ul></nav>`;
 }
 
 function paginationNav(listing, landing) {
