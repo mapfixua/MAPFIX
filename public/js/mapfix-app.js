@@ -1131,7 +1131,7 @@
             function lowerOpenCard() {
                 if (!State.selectedLocation) return false;
                 if (State.detailMode !== 'preview' && State.detailMode !== 'dive') return false;
-                closeMasterDetail();
+                closeMasterDetail({ fromSwipe: true });
                 return true;
             }
 
@@ -1197,61 +1197,78 @@
 
             const detailViewEl = document.getElementById('sidebar-detail-view');
             const sidebarEl = document.getElementById('sidebar');
+            const sheetHandleEl = document.getElementById('sheetHandle');
             let suppressDetailClick = false;
             let cardDragStartY = 0;
             let cardDragArmed = false;
             let cardDragMoved = false;
+            let cardPointerId = null;
             detailViewEl.addEventListener('click', (e) => {
                 if (suppressDetailClick) {
                     suppressDetailClick = false;
                     return;
                 }
+                if (cardDragMoved) return;
                 if (State.detailMode !== 'preview' || !State.selectedLocation) return;
                 if (e.target.closest('a, button, input, textarea, select, label')) return;
                 diveIntoSelectedDetail();
             });
-            function cardDragShouldIgnore(target) {
-                if (!target || !target.closest) return true;
-                if (target.closest('a, button, input, textarea, select, label')) return true;
-                if (State.detailMode !== 'dive') return false;
-                const body = document.getElementById('detailBodyContent');
-                return Boolean(body && body.contains(target) && body.scrollTop > 4);
+            function cardSheetIsOpen() {
+                return Boolean(
+                    State.selectedLocation &&
+                    (State.detailMode === 'preview' || State.detailMode === 'dive')
+                );
             }
-            sidebarEl.addEventListener('touchstart', (e) => {
-                if (!isMobileLayout() || !State.selectedLocation) return;
-                if (State.detailMode !== 'preview' && State.detailMode !== 'dive') return;
-                if (cardDragShouldIgnore(e.target)) return;
+            function beginCardDrag(e) {
+                if (!isMobileLayout() || !cardSheetIsOpen()) return;
+                if (e.pointerType === 'mouse' && e.button !== 0) return;
+                if (e.target.closest('a, button, input, textarea, select, label')) return;
+                const scroller = document.querySelector('#app-shell.showing-location .sheet-body-host');
+                const inBody = e.target.closest('#detailBodyContent');
+                if (inBody && scroller && scroller.scrollTop > 8) return;
                 cardDragArmed = true;
                 cardDragMoved = false;
-                cardDragStartY = e.touches[0].clientY;
+                cardPointerId = e.pointerId;
+                cardDragStartY = e.clientY;
                 sidebarEl.style.transition = 'none';
-            }, { passive: true });
-            sidebarEl.addEventListener('touchmove', (e) => {
-                if (!cardDragArmed) return;
-                const dy = e.touches[0].clientY - cardDragStartY;
-                if (dy <= 0) return;
-                cardDragMoved = true;
-                if (e.cancelable) e.preventDefault();
-                sidebarEl.style.transform = 'translateY(' + Math.min(dy, 320) + 'px)';
-            }, { passive: false });
-            function endCardDrag(clientY) {
-                if (!cardDragArmed) return;
-                cardDragArmed = false;
-                const dy = clientY - cardDragStartY;
-                sidebarEl.style.transition = '';
-                sidebarEl.style.transform = '';
-                if (dy > 48) {
-                    suppressDetailClick = true;
-                    sheetDragging = true;
-                    lowerOpenCard();
+                if (e.currentTarget.setPointerCapture) {
+                    try { e.currentTarget.setPointerCapture(e.pointerId); } catch (_) {}
                 }
             }
-            sidebarEl.addEventListener('touchend', (e) => {
-                endCardDrag(e.changedTouches[0].clientY);
-            });
-            sidebarEl.addEventListener('touchcancel', (e) => {
-                const y = e.changedTouches && e.changedTouches[0] ? e.changedTouches[0].clientY : cardDragStartY;
-                endCardDrag(y);
+            function moveCardDrag(e) {
+                if (!cardDragArmed || e.pointerId !== cardPointerId) return;
+                const dy = e.clientY - cardDragStartY;
+                if (dy <= 0) return;
+                cardDragMoved = dy > 10;
+                if (e.cancelable) e.preventDefault();
+                sidebarEl.style.transform = 'translateY(' + Math.min(dy, 420) + 'px)';
+            }
+            function finishCardDrag(e) {
+                if (!cardDragArmed || (e && e.pointerId !== cardPointerId)) return;
+                const dy = (e ? e.clientY : cardDragStartY) - cardDragStartY;
+                cardDragArmed = false;
+                cardPointerId = null;
+                if (dy > 64) {
+                    suppressDetailClick = true;
+                    sheetDragging = true;
+                    sidebarEl.style.transition = 'transform 0.18s ease';
+                    sidebarEl.style.transform = 'translateY(110%)';
+                    window.setTimeout(() => {
+                        sidebarEl.style.transition = '';
+                        sidebarEl.style.transform = '';
+                        lowerOpenCard();
+                    }, 180);
+                    return;
+                }
+                sidebarEl.style.transition = 'transform 0.18s ease';
+                sidebarEl.style.transform = '';
+            }
+            [sheetHandleEl, document.getElementById('detailHeaderContent'), detailViewEl].forEach((el) => {
+                if (!el) return;
+                el.addEventListener('pointerdown', beginCardDrag);
+                el.addEventListener('pointermove', moveCardDrag);
+                el.addEventListener('pointerup', finishCardDrag);
+                el.addEventListener('pointercancel', finishCardDrag);
             });
 
             function pulseSheetContent() {
@@ -2281,10 +2298,13 @@
                 }
             };
 
-            window.closeMasterDetail = function() {
+            window.closeMasterDetail = function(opts = {}) {
                 const detailView = document.getElementById('sidebar-detail-view');
                 detailView.classList.remove('show', 'mode-preview', 'mode-dive');
                 appShell.classList.remove('sheet-dive', 'sheet-peek', 'showing-location');
+                if (opts.fromSwipe) {
+                    appShell.classList.remove('sheet-expanded', 'sheet-browse');
+                }
                 const headerBox = document.getElementById('detailHeaderContent');
                 if (headerBox) headerBox.innerHTML = '';
                 const heroBox = document.getElementById('detailHeroContent');
@@ -2297,7 +2317,7 @@
                 State.selectedLocation = null;
                 State.detailMode = null;
                 highlightSelectedMarker(null);
-                if (State.service || State.subcategory || State.category || State.locationSearchQuery) {
+                if (!opts.fromSwipe && (State.service || State.subcategory || State.category || State.locationSearchQuery)) {
                     if (isMobileLayout()) browseBottomSheet();
                 }
                 if (State.service) {
@@ -3142,8 +3162,7 @@
             }, { passive: true });
 
             sheetHandle.addEventListener('touchend', (e) => {
-                if (!isMobileLayout()) return;
-                if (cardDragMoved) return;
+                if (!isMobileLayout() || cardSheetIsOpen() || cardDragMoved) return;
                 const diff = e.changedTouches[0].clientY - sheetDragStartY;
                 if (Math.abs(diff) < 36) return;
                 if (diff < 0) raiseSheetLevel();

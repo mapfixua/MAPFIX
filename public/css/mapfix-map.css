@@ -1944,8 +1944,13 @@
             #app-shell.showing-location .sheet-drag-handle::after {
                 content: 'Потягніть вниз, щоб закрити';
             }
+            #app-shell.showing-location .sheet-drag-handle,
+            #app-shell.showing-location #detailHeaderContent,
+            #app-shell.showing-location .map-preview {
+                touch-action: none;
+            }
             #app-shell.showing-location .sheet-drag-handle {
-                height: 36px;
+                height: 44px;
             }
 
             #sidebar-detail-view {
