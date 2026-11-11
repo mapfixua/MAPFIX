@@ -2134,8 +2134,8 @@
                     map.panTo([loc.lat, loc.lng]);
                     return;
                 }
-            if (!opts.keepServerSeo) seoListingTouched = true;
-            headerBox.innerHTML = `
+                if (!opts.keepServerSeo) seoListingTouched = true;
+                headerBox.innerHTML = `
                     <button class="back-btn" onclick="event.stopPropagation(); closeMasterDetail()">⬅️ Назад</button>
                     <div class="profile-identity">
                         <div class="profile-avatar-wrap">
