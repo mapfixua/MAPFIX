@@ -1884,7 +1884,10 @@
                         <div class="map-preview-main">
                             <div class="profile-avatar map-preview-avatar">${locationAvatarHtml(loc)}</div>
                             <div class="map-preview-copy">
-                                <h2 class="profile-name">${escapeHtml(displayName)}</h2>
+                                <button type="button" class="map-preview-namebtn" onclick="event.stopPropagation(); diveIntoSelectedDetail()">
+                                    <span class="profile-name">${escapeHtml(displayName)}</span>
+                                    <span class="map-preview-more">Ще раз на назву — більше <i class="fa-solid fa-chevron-right" aria-hidden="true"></i></span>
+                                </button>
                                 ${specialty ? `<p class="profile-specialty">${escapeHtml(specialty)}</p>` : ''}
                                 ${whereLine ? `<p class="map-preview-where">${escapeHtml(whereLine)}</p>` : ''}
                                 <div class="map-preview-meta">
@@ -1897,7 +1900,7 @@
                             ${callBtn.replace('class="profile-quick-btn"', 'class="profile-quick-btn" style="height:52px;min-height:52px"')}
                             ${chatBtn.replace('class="profile-quick-btn"', 'class="profile-quick-btn" style="height:52px;min-height:52px"')}
                         </div>
-                        <p class="detail-preview-hint">Торкніться картки, щоб відкрити деталі</p>
+                        <p class="detail-preview-hint">Натисніть назву ще раз, щоб відкрити графік, ціни й опис</p>
                     </div>`;
                     renderDetailBody(loc, { claimBannerHtml, mode });
                     const detailView = document.getElementById('sidebar-detail-view');
