@@ -298,6 +298,236 @@ function checkSeoLanding() {
       });
       return html.includes('Міняю змішувачі') && html.includes('800 грн') && html.includes('09:00 - 18:00') && html.includes('Сантехнік');
     })(),
+    cardSchemaLocalityHours: (() => {
+      const catalog = {
+        beauty: { name: 'Краса', subcats: { nails: { name: 'Нігті' } } },
+        home: { name: 'Дім', subcats: {} },
+      };
+      const kots = {
+        id: 'kots-nails',
+        title: 'Манікюр на Доківській',
+        cat: 'beauty',
+        address: 'вул. Доківська, Коцюбинське',
+        lat: 50.4906,
+        lng: 30.3347,
+        schedule: { Пн: '09:00 - 18:00', Нд: 'Вихідний' },
+        photos: [],
+        reviewsCount: 516,
+        rating: 4.9,
+        reviews: [{ source: 'google_maps', rating: 5, text: 'UNIQUE_GOOGLE_REVIEW_BODY' }],
+      };
+      const twin = { ...kots, id: 'kots-nails-2', title: 'Другий салон', reviews: [], reviewsCount: 0 };
+      const outside = { id: 'city-beauty', title: 'Центр', cat: 'beauty', lat: 50.4, lng: 30.6, address: 'Київ' };
+      const hoursOnly = {
+        id: 'hours-only',
+        title: 'Лише текст графіка',
+        cat: 'home',
+        address: 'Київ',
+        lat: 50.45,
+        lng: 30.52,
+        workingHours: 'понеділок: 10:00–20:00',
+      };
+      const withPhoto = {
+        ...kots,
+        id: 'with-photo',
+        photos: [{ url: 'https://cdn.example.com/master.jpg' }],
+        reviews: [],
+        reviewsCount: 0,
+      };
+      const iconOnly = { ...withPhoto, id: 'icon-only', photos: [{ url: '/icon-512.png' }] };
+      const locs = [kots, twin, outside, hoursOnly];
+      const data = { masterCatalog: catalog, mockLocations: locs };
+      const graph = seo.jsonLdGraph(seo.buildSeo({ loc: 'kots-nails' }, data), { loc: 'kots-nails' }, data);
+      const biz = graph['@graph'].find((node) => node['@type'] === 'LocalBusiness');
+      const crumb = graph['@graph'].find((node) => node['@type'] === 'BreadcrumbList');
+      const bizJson = JSON.stringify(biz);
+      const hoursGraph = seo.jsonLdGraph(
+        seo.buildSeo({ loc: 'hours-only' }, { masterCatalog: catalog, mockLocations: [hoursOnly] }),
+        { loc: 'hours-only' },
+        { masterCatalog: catalog, mockLocations: [hoursOnly] }
+      );
+      const hoursBiz = hoursGraph['@graph'].find((node) => node['@type'] === 'LocalBusiness');
+      const photoGraph = seo.jsonLdGraph(
+        seo.buildSeo({ loc: 'with-photo' }, { masterCatalog: catalog, mockLocations: [withPhoto, twin, outside] }),
+        { loc: 'with-photo' },
+        { masterCatalog: catalog, mockLocations: [withPhoto, twin, outside] }
+      );
+      const photoBiz = photoGraph['@graph'].find((node) => node['@type'] === 'LocalBusiness');
+      const iconGraph = seo.jsonLdGraph(
+        seo.buildSeo({ loc: 'icon-only' }, { masterCatalog: catalog, mockLocations: [iconOnly] }),
+        { loc: 'icon-only' },
+        { masterCatalog: catalog, mockLocations: [iconOnly] }
+      );
+      const iconBiz = iconGraph['@graph'].find((node) => node['@type'] === 'LocalBusiness');
+      const lone = { ...kots, id: 'lone', reviews: [], reviewsCount: 0 };
+      const loneGraph = seo.jsonLdGraph(
+        seo.buildSeo({ loc: 'lone' }, { masterCatalog: catalog, mockLocations: [lone] }),
+        { loc: 'lone' },
+        { masterCatalog: catalog, mockLocations: [lone] }
+      );
+      const loneCrumb = loneGraph['@graph'].find((node) => node['@type'] === 'BreadcrumbList');
+      const html = seo.crawlerHtml(seo.buildSeo({ loc: 'kots-nails' }, data), { loc: 'kots-nails' }, data);
+      const monday = (biz.openingHoursSpecification || []).find((row) => row.dayOfWeek === 'Monday');
+      return (
+        biz.address.addressLocality === 'Коцюбинське' &&
+        monday &&
+        monday.opens === '09:00' &&
+        monday.closes === '18:00' &&
+        !(biz.openingHoursSpecification || []).some((row) => row.dayOfWeek === 'Sunday') &&
+        !('image' in biz) &&
+        !bizJson.includes('icon-512') &&
+        !bizJson.includes('aggregateRating') &&
+        !bizJson.includes('516') &&
+        crumb.itemListElement[1].item.endsWith('/kyiv/kotsiubynske/beauty') &&
+        html.includes('/kyiv/kotsiubynske/beauty') &&
+        !html.includes('UNIQUE_GOOGLE_REVIEW_BODY') &&
+        hoursBiz.address.addressLocality === 'Київ' &&
+        hoursBiz.openingHoursSpecification[0].dayOfWeek === 'Monday' &&
+        hoursBiz.openingHoursSpecification[0].opens === '10:00' &&
+        photoBiz.image === 'https://cdn.example.com/master.jpg' &&
+        !('image' in iconBiz) &&
+        loneCrumb.itemListElement[1].item.endsWith('/kyiv/beauty') &&
+        !loneCrumb.itemListElement[1].item.includes('/kotsiubynske/')
+      );
+    })(),
+    visibleDistrictFooter: (() => {
+      const at = (id, cat, sub, lat, lng, address) => ({
+        id,
+        title: id,
+        cat,
+        subcats: sub ? [sub] : [],
+        lat,
+        lng,
+        address,
+      });
+      const locs = [
+        at('k1', 'beauty', 'nails', 50.4906, 30.3347, 'Коцюбинське'),
+        at('k2', 'beauty', 'barber', 50.491, 30.335, 'Коцюбинське'),
+        at('k3', 'beauty', 'hair', 50.492, 30.336, 'Коцюбинське'),
+        at('k4', 'beauty', 'nails', 50.489, 30.333, 'Коцюбинське'),
+        at('k5', 'beauty', 'barber', 50.49, 30.334, 'Коцюбинське'),
+        at('k6', 'beauty', 'hair', 50.4902, 30.3342, 'Коцюбинське'),
+        at('city-nails', 'beauty', 'nails', 50.4, 30.6, 'Київ'),
+        at('city-barber', 'beauty', 'barber', 50.4, 30.6, 'Київ'),
+        at('city-hair', 'beauty', 'hair', 50.4, 30.6, 'Київ'),
+        at('a1', 'beauty', '', 50.4655, 30.355, 'Академмістечко'),
+        at('a2', 'beauty', '', 50.4658, 30.3552, 'Академмістечко'),
+        at('s1', 'beauty', '', 50.4574, 30.3553, 'Святошин'),
+      ];
+      const catalog = {
+        beauty: {
+          name: 'Краса',
+          subcats: { nails: { name: 'Нігті' }, barber: { name: 'Барбер' }, hair: { name: 'Волосся' } },
+        },
+      };
+      const landing = { loc: '', cat: 'beauty', area: 'kotsiubynske', sub: '', page: 1 };
+      const data = { masterCatalog: catalog, mockLocations: locs };
+      const shell =
+        '<html><head><title>x</title><meta name="description" content="d"><link rel="canonical" href="https://www.mapfix.com.ua/"></head><body><!--MAPFIX_CRAWL--><h1 class="nav-title" id="navTitle">t</h1><footer class="site-footer" id="siteFooter"><a href="/old">old</a></footer></body></html>';
+      const page = seo.injectSeoIntoHtml(shell, seo.buildSeo(landing, data), {
+        landing,
+        seoData: data,
+        crawlerHtml: '<section id="seo-static" class="seo-static">hidden</section>',
+      });
+      const footer = (page.match(/<footer class="site-footer"[\s\S]*?<\/footer>/) || [''])[0];
+      const staticBlock = (page.match(/<section id="seo-static"[\s\S]*?<\/section>/) || [''])[0];
+      return (
+        footer.includes('href="/kyiv/akademmistechko/beauty"') &&
+        !footer.includes('href="/kyiv/sviatoshyn/beauty"') &&
+        !footer.includes('href="/kyiv/borshchahivka/beauty"') &&
+        !footer.includes('href="/kyiv/kotsiubynske/beauty"') &&
+        footer.includes('href="/kyiv/kotsiubynske/beauty/nails"') &&
+        footer.includes('href="/kyiv/kotsiubynske/beauty/barber"') &&
+        footer.includes('href="/kyiv/kotsiubynske/beauty/hair"') &&
+        !footer.includes('seo-static') &&
+        !staticBlock.includes('site-footer') &&
+        indexHtml.includes('id="siteFooter"') &&
+        seo.MIN_AREA_LISTING === 2
+      );
+    })(),
+    demoAbsentFromSitemap: (() => {
+      const demoIds = [
+        'loc-top-tyres',
+        'loc-auto-diagnostics',
+        'loc-home-master',
+        'loc-english-school',
+        'loc-clean-car',
+        'loc-pet-groom',
+        'loc-nail-studio',
+        'loc-barber-kyiv',
+        'loc-football-arena',
+        'loc-shoe-master',
+      ];
+      const catalog = {
+        auto: { name: 'Авто', subcats: { tyres: { name: 'Шини' } } },
+        beauty: { name: 'Краса', subcats: {} },
+      };
+      const demos = [
+        ...demoIds.map((id) => ({ id, title: 'Demo', cat: 'auto', lat: 50.45, lng: 30.52 })),
+        { id: 'test-title', title: 'Test …', cat: 'beauty', lat: 50.45, lng: 30.52 },
+        { id: 'qa-biz', title: 'QA/Admin Biz', cat: 'beauty', lat: 50.45, lng: 30.52 },
+      ];
+      const real = { id: 'real-master', title: 'Майстер Іван', cat: 'auto', lat: 50.45, lng: 30.52 };
+      const locations = [...demos, real];
+      const smDemo = seo.sitemapXml({
+        categories: [{ key: 'auto' }, { key: 'beauty' }],
+        locations,
+      });
+      const listingHtml = seo.crawlerHtml(
+        seo.buildSeo({ loc: '', cat: 'auto', area: '', sub: '' }, { masterCatalog: catalog, mockLocations: locations }),
+        { loc: '', cat: 'auto', area: '', sub: '' },
+        { masterCatalog: catalog, mockLocations: locations }
+      );
+      const hiddenTitles = seo.crawlerHtml(
+        seo.buildSeo({ loc: '', cat: 'beauty', area: '', sub: '' }, { masterCatalog: catalog, mockLocations: locations }),
+        { loc: '', cat: 'beauty', area: '', sub: '' },
+        { masterCatalog: catalog, mockLocations: locations }
+      );
+      const hiddenResolved = [...demoIds, 'test-title', 'qa-biz'].every((id) => {
+        const resolved = seo.resolveSeoRequest({
+          pathname: `/p/${id}`,
+          query: {},
+          catalog,
+          locations,
+        });
+        return resolved.notFound === true && !resolved.landing;
+      });
+      const realResolved = seo.resolveSeoRequest({
+        pathname: '/p/real-master',
+        query: {},
+        catalog,
+        locations,
+      });
+      return (
+        demoIds.every((id) => !smDemo.includes(`/p/${id}`)) &&
+        !smDemo.includes('/p/test-title') &&
+        !smDemo.includes('/p/qa-biz') &&
+        smDemo.includes('/p/real-master') &&
+        !listingHtml.includes('/p/loc-top-tyres') &&
+        listingHtml.includes('/p/real-master') &&
+        !hiddenTitles.includes('Test …') &&
+        !hiddenTitles.includes('QA/Admin Biz') &&
+        hiddenResolved &&
+        realResolved.landing &&
+        realResolved.landing.loc === 'real-master' &&
+        seo.isPublicTestLocation({ id: 'qa-biz', title: 'QA/Admin Biz' }) &&
+        seo.isPublicTestLocation({ id: 'test-title', title: 'Test …' })
+      );
+    })(),
+    clientKeepsServerHead: (() => {
+      const appJs = read('public/js/mapfix-app.js');
+      return (
+        appJs.includes('seoListingTouched') &&
+        appJs.includes('keepServerSeo') &&
+        appJs.includes('Манікюр{p} — манікюр, педикюр, нарощування | Mapfix') &&
+        appJs.includes('function canonicalHrefFor') &&
+        appJs.includes("page !== '1'") &&
+        !appJs.includes('шлях без query') &&
+        appJs.includes('function updateListingCount') &&
+        appJs.includes('locationMatchesMapFilter') &&
+        indexHtml.includes('id="listingCount"')
+      );
+    })(),
     registerIndexable:
       !read('public/register.html').includes('noindex') &&
       read('public/register.html').includes('Додати бізнес безкоштовно') &&

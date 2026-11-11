@@ -855,6 +855,8 @@ async function serveMapPage(req, res) {
       jsonLd: jsonLdGraph(seo, landing, seoData),
       bootScript: landingBootScript(landing),
       crawlerHtml: crawlerHtml(seo, landing, seoData),
+      landing,
+      seoData,
       noindex: Boolean(decision.noindex),
       prevUrl: decision.prevUrl,
       nextUrl: decision.nextUrl,
