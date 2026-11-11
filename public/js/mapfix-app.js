@@ -381,18 +381,97 @@
                 syncMapMarkers();
             }
 
+            const GUEST_FAV_KEY = 'mf_guest_favs';
+            const GUEST_FAV_MAX = 30;
+
+            function guestFavId(value) {
+                const id = String(value || '').trim();
+                if (!id || id.length > 80 || !/^[\w.-]+$/.test(id)) return '';
+                return id;
+            }
+
+            function readGuestFavs() {
+                try {
+                    const raw = JSON.parse(localStorage.getItem(GUEST_FAV_KEY) || '[]');
+                    if (!Array.isArray(raw)) return [];
+                    const ids = [];
+                    for (const item of raw) {
+                        const id = guestFavId(item);
+                        if (!id || ids.includes(id)) continue;
+                        ids.push(id);
+                        if (ids.length >= GUEST_FAV_MAX) break;
+                    }
+                    return ids;
+                } catch (_) {
+                    return [];
+                }
+            }
+
+            function writeGuestFavs(ids) {
+                try {
+                    const next = [];
+                    for (const item of ids || []) {
+                        const id = guestFavId(item);
+                        if (!id || next.includes(id)) continue;
+                        next.push(id);
+                        if (next.length >= GUEST_FAV_MAX) break;
+                    }
+                    if (!next.length) localStorage.removeItem(GUEST_FAV_KEY);
+                    else localStorage.setItem(GUEST_FAV_KEY, JSON.stringify(next));
+                } catch (_) {}
+            }
+
+            async function mergeGuestFavorites() {
+                const ids = readGuestFavs();
+                if (!ids.length) return;
+                const remaining = [];
+                for (const locationId of ids) {
+                    try {
+                        const res = await fetch('/api/client/favorites', {
+                            method: 'POST',
+                            credentials: 'same-origin',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ locationId }),
+                        });
+                        if (!res.ok && res.status !== 404 && res.status !== 400) remaining.push(locationId);
+                    } catch (_) {
+                        remaining.push(locationId);
+                    }
+                }
+                writeGuestFavs(remaining);
+            }
+
+            function paintFavoriteState(locationId) {
+                const on = State.favoriteIds.has(locationId);
+                document.querySelectorAll('[data-fav-for]').forEach((btn) => {
+                    if (btn.getAttribute('data-fav-for') !== locationId) return;
+                    btn.classList.toggle('active', on);
+                    btn.setAttribute('aria-pressed', on ? 'true' : 'false');
+                    if (btn.getAttribute('data-fav-compact') === '1') {
+                        btn.textContent = on ? '★' : '☆';
+                        btn.setAttribute('aria-label', on ? 'Прибрати з обраного' : 'Зберегти в обране');
+                    } else {
+                        btn.textContent = on ? '★ Обране' : '☆ В обране';
+                    }
+                });
+            }
+
             async function loadSession() {
+                State.favoriteIds = new Set(readGuestFavs());
                 try {
                     const meRes = await fetch('/api/me', { credentials: 'same-origin', cache: 'no-store' });
                     const me = await meRes.json();
                     if (me.loggedIn) {
                         State.currentUser = me.user;
                         if (me.user.role === 'client') {
+                            await mergeGuestFavorites();
                             const favRes = await fetch('/api/client/favorites', { credentials: 'same-origin', cache: 'no-store' });
                             const favData = await favRes.json();
                             if (favRes.ok) {
                                 State.favoriteIds = new Set(favData.locationIds || []);
                             }
+                        } else {
+                            State.favoriteIds = new Set();
                         }
                     }
                 } catch (_) {}
@@ -741,9 +820,10 @@
                 document.getElementById('logoutMenuBtn').onclick = async () => {
                     await fetch('/api/logout', { method: 'POST' }).catch(() => {});
                     State.currentUser = null;
-                    State.favoriteIds = new Set();
+                    State.favoriteIds = new Set(readGuestFavs());
                     closeUserMenu();
                     updateHeaderAuthUI();
+                    if (State.selectedLocation) paintFavoriteState(State.selectedLocation.id);
                 };
             }
 
@@ -1143,34 +1223,46 @@
             });
 
             window.toggleFavorite = async function(locationId) {
-                if (!State.currentUser || State.currentUser.role !== 'client') {
+                const id = String(locationId || '').trim();
+                if (!id) return;
+                const user = State.currentUser;
+                if (user && user.role !== 'client') {
                     if (confirm('Увійдіть як клієнт. Перейти до реєстрації?')) {
                         window.location.href = withTrackingQuery('/register.html');
                     }
                     return;
                 }
-                const isFav = State.favoriteIds.has(locationId);
+                const isFav = State.favoriteIds.has(id);
+                if (!user) {
+                    const ids = readGuestFavs();
+                    writeGuestFavs(isFav ? ids.filter((item) => item !== id) : ids.concat(id));
+                    if (isFav) State.favoriteIds.delete(id);
+                    else {
+                        State.favoriteIds.add(id);
+                        trackLocationClick(id, 'favorite');
+                    }
+                    paintFavoriteState(id);
+                    return;
+                }
                 const url = isFav
-                    ? `/api/client/favorites/${locationId}`
+                    ? `/api/client/favorites/${encodeURIComponent(id)}`
                     : '/api/client/favorites';
                 const res = await fetch(url, {
                     method: isFav ? 'DELETE' : 'POST',
+                    credentials: 'same-origin',
                     headers: { 'Content-Type': 'application/json' },
-                    body: isFav ? undefined : JSON.stringify({ locationId }),
+                    body: isFav ? undefined : JSON.stringify({ locationId: id }),
                 });
-                const data = await res.json();
+                const data = await res.json().catch(() => ({}));
                 if (!res.ok) return alert(data.error || 'Помилка');
-                if (isFav) State.favoriteIds.delete(locationId);
-                else {
-                    State.favoriteIds.add(locationId);
-                    trackLocationClick(locationId, 'favorite');
+                if (isFav) {
+                    State.favoriteIds.delete(id);
+                    writeGuestFavs(readGuestFavs().filter((item) => item !== id));
+                } else {
+                    State.favoriteIds.add(id);
+                    trackLocationClick(id, 'favorite');
                 }
-                if (State.selectedLocation?.id === locationId) {
-                    openMasterDetail(locationId, {
-                        mode: State.detailMode || 'dive',
-                        forceMode: true,
-                    });
-                }
+                paintFavoriteState(id);
             };
 
             const appShell = document.getElementById('app-shell');
@@ -1372,7 +1464,7 @@
                 }
                 if (cardDragMoved) return;
                 if (State.detailMode !== 'preview' || !State.selectedLocation) return;
-                if (e.target.closest('a, button, input, textarea, select, label')) return;
+                if (e.target.closest('a, button, input, textarea, select, label, .map-preview-claimbox, #previewClaimSlot')) return;
                 diveIntoSelectedDetail();
             });
             function cardSheetIsOpen() {
@@ -1384,7 +1476,7 @@
             function beginCardDrag(e) {
                 if (!isMobileLayout() || !cardSheetIsOpen()) return;
                 if (e.pointerType === 'mouse' && e.button !== 0) return;
-                if (e.target.closest('a, button, input, textarea, select, label')) return;
+                if (e.target.closest('a, button, input, textarea, select, label, .map-preview-claimbox, #previewClaimSlot')) return;
                 const scroller = document.querySelector('#app-shell.showing-location .sheet-body-host');
                 const inBody = e.target.closest('#detailBodyContent');
                 if (inBody && scroller && scroller.scrollTop > 8) return;
@@ -1527,6 +1619,8 @@
                 const id = String(locationId || '').trim();
                 const t = String(type || '').trim();
                 if (!id || !t) return;
+                // analyticsBody uses MapfixAnalytics.context(), which reads the
+                // 30-day first-touch store (mf_utm_first) when this tab has no UTM.
                 fetch('/api/locations/' + encodeURIComponent(id) + '/click', {
                     method: 'POST',
                     credentials: 'same-origin',
@@ -1994,29 +2088,7 @@
                     window.masterCatalog?.[loc.cat]?.name || loc.cat || ''
                 );
                 const canOfferClaim = !loc.providerId;
-                const locPhoneDigits = String(loc.phone || '').replace(/\D/g, '');
-                const locHasClaimPhone = locPhoneDigits.length >= 10;
-                const locIdEsc = escapeHtml(loc.id);
-                const claimBannerHtml = canOfferClaim
-                    ? `<div class="claim-owner-banner" id="claimOwnerBanner" onclick="event.stopPropagation()">
-                        <strong>Це ваш заклад?</strong>
-                        <p>${
-                          locHasClaimPhone
-                            ? 'Введіть телефон з картки. Якщо збігається — заклад одразу ваш.'
-                            : 'У точки немає телефону для підтвердження. Напишіть нам через «Повідомити про помилку» — призначимо вручну.'
-                        }</p>
-                        ${
-                          locHasClaimPhone
-                            ? `<form class="claim-phone-form" id="claimByPhoneForm" onsubmit="event.preventDefault(); event.stopPropagation(); submitClaimByPhone(event, '${locIdEsc}')">
-                                <input type="tel" id="claimPhoneInput" inputmode="tel" autocomplete="tel" placeholder="+380XXXXXXXXX" required>
-                                <p class="claim-phone-error" id="claimPhoneError" hidden></p>
-                                <button type="submit" class="action-btn btn-claim" id="claimLocBtn">Забрати заклад</button>
-                                <p class="claim-phone-login">Уже є акаунт? <a href="${escapeHtml(claimLoginUrl(loc.id))}">Увійти</a></p>
-                               </form>`
-                            : `<button type="button" class="action-btn btn-claim" id="claimLocBtn" onclick="event.stopPropagation(); submitClaimByPhone(event, '${locIdEsc}')">Повідомити, що це мій заклад</button>`
-                        }
-                       </div>`
-                    : '';
+                const claimBannerHtml = claimBannerHtmlFor(loc);
 
                 renderLocationHero(loc);
 
@@ -2038,6 +2110,8 @@
                 const hasCoords = Number.isFinite(Number(loc.lat)) && Number.isFinite(Number(loc.lng));
                 const hasAddress = Boolean(String(loc.address || '').trim());
                 const locIdAttr = escapeHtml(loc.id);
+                const isFav = State.favoriteIds.has(loc.id);
+                const previewFavBtn = `<button type="button" class="btn-fav-header${isFav ? ' active' : ''}" data-fav-for="${locIdAttr}" data-fav-compact="1" aria-pressed="${isFav ? 'true' : 'false'}" aria-label="${isFav ? 'Прибрати з обраного' : 'Зберегти в обране'}" onclick="event.stopPropagation(); toggleFavorite('${locIdAttr}')" style="width:36px;height:36px;min-height:36px;padding:0;flex:0 0 36px;line-height:1;align-self:flex-start">${isFav ? '★' : '☆'}</button>`;
                 const disabledQuick = (icon, label) =>
                     `<button type="button" class="profile-quick-btn" aria-disabled="true" disabled><i class="fa-solid ${icon}"></i> ${label}</button>`;
 
@@ -2097,7 +2171,7 @@
                 const headerBox = document.getElementById('detailHeaderContent');
                 if (previewMobile) {
                     headerBox.innerHTML = `
-                    <div class="map-preview">
+                    <div class="map-preview" style="max-width:100%;min-width:0">
                         <div class="map-preview-main">
                             <div class="profile-avatar map-preview-avatar">${locationAvatarHtml(loc)}</div>
                             <div class="map-preview-copy">
@@ -2113,6 +2187,7 @@
                                     ${previewPrice ? `<span class="map-preview-price">${escapeHtml(previewPrice)}</span>` : ''}
                                 </div>
                             </div>
+                            ${previewFavBtn}
                         </div>
                         <div class="map-preview-actions">
                             ${callBtn.replace('class="profile-quick-btn"', 'class="profile-quick-btn" style="height:52px;min-height:52px"')}
@@ -2123,9 +2198,10 @@
                             <button type="button" class="map-preview-stale" id="stalePhoneBtn"${staleReported ? ' disabled' : ''} onclick="event.stopPropagation(); reportStalePhone('${locIdAttr}')">${staleReported ? 'Дякуємо, ми перевіримо номер' : 'Номер неактуальний'}</button>
                             <p class="map-preview-stale-note" id="stalePhoneNote" hidden></p>
                         </div>
+                        ${canOfferClaim ? `<button type="button" class="map-preview-claimline" id="previewClaimLine" onclick="event.stopPropagation(); revealPreviewClaim(event)">Це ваш заклад? Підтвердити номером з картки</button><div id="previewClaimSlot" hidden></div>` : ''}
                         <p class="detail-preview-hint">Натисніть назву ще раз, щоб відкрити графік, ціни й опис</p>
                     </div>`;
-                    renderDetailBody(loc, { claimBannerHtml, mode });
+                    renderDetailBody(loc, { claimBannerHtml: '', mode });
                     const detailView = document.getElementById('sidebar-detail-view');
                     detailView.classList.add('show', 'mode-preview');
                     detailView.classList.remove('mode-dive');
@@ -2173,6 +2249,89 @@
                 refreshClaimButton(loc);
                 applyPageSeoFromState();
             };
+
+            function claimBannerHtmlFor(loc, opts = {}) {
+                if (!loc || loc.providerId) return '';
+                const locHasClaimPhone = String(loc.phone || '').replace(/\D/g, '').length >= 10;
+                const locIdEsc = escapeHtml(loc.id);
+                const preview = Boolean(opts.preview);
+                const wrapClass = preview ? 'map-preview-claimbox' : 'claim-owner-banner';
+                const wrapStyle = preview
+                    ? ' style="display:flex;flex-direction:column;gap:6px;padding:10px 12px;border-radius:10px;border:1.5px solid var(--ink);background:var(--primary-light);margin:0;max-width:100%;min-width:0;box-sizing:border-box"'
+                    : '';
+                const titleStyle = preview ? ' style="font-size:14px;font-weight:800;line-height:1.3"' : '';
+                const textStyle = preview
+                    ? ' style="margin:0;font-size:12px;font-weight:600;line-height:1.4;color:var(--muted)"'
+                    : '';
+                const intro = locHasClaimPhone
+                    ? 'Введіть телефон з картки. Якщо збігається — заклад одразу ваш.'
+                    : 'У точки немає телефону для підтвердження. Напишіть нам через «Повідомити про помилку» — призначимо вручну.';
+                const controls = locHasClaimPhone
+                    ? `<form class="claim-phone-form" id="claimByPhoneForm" onsubmit="event.preventDefault(); event.stopPropagation(); submitClaimByPhone(event, '${locIdEsc}')">
+                        <input type="tel" id="claimPhoneInput" inputmode="tel" autocomplete="tel" placeholder="+380XXXXXXXXX" required>
+                        <p class="claim-phone-error" id="claimPhoneError" hidden></p>
+                        <button type="submit" class="action-btn btn-claim" id="claimLocBtn">Забрати заклад</button>
+                        <p class="claim-phone-login">Уже є акаунт? <a href="${escapeHtml(claimLoginUrl(loc.id))}">Увійти</a></p>
+                       </form>`
+                    : `<button type="button" class="action-btn btn-claim" id="claimLocBtn" onclick="event.stopPropagation(); submitClaimByPhone(event, '${locIdEsc}')">Повідомити, що це мій заклад</button>`;
+                return `<div class="${wrapClass}" id="claimOwnerBanner"${wrapStyle} onclick="event.stopPropagation()">
+                    <strong${titleStyle}>Це ваш заклад?</strong>
+                    <p${textStyle}>${intro}</p>
+                    ${controls}
+                </div>`;
+            }
+
+            window.revealPreviewClaim = function (event) {
+                if (event) {
+                    event.preventDefault?.();
+                    event.stopPropagation?.();
+                }
+                const loc = State.selectedLocation;
+                const slot = document.getElementById('previewClaimSlot');
+                if (!loc || !slot || slot.dataset.open === '1') return;
+                const html = claimBannerHtmlFor(loc, { preview: true });
+                if (!html) return;
+                slot.innerHTML = html;
+                slot.hidden = false;
+                slot.dataset.open = '1';
+                const line = document.getElementById('previewClaimLine');
+                if (line) {
+                    line.hidden = true;
+                    line.style.display = 'none';
+                }
+                const focusEl = document.getElementById('claimPhoneInput') || document.getElementById('claimLocBtn');
+                try { focusEl?.focus({ preventScroll: true }); } catch (_) { focusEl?.focus(); }
+                scrollClaimFormIntoView();
+                setTimeout(() => {
+                    map.invalidateSize();
+                    scrollClaimFormIntoView();
+                }, 40);
+            };
+
+            function scrollClaimFormIntoView() {
+                const slot = document.getElementById('previewClaimSlot');
+                if (!slot) return;
+                let scroller = slot.parentElement;
+                while (scroller && scroller !== document.body) {
+                    if (scroller.scrollHeight > scroller.clientHeight + 4) break;
+                    scroller = scroller.parentElement;
+                }
+                if (!scroller || scroller === document.body) {
+                    try { slot.scrollIntoView({ block: 'end', inline: 'nearest' }); } catch (_) {}
+                    return;
+                }
+                const slotRect = slot.getBoundingClientRect();
+                const box = scroller.getBoundingClientRect();
+                const field = document.getElementById('claimPhoneInput') || document.getElementById('claimLocBtn');
+                const fits = slotRect.height <= box.height;
+                const focusRect = !fits && field ? field.getBoundingClientRect() : slotRect;
+                const pad = 4;
+                if (focusRect.bottom > box.bottom - pad) {
+                    scroller.scrollTop += focusRect.bottom - box.bottom + pad;
+                } else if (focusRect.top < box.top + pad) {
+                    scroller.scrollTop -= box.top + pad - focusRect.top;
+                }
+            }
 
             function refreshClaimButton(loc) {
                 const banner = document.getElementById('claimOwnerBanner');
@@ -2417,7 +2576,7 @@
                                 </div>
                             </div>
                             <div class="detail-secondary-row">
-                                <button type="button" class="action-btn btn-fav-header ${isFav ? 'active' : ''}" onclick="event.stopPropagation(); toggleFavorite('${escapeHtml(loc.id)}')">${isFav ? '★ Обране' : '☆ В обране'}</button>
+                                <button type="button" class="action-btn btn-fav-header ${isFav ? 'active' : ''}" data-fav-for="${escapeHtml(loc.id)}" aria-pressed="${isFav ? 'true' : 'false'}" onclick="event.stopPropagation(); toggleFavorite('${escapeHtml(loc.id)}')">${isFav ? '★ Обране' : '☆ В обране'}</button>
                                 <button type="button" class="action-btn btn-report" onclick="event.stopPropagation(); reportLocation('${escapeHtml(loc.id)}')">⚑ Скарга</button>
                                 ${manageLocationBtnHtml(loc)}
                             </div>
