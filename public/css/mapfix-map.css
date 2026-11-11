@@ -1801,6 +1801,10 @@
                 flex: 0 0 auto;
                 height: auto;
                 max-height: 46vh;
+                touch-action: none;
+            }
+            #app-shell.showing-location.sheet-dive #sidebar {
+                touch-action: pan-y;
             }
             #sidebar-detail-view.mode-preview .profile-quick-row { display: none; }
             #app-shell.showing-location .category-strip-wrap {
@@ -1937,11 +1941,8 @@
                 height: auto;
                 overflow: visible;
             }
-            #app-shell.showing-location.sheet-peek .sheet-drag-handle::after {
+            #app-shell.showing-location .sheet-drag-handle::after {
                 content: 'Потягніть вниз, щоб закрити';
-            }
-            #app-shell.showing-location.sheet-dive .sheet-drag-handle::after {
-                content: 'Потягніть вниз, щоб згорнути';
             }
             #app-shell.showing-location .sheet-drag-handle {
                 height: 36px;

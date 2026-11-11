@@ -1130,19 +1130,9 @@
 
             function lowerOpenCard() {
                 if (!State.selectedLocation) return false;
-                if (State.detailMode === 'dive') {
-                    openMasterDetail(State.selectedLocation.id, {
-                        mode: 'preview',
-                        forceMode: true,
-                        fromMarker: true,
-                    });
-                    return true;
-                }
-                if (State.detailMode === 'preview') {
-                    closeMasterDetail();
-                    return true;
-                }
-                return false;
+                if (State.detailMode !== 'preview' && State.detailMode !== 'dive') return false;
+                closeMasterDetail();
+                return true;
             }
 
             function lowerSheetLevel() {
@@ -1206,9 +1196,11 @@
             };
 
             const detailViewEl = document.getElementById('sidebar-detail-view');
+            const sidebarEl = document.getElementById('sidebar');
             let suppressDetailClick = false;
             let cardDragStartY = 0;
             let cardDragArmed = false;
+            let cardDragMoved = false;
             detailViewEl.addEventListener('click', (e) => {
                 if (suppressDetailClick) {
                     suppressDetailClick = false;
@@ -1218,23 +1210,49 @@
                 if (e.target.closest('a, button, input, textarea, select, label')) return;
                 diveIntoSelectedDetail();
             });
-            detailViewEl.addEventListener('touchstart', (e) => {
-                if (!isMobileLayout()) return;
-                if (e.target.closest('#detailBodyContent, a, button, input, textarea, select, label')) return;
+            function cardDragShouldIgnore(target) {
+                if (!target || !target.closest) return true;
+                if (target.closest('a, button, input, textarea, select, label')) return true;
+                if (State.detailMode !== 'dive') return false;
+                const body = document.getElementById('detailBodyContent');
+                return Boolean(body && body.contains(target) && body.scrollTop > 4);
+            }
+            sidebarEl.addEventListener('touchstart', (e) => {
+                if (!isMobileLayout() || !State.selectedLocation) return;
+                if (State.detailMode !== 'preview' && State.detailMode !== 'dive') return;
+                if (cardDragShouldIgnore(e.target)) return;
                 cardDragArmed = true;
+                cardDragMoved = false;
                 cardDragStartY = e.touches[0].clientY;
+                sidebarEl.style.transition = 'none';
             }, { passive: true });
-            detailViewEl.addEventListener('touchend', (e) => {
+            sidebarEl.addEventListener('touchmove', (e) => {
+                if (!cardDragArmed) return;
+                const dy = e.touches[0].clientY - cardDragStartY;
+                if (dy <= 0) return;
+                cardDragMoved = true;
+                if (e.cancelable) e.preventDefault();
+                sidebarEl.style.transform = 'translateY(' + Math.min(dy, 320) + 'px)';
+            }, { passive: false });
+            function endCardDrag(clientY) {
                 if (!cardDragArmed) return;
                 cardDragArmed = false;
-                const diff = e.changedTouches[0].clientY - cardDragStartY;
-                if (diff < 48) return;
-                suppressDetailClick = true;
-                lowerOpenCard();
-            }, { passive: true });
-            detailViewEl.addEventListener('touchcancel', () => {
-                cardDragArmed = false;
-            }, { passive: true });
+                const dy = clientY - cardDragStartY;
+                sidebarEl.style.transition = '';
+                sidebarEl.style.transform = '';
+                if (dy > 48) {
+                    suppressDetailClick = true;
+                    sheetDragging = true;
+                    lowerOpenCard();
+                }
+            }
+            sidebarEl.addEventListener('touchend', (e) => {
+                endCardDrag(e.changedTouches[0].clientY);
+            });
+            sidebarEl.addEventListener('touchcancel', (e) => {
+                const y = e.changedTouches && e.changedTouches[0] ? e.changedTouches[0].clientY : cardDragStartY;
+                endCardDrag(y);
+            });
 
             function pulseSheetContent() {
                 sidebarListView.classList.remove('sheet-content-enter');
@@ -2267,6 +2285,8 @@
                 const detailView = document.getElementById('sidebar-detail-view');
                 detailView.classList.remove('show', 'mode-preview', 'mode-dive');
                 appShell.classList.remove('sheet-dive', 'sheet-peek', 'showing-location');
+                const headerBox = document.getElementById('detailHeaderContent');
+                if (headerBox) headerBox.innerHTML = '';
                 const heroBox = document.getElementById('detailHeroContent');
                 if (heroBox) heroBox.innerHTML = '';
                 const orderBar = document.getElementById('detailOrderBar');
@@ -3123,6 +3143,7 @@
 
             sheetHandle.addEventListener('touchend', (e) => {
                 if (!isMobileLayout()) return;
+                if (cardDragMoved) return;
                 const diff = e.changedTouches[0].clientY - sheetDragStartY;
                 if (Math.abs(diff) < 36) return;
                 if (diff < 0) raiseSheetLevel();
