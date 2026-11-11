@@ -136,6 +136,10 @@ function createAuthRouter({ jwtSecret, toPublicUserWithProfile, readData }) {
         type: 'login',
         user: verifyResult.user,
         meta: { method: 'telegram_otp' },
+        sid: req.body?.sid,
+        utm: req.body?.utm,
+        ref: req.body?.ref,
+        path: req.body?.path,
       });
 
       const data = await readData();

@@ -3,6 +3,7 @@
 const fs = require('fs');
 const path = require('path');
 const http = require('http');
+const vm = require('vm');
 const bcrypt = require('bcryptjs');
 const { validateCatalogHierarchy } = require('../catalog-data.js');
 
@@ -382,6 +383,292 @@ function checkSeoLanding() {
   };
 }
 
+function memoryStore(initial) {
+  const data = new Map();
+  if (initial) {
+    for (const [key, value] of Object.entries(initial)) data.set(key, String(value));
+  }
+  return {
+    getItem(key) {
+      return data.has(key) ? data.get(key) : null;
+    },
+    setItem(key, value) {
+      data.set(String(key), String(value));
+    },
+    removeItem(key) {
+      data.delete(key);
+    },
+    dump() {
+      return Object.fromEntries(data);
+    },
+  };
+}
+
+function loadAnalytics({ href, local, session, standalone }) {
+  const posts = [];
+  const windowObj = {
+    location: new URL(href),
+    crypto: { randomUUID: () => 'sid-test' },
+    navigator: { sendBeacon: () => false, standalone: !!standalone },
+    matchMedia: (query) => ({ matches: !!standalone && query === '(display-mode: standalone)' }),
+  };
+  const sandbox = {
+    localStorage: local,
+    sessionStorage: session,
+    window: windowObj,
+    document: { referrer: '', addEventListener() {} },
+    navigator: windowObj.navigator,
+    crypto: windowObj.crypto,
+    Blob,
+    URL,
+    URLSearchParams,
+    fetch: (url, opts) => {
+      posts.push({ url: String(url), body: opts && opts.body });
+      return Promise.resolve({ ok: true });
+    },
+    setInterval: () => 0,
+    console,
+  };
+  vm.createContext(sandbox);
+  vm.runInContext(read('public/mf-analytics.js'), sandbox, { filename: 'mf-analytics.js' });
+  return { api: sandbox.window.MapfixAnalytics, posts };
+}
+
+function pagePosts(posts) {
+  return posts
+    .filter((row) => row.url === '/api/analytics/page')
+    .map((row) => JSON.parse(row.body));
+}
+
+function checkAttribution() {
+  const seo = require('../seo.js');
+  if (!process.env.SUPABASE_URL && !process.env.VITE_SUPABASE_URL) {
+    process.env.SUPABASE_URL = 'https://example.supabase.co';
+  }
+  if (
+    !process.env.SUPABASE_SERVICE_ROLE_KEY &&
+    !process.env.SUPABASE_ANON_KEY &&
+    !process.env.VITE_SUPABASE_ANON_KEY
+  ) {
+    process.env.SUPABASE_ANON_KEY = 'test-anon-key';
+  }
+  const events = require('../analytics-events.js');
+  const serverJs = read('server.js');
+  const manifest = JSON.parse(read('public/manifest.json'));
+  const prevBase = process.env.PUBLIC_BASE_URL;
+
+  const tracked = seo.keepTrackingQuery({
+    utm_source: 'test_agent',
+    fbclid: 'testfb',
+    gclid: '1',
+    ttclid: 'tt',
+    yclid: 'yc',
+    password: 'secret',
+  });
+  const kotsLocation =
+    seo.kotsyubynskeToKyivPath(null, 'krasa') +
+    '?' +
+    seo.keepTrackingQuery({ utm_source: 'test_agent', fbclid: 'testfb' });
+  const apex = seo.apexHostRedirectUrl(
+    'mapfix.com.ua',
+    '/kyiv/kotsiubynske/beauty?utm_source=ktsb&gclid=1'
+  );
+  const wwwSame = seo.apexHostRedirectUrl(
+    'www.mapfix.com.ua',
+    '/kyiv/kotsiubynske/beauty?utm_source=ktsb&gclid=1'
+  );
+  process.env.PUBLIC_BASE_URL = 'https://mapfix.com.ua';
+  const noLoop = seo.apexHostRedirectUrl('mapfix.com.ua', '/kyiv/kotsiubynske/beauty?gclid=1');
+  if (prevBase === undefined) delete process.env.PUBLIC_BASE_URL;
+  else process.env.PUBLIC_BASE_URL = prevBase;
+
+  const callFields = events.buildEventFields({
+    utm: {
+      source: 'test_agent',
+      medium: 'cpc',
+      campaign: 'koc_beauty',
+      content: 'ad1',
+      term: 'manicure',
+      fbclid: 'testfb',
+      gclid: 'g1',
+    },
+    body: { sid: 'sid-1', meta: { password: 'secret', kind: 'install' }, password: 'secret' },
+  });
+  const visitFields = events.buildEventFields({
+    body: {
+      utm: { source: 'test_agent' },
+      meta: { returning: 1, standalone: 1, password: 'secret' },
+    },
+    meta: { method: 'password' },
+  });
+
+  const visitUrl =
+    'https://www.mapfix.com.ua/kyiv/kotsiubynske/beauty?utm_source=test_agent&utm_medium=cpc&utm_campaign=koc_beauty&utm_content=ad1&fbclid=testfb';
+  const local = memoryStore();
+  const first = loadAnalytics({ href: visitUrl, local, session: memoryStore() });
+  const ctx = first.api.context();
+  const loginHref = first.api.withTracking('/login.html?next=%2Fp%2Fabc');
+  const registerHref = first.api.withTracking('/register.html?role=provider');
+  const storedFirst = JSON.parse(local.getItem('mf_utm_first'));
+
+  const secondLocal = memoryStore();
+  const kept = loadAnalytics({
+    href: 'https://www.mapfix.com.ua/kyiv/kotsiubynske/beauty?utm_source=first',
+    local: secondLocal,
+    session: memoryStore(),
+  });
+  const before = JSON.parse(secondLocal.getItem('mf_utm_first')).source;
+  loadAnalytics({
+    href: 'https://www.mapfix.com.ua/?utm_source=second',
+    local: secondLocal,
+    session: memoryStore(),
+  });
+  const afterOther = JSON.parse(secondLocal.getItem('mf_utm_first')).source;
+  const bare = loadAnalytics({
+    href: 'https://www.mapfix.com.ua/kyiv/kotsiubynske/beauty',
+    local: secondLocal,
+    session: memoryStore(),
+  });
+  const sessionWins = loadAnalytics({
+    href: 'https://www.mapfix.com.ua/',
+    local: secondLocal,
+    session: memoryStore({ mf_utm: JSON.stringify({ source: 'tab', medium: 'cpc' }) }),
+  });
+
+  secondLocal.setItem(
+    'mf_utm_first',
+    JSON.stringify({ source: 'stale', ts: Date.now() - 31 * 24 * 60 * 60 * 1000 })
+  );
+  const expired = loadAnalytics({
+    href: 'https://www.mapfix.com.ua/',
+    local: secondLocal,
+    session: memoryStore(),
+  });
+
+  const returningLocal = memoryStore({ mf_visit_day: '1999-01-01' });
+  const returning = loadAnalytics({
+    href: 'https://www.mapfix.com.ua/',
+    local: returningLocal,
+    session: memoryStore(),
+  });
+  const returningPages = pagePosts(returning.posts);
+  returning.api.page();
+  const returningPagesAfter = pagePosts(returning.posts);
+  const fresh = loadAnalytics({
+    href: 'https://www.mapfix.com.ua/',
+    local: memoryStore(),
+    session: memoryStore(),
+  });
+
+  const pwa = loadAnalytics({
+    href: 'https://www.mapfix.com.ua/?utm_source=pwa&utm_medium=homescreen',
+    local: memoryStore(),
+    session: memoryStore(),
+    standalone: true,
+  });
+  const pwaPage = pagePosts(pwa.posts)[0];
+  const browser = loadAnalytics({
+    href: 'https://www.mapfix.com.ua/kyiv/kotsiubynske/beauty',
+    local: memoryStore(),
+    session: memoryStore(),
+    standalone: false,
+  });
+  const browserPage = pagePosts(browser.posts)[0];
+
+  const recentLocal = memoryStore();
+  const recent = loadAnalytics({
+    href: 'https://www.mapfix.com.ua/',
+    local: recentLocal,
+    session: memoryStore(),
+  });
+  for (let i = 1; i <= 9; i++) recent.api.rememberRecent({ id: 'loc-' + i, title: 'Картка ' + i });
+  recent.api.rememberRecent({ id: 'loc-9', title: 'Картка 9 знову' });
+  recent.api.rememberRecent({ id: '<script>', title: 'ні' });
+  const recentList = recent.api.readRecent();
+
+  const checks = {
+    clickIdsKept:
+      tracked.includes('utm_source=test_agent') &&
+      tracked.includes('fbclid=testfb') &&
+      tracked.includes('gclid=1') &&
+      tracked.includes('ttclid=tt') &&
+      tracked.includes('yclid=yc') &&
+      !tracked.includes('secret'),
+    kotsKeepsFbclid:
+      kotsLocation === '/kyiv/kotsiubynske/beauty?utm_source=test_agent&fbclid=testfb',
+    apexToWww: apex === 'https://www.mapfix.com.ua/kyiv/kotsiubynske/beauty?utm_source=ktsb&gclid=1',
+    wwwNoRedirect: wwwSame === '',
+    apexNoLoop: noLoop === '',
+    serverWired: serverJs.includes('apexHostRedirectUrl') && serverJs.includes('attributionArgs'),
+    callRow:
+      callFields.columns.utm_source === 'test_agent' &&
+      callFields.columns.utm_medium === 'cpc' &&
+      callFields.columns.utm_campaign === 'koc_beauty' &&
+      callFields.meta.content === 'ad1' &&
+      callFields.meta.term === 'manicure' &&
+      callFields.meta.fbclid === 'testfb' &&
+      callFields.meta.gclid === 'g1' &&
+      callFields.meta.password == null &&
+      callFields.meta.kind == null &&
+      !('utm_content' in callFields.columns),
+    visitFlags:
+      visitFields.columns.utm_source === 'test_agent' &&
+      visitFields.meta.returning === 1 &&
+      visitFields.meta.standalone === 1 &&
+      visitFields.meta.method === 'password' &&
+      visitFields.meta.password == null,
+    pwaType: events.EVENT_TYPES.has('pwa'),
+    clientUtm:
+      ctx.utm.source === 'test_agent' &&
+      ctx.utm.medium === 'cpc' &&
+      ctx.utm.campaign === 'koc_beauty' &&
+      ctx.utm.content === 'ad1' &&
+      ctx.utm.fbclid === 'testfb' &&
+      ctx.sid &&
+      storedFirst.source === 'test_agent' &&
+      storedFirst.fbclid === 'testfb',
+    linksKeepUtm:
+      loginHref.includes('utm_source=test_agent') &&
+      loginHref.includes('fbclid=testfb') &&
+      loginHref.includes('next=') &&
+      registerHref.includes('role=provider') &&
+      registerHref.includes('utm_source=test_agent'),
+    firstTouchSurvives: before === 'first' && afterOther === 'first' && bare.api.context().utm.source === 'first',
+    sessionBeatsFirst: sessionWins.api.context().utm.source === 'tab',
+    firstTouchExpires: !expired.api.context().utm && !secondLocal.getItem('mf_utm_first'),
+    returningDay:
+      returningPages[0].meta.returning === 1 &&
+      returningPagesAfter[1].meta == null &&
+      !(fresh && pagePosts(fresh.posts)[0].meta && pagePosts(fresh.posts)[0].meta.returning),
+    pwaLaunch:
+      manifest.start_url === '/?utm_source=pwa&utm_medium=homescreen' &&
+      pwaPage.utm.source === 'pwa' &&
+      pwaPage.utm.medium === 'homescreen' &&
+      pwaPage.meta.standalone === 1 &&
+      !(browserPage.utm && browserPage.utm.source === 'pwa') &&
+      !(browserPage.meta && browserPage.meta.standalone),
+    recentEight:
+      recentList.length === 8 &&
+      recentList[0].id === 'loc-9' &&
+      recentList[0].title === 'Картка 9 знову' &&
+      !recentList.some((row) => row.id === 'loc-1' || row.id.includes('script')),
+    pagesWired:
+      read('public/register.html').includes('/mf-analytics.js') &&
+      read('public/login.html').includes('analyticsFields') &&
+      read('public/index.html').includes('Ви дивились') &&
+      read('public/js/mapfix-app.js').includes('analyticsBody') &&
+      read('public/sw.js').includes('res.redirected') &&
+      kept.api.context().utm.source === 'first',
+  };
+  const ok = Object.values(checks).every(Boolean);
+  return {
+    id: 6,
+    name: 'Джерело візиту, PWA і «Ви дивились»',
+    ok,
+    details: Object.entries(checks).map(([k, v]) => `${k}: ${v ? 'OK' : 'FAIL'}`),
+  };
+}
+
 async function main() {
   console.log('\n=== Mapfix Architecture Self-Check ===\n');
 
@@ -391,6 +678,7 @@ async function main() {
     Promise.resolve(checkRolesAndBinding()),
     checkLoginFlow(),
     Promise.resolve(checkSeoLanding()),
+    Promise.resolve(checkAttribution()),
   ]);
 
   let allOk = true;

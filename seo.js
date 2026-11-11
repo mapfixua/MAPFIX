@@ -428,7 +428,21 @@ function listingPath(landing) {
 function keepTrackingQuery(query) {
   const q = query || {};
   const next = new URLSearchParams();
-  for (const k of ['claim', 'add', 'feedback', 'q', 'utm_source', 'utm_medium', 'utm_campaign', 'utm_content', 'utm_term']) {
+  for (const k of [
+    'claim',
+    'add',
+    'feedback',
+    'q',
+    'utm_source',
+    'utm_medium',
+    'utm_campaign',
+    'utm_content',
+    'utm_term',
+    'fbclid',
+    'gclid',
+    'ttclid',
+    'yclid',
+  ]) {
     if (q[k]) next.set(k, String(q[k]));
   }
   const page = String(q.page || '');
@@ -917,6 +931,32 @@ const LEGACY_SITE_HOSTS = new Set(['mapfix-wine.vercel.app', 'www.mapfix-wine.ve
 function validSitemapDate(value) {
   const day = String(value || '').slice(0, 10);
   return /^\d{4}-\d{2}-\d{2}$/.test(day) ? day : '';
+}
+
+/**
+ * 301 the bare apex to www only when the canonical host is already www.
+ * A non-www PUBLIC_BASE_URL does not redirect (that would loop).
+ * Requests that are already on www are left alone. The query string is kept.
+ */
+function apexHostRedirectUrl(hostname, originalUrl) {
+  const host = String(hostname || '')
+    .split(':')[0]
+    .toLowerCase()
+    .replace(/\.$/, '');
+  if (!host || host === 'localhost' || host === '127.0.0.1') return '';
+  let base;
+  try {
+    base = new URL(siteBaseUrl());
+  } catch {
+    return '';
+  }
+  const baseHost = base.hostname.toLowerCase();
+  if (!baseHost.startsWith('www.')) return '';
+  const apex = baseHost.slice(4);
+  if (!apex || host !== apex) return '';
+  const path = String(originalUrl || '/');
+  if (!path.startsWith('/') || path.startsWith('//') || /[\r\n\\]/.test(path)) return '';
+  return `${base.origin}${path}`;
 }
 
 function legacyHostRedirectUrl(hostname, originalUrl) {
@@ -1915,6 +1955,7 @@ module.exports = {
   robotsTxt,
   sitemapXml,
   legacyHostRedirectUrl,
+  apexHostRedirectUrl,
   isPublicTestLocation,
   isHiddenPlaceholderLocation,
   DEMO_LOCATION_IDS,
