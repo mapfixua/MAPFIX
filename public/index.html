@@ -42,7 +42,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;600;700;800&display=swap" rel="stylesheet" media="print" onload="this.media='all'">
     <noscript><link href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;600;700;800&display=swap" rel="stylesheet"></noscript>
     
-    <link rel="stylesheet" href="/css/mapfix-map.css?v=6">
+    <link rel="stylesheet" href="/css/mapfix-map.css?v=7">
 </head>
 <body>
     <!--MAPFIX_CRAWL-->
@@ -142,12 +142,17 @@
 
         <div class="sheet-body-host">
             <div id="sidebar-list-view" class="sidebar-view sheet-panel">
+                <div id="recentViewed" class="recent-viewed" hidden>
+                    <span class="recent-viewed-label">Ви дивились</span>
+                    <div class="recent-viewed-list" id="recentViewedList"></div>
+                </div>
                 <div class="sidebar-header">
                     <button type="button" class="back-btn" id="navBackBtn" style="display:none" aria-label="Назад">
                         <i class="fa-solid fa-chevron-left" aria-hidden="true"></i>
                         <span id="navBackLabel">Назад</span>
                     </button>
                     <h1 class="nav-title" id="navTitle">Майстри та ремонт у Києві</h1>
+                    <p class="listing-count" id="listingCount" hidden></p>
                     <div id="sortPanelWrap" style="display:none">
                         <div class="sort-panel">
                             <div class="sort-label"><i class="fa-solid fa-sliders"></i> Сортування виконавців</div>
@@ -176,7 +181,7 @@
                 </div>
                 <div class="sidebar-content" id="catalogNav"></div>
                 <div class="sidebar-content" id="sidebarContent" style="display:none"></div>
-                <footer class="site-footer">
+                <footer class="site-footer" id="siteFooter">
                     <a href="/kyiv/kotsiubynske">Майстри в Коцюбинському</a>
                 </footer>
             </div>
@@ -212,6 +217,6 @@
     <script src="/mapfix-sync.js" defer></script>
     <script src="/mf-analytics.js" defer></script>
 
-    <script src="/js/mapfix-app.js?v=7"></script>
+    <script src="/js/mapfix-app.js?v=8"></script>
 <script>window.va=window.va||function(){(window.vaq=window.vaq||[]).push(arguments)};</script><script defer src="/_vercel/insights/script.js"></script>
 </body></html>

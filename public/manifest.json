@@ -2,7 +2,7 @@
   "name": "Mapfix",
   "short_name": "Mapfix",
   "description": "Карта локальних послуг України",
-  "start_url": "/",
+  "start_url": "/?utm_source=pwa&utm_medium=homescreen",
   "scope": "/",
   "display": "standalone",
   "orientation": "portrait-primary",

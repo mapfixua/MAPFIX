@@ -987,6 +987,7 @@
             <p class="field-hint">Натисніть на будь-який показник, щоб побачити деталі: хто, коли, на якій картці, з якого пристрою і звідки прийшов. Онлайн оновлюється кожні ~30 с.</p>
             <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">
               <button type="button" class="btn-secondary" style="width:auto" id="analyticsRefreshBtn">Оновити</button>
+              <button type="button" class="btn-secondary" style="width:auto" data-drill="events" data-drill-type="pwa" data-drill-title="Встановлення на екран">Встановлення на екран</button>
               <span class="field-hint" id="analyticsUpdatedAt" style="margin:0;align-self:center"></span>
             </div>
             <h3 style="font-size:1rem;margin:0 0 8px">Зараз на сайті</h3>
@@ -2844,12 +2845,14 @@
             const who = r.reporterLogin
               ? `@${r.reporterLogin}`
               : 'гість';
+            const reasonBit = r.reason ? ` · ${r.reason}` : '';
+            const idBit = r.locationId ? ` · ${r.locationId}` : '';
             const contact = r.contact ? ` · контакт: ${r.contact}` : '';
             const page = r.page ? ` · сторінка: ${r.page}` : '';
             return `
           <div class="list-item" style="margin-bottom:10px">
             <div class="list-item-title">${esc(title)} · ${esc(r.status)}</div>
-            <div class="list-item-meta">${esc(who)}${esc(contact)}${esc(page)} · ${esc(formatSupportDate(r.createdAt))}</div>
+            <div class="list-item-meta">${esc(who)}${esc(reasonBit)}${esc(idBit)}${esc(contact)}${esc(page)} · ${esc(formatSupportDate(r.createdAt))}</div>
             <div class="list-item-meta" style="white-space:pre-wrap;margin-top:6px">${esc(r.message)}</div>
             <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">
               <select data-report-status="${esc(r.id)}">
@@ -6534,14 +6537,14 @@
       const labels = {
         companyName: 'Назва компанії',
         phone: 'Телефон',
-        telegram: 'Telegram підключено (верифікація)',
+        telegram: 'Telegram підключено',
         hasLocation: 'Є хоча б одна точка',
         hasPrices: 'Додано прайс',
         hasPhotos: 'Додано фото',
         hasDescription: 'Опис точки (від 20 символів)',
       };
       hint.textContent = `Заповнено ${prog.done || 0} з ${prog.total || 0}. ${
-        providerData?.account?.verified ? 'Акаунт верифіковано ✓' : 'Підключіть Telegram для бейджа «перевірено».'
+        providerData?.account?.telegramLinked ? 'Telegram підключено.' : 'Підключіть Telegram, щоб ми могли написати вам.'
       }`;
       list.innerHTML = Object.keys(labels)
         .map((k) => `<div>${cl[k] ? '✅' : '⬜'} ${esc(labels[k])}</div>`)

@@ -71,6 +71,32 @@
         }
 
         document.addEventListener("DOMContentLoaded", async () => {
+            function metaContent(attr, key) {
+                return document.head.querySelector(`meta[${attr}="${key}"]`)?.getAttribute('content') || '';
+            }
+            function currentPathWithPage() {
+                const path = window.location.pathname.replace(/\/+$/, '') || '/';
+                const raw = new URLSearchParams(window.location.search).get('page') || '';
+                if (/^[1-9]\d*$/.test(raw) && raw !== '1') return `${path}?page=${raw}`;
+                return path;
+            }
+            // Знімок серверного head. Клієнт не замінює title, description, canonical і h1,
+            // доки ви самі не зміните шлях. Інакше «Манікюр на Коцюбинському» стає
+            // назвою категорії, а canonical ?page=2 вказує на першу сторінку.
+            const serverHead = {
+                path: currentPathWithPage(),
+                title: document.title,
+                description: metaContent('name', 'description'),
+                keywords: metaContent('name', 'keywords'),
+                ogTitle: metaContent('property', 'og:title'),
+                ogDescription: metaContent('property', 'og:description'),
+                ogUrl: metaContent('property', 'og:url'),
+                twTitle: metaContent('name', 'twitter:title'),
+                twDescription: metaContent('name', 'twitter:description'),
+                canonical: document.querySelector('link[rel="canonical"]')?.getAttribute('href') || '',
+                h1: document.getElementById('navTitle')?.textContent || '',
+            };
+            let seoListingTouched = false;
             await leafletReady;
             // Paint map tiles after Leaflet is loaded — CSS/JS no longer block first paint.
             const map = L.map('map', { zoomControl: false }).setView([50.49, 30.33], 14);
@@ -517,6 +543,68 @@
                 );
             }
 
+            /** Same predicate as mapfixReviews() in seo.js: a Google import is not a MapFix review. */
+            function isMapfixReview(rev) {
+                if (!rev || typeof rev !== 'object') return false;
+                const source = String(rev.source || '').toLowerCase();
+                if (source && source !== 'mapfix') return false;
+                const collectedHere = source === 'mapfix' || Boolean(rev.userId) || Boolean(rev.createdAt);
+                if (!collectedHere) return false;
+                const rating = Number(rev.rating);
+                const text = String(rev.text || '').trim();
+                return text.length >= 3 && Number.isFinite(rating) && rating > 0 && rating <= 5;
+            }
+
+            function splitCardReviews(loc) {
+                const own = [];
+                const google = [];
+                const reviews = Array.isArray(loc?.reviews) ? loc.reviews : [];
+                for (const rev of reviews) {
+                    if (!rev || typeof rev !== 'object') continue;
+                    if (String(rev.source || '').toLowerCase() === 'google_maps') google.push(rev);
+                    else if (isMapfixReview(rev)) own.push(rev);
+                }
+                return { own, google };
+            }
+
+            function showsGoogleRating(loc, own) {
+                if (own.length) return false;
+                const count = Number(loc?.reviewsCount) || 0;
+                if (count <= 0) return false;
+                const reviews = Array.isArray(loc?.reviews) ? loc.reviews : [];
+                if (!reviews.length) return true;
+                if (reviews.some((rev) => String(rev?.source || '').toLowerCase() === 'google_maps')) return true;
+                if (loc?.googlePlaceId || loc?.importMeta?.placeId || loc?.importMeta?.mapsUrl) return true;
+                return false;
+            }
+
+            function cardRatingRowHtml(loc) {
+                const split = splitCardReviews(loc);
+                if (split.own.length) {
+                    const avg = split.own.reduce((sum, rev) => sum + Number(rev.rating), 0) / split.own.length;
+                    const score = (Math.round(avg * 10) / 10).toFixed(1);
+                    return `<div class="profile-rating-row"><span>${score}</span>${ratingStarsHtml(avg)}<span class="reviews-count">(${split.own.length} на MapFix)</span></div>`;
+                }
+                if (showsGoogleRating(loc, split.own)) {
+                    const score = Number(loc.rating || 0).toFixed(1);
+                    return `<div class="profile-rating-row profile-rating-google"><span>${score}</span>${ratingStarsHtml(loc.rating)}<span class="reviews-count">Оцінка в Google</span></div>`;
+                }
+                if ((Number(loc?.reviewsCount) || 0) > 0) {
+                    const score = Number(loc.rating || 0).toFixed(1);
+                    return `<div class="profile-rating-row"><span>${score}</span>${ratingStarsHtml(loc.rating)}</div>`;
+                }
+                return `<div class="profile-rating-row"><span class="profile-new-badge">Новий на MapFix</span></div>`;
+            }
+
+            function cardReviewsTitle(loc, split) {
+                const imported = Number(loc?.reviewsCount) || 0;
+                if (split.own.length) return `Відгуки на MapFix (${split.own.length})`;
+                if (split.google.length) return `Відгуки Google Maps (${imported || split.google.length})`;
+                if (showsGoogleRating(loc, split.own)) return 'Оцінка в Google';
+                if (imported > 0) return `Відгуки (${imported})`;
+                return 'Відгуки';
+            }
+
             function defaultOrderServiceName(loc) {
                 if (State.service?.name) return State.service.name;
                 const keys = Object.keys(loc?.prices || {});
@@ -583,7 +671,7 @@
                     ${place.address ? `${escapeHtml(place.address)}<br>` : ''}
                     ${place.phone ? `${escapeHtml(place.phone)}<br>` : ''}
                     Координати: ${Number(place.lat).toFixed(5)}, ${Number(place.lng).toFixed(5)}
-                    ${place.rating ? `<br>★ ${Number(place.rating).toFixed(1)} (${Number(place.reviewsCount) || 0} відгуків)` : ''}
+                    ${place.rating ? `<br>★ ${Number(place.rating).toFixed(1)} · оцінка в Google (${Number(place.reviewsCount) || 0})` : ''}
                     ${schedule ? `<p><strong>Графік роботи</strong><br>${schedule}</p>` : ''}
                     ${partialNotice}
                     <label for="googleImportCategory">Категорія</label>
@@ -685,16 +773,19 @@
                 const loginBtn = document.getElementById('loginHeaderBtn');
                 profileBtn.classList.toggle('logged-in', !!u);
                 profileBtn.classList.remove('hidden');
-                if (loginBtn) loginBtn.classList.toggle('hidden', !!u);
+                if (loginBtn) {
+                    loginBtn.classList.toggle('hidden', !!u);
+                    loginBtn.href = withTrackingQuery('/login.html');
+                }
                 profileBtn.title = u ? u.login : 'Меню';
                 profileBtn.textContent = u ? '👤' : '☰';
 
                 if (!u) {
                     userMenu.innerHTML = `
                         <div class="user-menu-header">Гість</div>
-                        <a class="user-menu-item" href="/login.html">Увійти</a>
-                        <a class="user-menu-item" href="/register.html">Реєстрація</a>
-                        <a class="user-menu-item" href="/register.html?role=provider">Реєстрація майстра</a>
+                        <a class="user-menu-item" href="${escapeHtml(withTrackingQuery('/login.html'))}">Увійти</a>
+                        <a class="user-menu-item" href="${escapeHtml(withTrackingQuery('/register.html'))}">Реєстрація</a>
+                        <a class="user-menu-item" href="${escapeHtml(withTrackingQuery('/register.html?role=provider'))}">Реєстрація майстра</a>
                         <button type="button" class="user-menu-item" id="siteBugMenuBtn">🐞 Повідомити про помилку</button>
                         ${pwaInstallMenuItemHtml()}`;
                     bindInstallAppMenuBtn();
@@ -755,11 +846,11 @@
             window.startAddBusinessFlow = function() {
                 const u = State.currentUser;
                 if (!u) {
-                    window.location.href = '/register.html?role=provider&next=' + encodeURIComponent('/admin?newLocation=1');
+                    window.location.href = withTrackingQuery('/register.html?role=provider&next=' + encodeURIComponent('/admin?newLocation=1'));
                     return;
                 }
                 if (u.role === 'client') {
-                    window.location.href = '/register.html?role=provider&next=' + encodeURIComponent('/admin?newLocation=1');
+                    window.location.href = withTrackingQuery('/register.html?role=provider&next=' + encodeURIComponent('/admin?newLocation=1'));
                     return;
                 }
                 openGoogleImport();
@@ -861,7 +952,7 @@
             const qSearch = (urlParams.get('q') || '').trim();
             if (qSearch) State.locationSearchQuery = qSearch;
             if (urlLoc) {
-                setTimeout(() => openMasterDetail(urlLoc, { mode: 'dive', forceMode: true }), 400);
+                setTimeout(() => openMasterDetail(urlLoc, { mode: 'dive', forceMode: true, keepServerSeo: true }), 400);
             }
             if (urlParams.get('add') === '1') {
                 setTimeout(() => {
@@ -882,7 +973,7 @@
                 const backToLoc = '/p/' + encodeURIComponent(locationId);
                 if (!State.currentUser) {
                     if (confirm('Увійдіть як клієнт, щоб замовити послугу. Перейти до входу?')) {
-                        window.location.href = '/login.html?next=' + encodeURIComponent(backToLoc);
+                        window.location.href = withTrackingQuery('/login.html?next=' + encodeURIComponent(backToLoc));
                     }
                     return;
                 }
@@ -964,7 +1055,7 @@
                 const backToLoc = '/p/' + encodeURIComponent(locationId);
                 if (!State.currentUser) {
                     if (confirm('Увійдіть, щоб надіслати скаргу. Перейти до входу?')) {
-                        location.href = '/login.html?next=' + encodeURIComponent(backToLoc);
+                        location.href = withTrackingQuery('/login.html?next=' + encodeURIComponent(backToLoc));
                     }
                     return;
                 }
@@ -983,6 +1074,77 @@
                     alert('Скаргу надіслано. Дякуємо!');
                 } catch (err) {
                     alert(err.message);
+                }
+            };
+
+            const STALE_PHONE_KEY = 'mf_stale_phone';
+            const stalePhonePending = new Set();
+
+            function readStalePhoneIds() {
+                try {
+                    const raw = sessionStorage.getItem(STALE_PHONE_KEY);
+                    const ids = raw ? JSON.parse(raw) : [];
+                    return Array.isArray(ids) ? ids.map((id) => String(id)) : [];
+                } catch (_) {
+                    return [];
+                }
+            }
+
+            function stalePhoneReported(locationId) {
+                return readStalePhoneIds().includes(String(locationId));
+            }
+
+            function markStalePhoneReported(locationId) {
+                try {
+                    const ids = readStalePhoneIds();
+                    const id = String(locationId);
+                    if (!ids.includes(id)) ids.push(id);
+                    sessionStorage.setItem(STALE_PHONE_KEY, JSON.stringify(ids.slice(-40)));
+                } catch (_) {}
+            }
+
+            function showStalePhoneDone(btn) {
+                if (!btn) return;
+                btn.disabled = true;
+                btn.textContent = 'Дякуємо, ми перевіримо номер';
+            }
+
+            window.reportStalePhone = async function(locationId) {
+                const btn = document.getElementById('stalePhoneBtn');
+                const note = document.getElementById('stalePhoneNote');
+                if (note) {
+                    note.hidden = true;
+                    note.textContent = '';
+                }
+                if (stalePhoneReported(locationId)) {
+                    showStalePhoneDone(btn);
+                    return;
+                }
+                if (stalePhonePending.has(locationId)) return;
+                stalePhonePending.add(locationId);
+                if (btn) btn.disabled = true;
+                try {
+                    const res = await fetch('/api/reports', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        credentials: 'same-origin',
+                        body: JSON.stringify({
+                            locationId,
+                            reason: 'stale_phone',
+                            page: location.pathname + location.search,
+                        }),
+                    });
+                    const data = await res.json().catch(() => ({}));
+                    if (!res.ok) throw new Error(data.error || 'Не вдалося надіслати');
+                    markStalePhoneReported(locationId);
+                    showStalePhoneDone(btn);
+                } catch (err) {
+                    stalePhonePending.delete(locationId);
+                    if (btn) btn.disabled = false;
+                    if (note) {
+                        note.hidden = false;
+                        note.textContent = err.message || 'Не вдалося надіслати';
+                    }
                 }
             };
 
@@ -1066,7 +1228,7 @@
                 const user = State.currentUser;
                 if (user && user.role !== 'client') {
                     if (confirm('Увійдіть як клієнт. Перейти до реєстрації?')) {
-                        window.location.href = '/register.html';
+                        window.location.href = withTrackingQuery('/register.html');
                     }
                     return;
                 }
@@ -1423,66 +1585,78 @@
                 }).catch(() => {});
             }
 
-            function mfSid() {
+            function analyticsContext() {
                 try {
-                    return window.MapfixAnalytics?.sid || localStorage.getItem('mf_sid') || undefined;
-                } catch (_) {
-                    return undefined;
-                }
-            }
-
-            // Same memory as mf-analytics.js (URL, then sessionStorage mf_utm). Shape matches logEvent.normalizeUtm.
-            function readVisitUtm() {
-                try {
-                    const params = new URLSearchParams(window.location.search);
-                    const source = (params.get('utm_source') || '').trim();
-                    if (source) {
-                        return {
-                            source: source.slice(0, 48),
-                            medium: (params.get('utm_medium') || '').trim().slice(0, 48),
-                            campaign: (params.get('utm_campaign') || '').trim().slice(0, 48),
-                            content: (params.get('utm_content') || '').trim().slice(0, 48),
-                            term: (params.get('utm_term') || '').trim().slice(0, 48),
-                        };
+                    if (window.MapfixAnalytics && typeof window.MapfixAnalytics.context === 'function') {
+                        return window.MapfixAnalytics.context() || {};
                     }
-                    const stored = sessionStorage.getItem('mf_utm');
-                    if (!stored) return null;
-                    const parsed = JSON.parse(stored);
-                    if (!parsed || typeof parsed !== 'object' || !String(parsed.source || '').trim()) return null;
-                    return parsed;
-                } catch (_) {
-                    return null;
-                }
+                } catch (_) {}
+                let sid;
+                try { sid = localStorage.getItem('mf_sid') || undefined; } catch (_) {}
+                return { sid, path: location.pathname || '/' };
             }
 
-            function analyticsClickContext() {
-                const ctx = { path: (location.pathname || '/') + (location.search || '') };
-                const sid = mfSid();
-                if (sid) ctx.sid = sid;
-                const utm = readVisitUtm();
-                if (utm) ctx.utm = utm;
+            function analyticsBody() {
+                const ctx = analyticsContext();
+                const body = { path: ctx.path || location.pathname || '/' };
+                if (ctx.sid) body.sid = ctx.sid;
+                if (ctx.utm) body.utm = ctx.utm;
+                if (ctx.ref) body.ref = ctx.ref;
+                if (ctx.meta && Object.keys(ctx.meta).length) body.meta = ctx.meta;
+                return body;
+            }
+
+            function withTrackingQuery(href) {
                 try {
-                    const ref = sessionStorage.getItem('mf_ref');
-                    if (ref) ctx.ref = String(ref).slice(0, 300);
+                    if (window.MapfixAnalytics && typeof window.MapfixAnalytics.withTracking === 'function') {
+                        return window.MapfixAnalytics.withTracking(href);
+                    }
                 } catch (_) {}
-                return ctx;
+                return href;
             }
 
             function trackLocationClick(locationId, type) {
                 const id = String(locationId || '').trim();
                 const t = String(type || '').trim();
                 if (!id || !t) return;
-                const body = { type: t, sid: mfSid() };
-                if (t === 'favorite') Object.assign(body, analyticsClickContext());
+                // analyticsBody uses MapfixAnalytics.context(), which reads the
+                // 30-day first-touch store (mf_utm_first) when this tab has no UTM.
                 fetch('/api/locations/' + encodeURIComponent(id) + '/click', {
                     method: 'POST',
                     credentials: 'same-origin',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(body),
+                    body: JSON.stringify(Object.assign({ type: t }, analyticsBody())),
                     keepalive: true,
                 }).catch(() => {});
             }
             window.trackLocationClick = trackLocationClick;
+
+            function renderRecentViewed() {
+                const box = document.getElementById('recentViewed');
+                const listEl = document.getElementById('recentViewedList');
+                if (!box || !listEl) return;
+                const items = window.MapfixAnalytics?.readRecent?.() || [];
+                const cardOpen = State.selectedLocation || /^\/p\/[^/]+$/.test(location.pathname);
+                if (!items.length || cardOpen) {
+                    box.hidden = true;
+                    listEl.innerHTML = '';
+                    return;
+                }
+                listEl.innerHTML = items
+                    .map(
+                        (item) =>
+                            `<button type="button" class="recent-viewed-item" data-recent-id="${escapeHtml(item.id)}">${escapeHtml(item.title)}</button>`
+                    )
+                    .join('');
+                box.hidden = false;
+            }
+
+            document.getElementById('recentViewed')?.addEventListener('click', (event) => {
+                const btn = event.target.closest('[data-recent-id]');
+                if (!btn) return;
+                const id = btn.getAttribute('data-recent-id');
+                if (id && window.openMasterDetail) window.openMasterDetail(id);
+            });
 
             const QUICK_CHIP_DEFS = [
                 { label: 'Сантехнік', cat: 'home', sub: 'plumber' },
@@ -1536,6 +1710,7 @@
             }
 
             function handleQuickChip(catKey, subKey) {
+                seoListingTouched = true;
                 const same =
                     State.category === catKey &&
                     (State.subcategory || null) === (subKey || null) &&
@@ -1831,6 +2006,7 @@
             }
 
             function handleNavBack() {
+                seoListingTouched = true;
                 if (State.locationSearchQuery) {
                     State.locationSearchQuery = '';
                     searchInput.value = '';
@@ -1884,6 +2060,7 @@
                 const sameSelected = State.selectedLocation?.id === locId;
                 const mode = opts.mode || 'dive';
                 if (!opts.forceMode && sameSelected && State.detailMode === 'dive' && opts.fromMarker) {
+                    window.MapfixAnalytics?.rememberRecent?.({ id: loc.id, title: loc.title });
                     enterDetailDive();
                     map.panTo([loc.lat, loc.lng]);
                     highlightSelectedMarker(locId);
@@ -1894,7 +2071,7 @@
                     method: 'POST',
                     credentials: 'same-origin',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ sid: mfSid() }),
+                    body: JSON.stringify(analyticsBody()),
                 }).then(async (r) => {
                     if (!r.ok) return;
                     const j = await r.json().catch(() => ({}));
@@ -1903,6 +2080,8 @@
 
                 State.selectedLocation = loc;
                 State.detailMode = mode;
+                window.MapfixAnalytics?.rememberRecent?.({ id: loc.id, title: loc.title });
+                renderRecentViewed();
                 State.formRatingScore = 5;
 
                 const catName = categoryLabel(
@@ -1921,10 +2100,12 @@
                 const tgUser = getTelegramUsername(loc);
                 const chatHref = getChatHref(loc);
                 const specialty = State.service?.name || catName;
-                const reviewsN = Number(loc.reviewsCount) || 0;
-                const ratingRowHtml = reviewsN > 0
-                    ? `<div class="profile-rating-row"><span>${Number(loc.rating || 0).toFixed(1)}</span>${ratingStarsHtml(loc.rating)}<span class="reviews-count">(${reviewsN} відгуків)</span></div>`
-                    : `<div class="profile-rating-row"><span class="profile-new-badge">Новий на MapFix</span></div>`;
+                const ratingRowHtml = cardRatingRowHtml(loc);
+                const ownerPillHtml = loc.providerId
+                    ? '<span class="profile-owner-pill">Картку веде майстер</span>'
+                    : '';
+                const directCallCopy = 'Дзвінок напряму майстру, MapFix комісію не бере';
+                const staleReported = stalePhoneReported(loc.id);
                 const phoneHref = loc.phone ? `tel:${escapeHtml(loc.phone)}` : '';
                 const hasCoords = Number.isFinite(Number(loc.lat)) && Number.isFinite(Number(loc.lng));
                 const hasAddress = Boolean(String(loc.address || '').trim());
@@ -1950,7 +2131,6 @@
                         <div class="profile-quick-row row-3">${routeBtn}${shareBtn}</div>
                     </div>`;
                 const trustPills = [];
-                if (loc.providerId) trustPills.push('Гарантія на роботу');
                 if (loc.openStatus === 'open') trustPills.push('Зараз працює');
                 const trustHtml = trustPills.length
                     ? trustPills.map((t) => `<span class="profile-trust-pill">${escapeHtml(t)}</span>`).join('')
@@ -2003,6 +2183,7 @@
                                 ${whereLine ? `<p class="map-preview-where">${escapeHtml(whereLine)}</p>` : ''}
                                 <div class="map-preview-meta">
                                     ${ratingRowHtml}
+                                    ${ownerPillHtml}
                                     ${previewPrice ? `<span class="map-preview-price">${escapeHtml(previewPrice)}</span>` : ''}
                                 </div>
                             </div>
@@ -2012,7 +2193,12 @@
                             ${callBtn.replace('class="profile-quick-btn"', 'class="profile-quick-btn" style="height:52px;min-height:52px"')}
                             ${chatBtn.replace('class="profile-quick-btn"', 'class="profile-quick-btn" style="height:52px;min-height:52px"')}
                         </div>
-                        ${canOfferClaim ? `<button type="button" id="previewClaimLine" onclick="event.stopPropagation(); revealPreviewClaim(event)" style="display:block;box-sizing:border-box;width:100%;max-width:calc(100vw - 32px);min-width:0;margin:0;padding:4px 0;border:0;background:transparent;text-align:left;font:inherit;font-size:13px;font-weight:800;line-height:1.35;color:var(--ink);text-decoration:underline;text-underline-offset:2px;cursor:pointer;white-space:normal;overflow-wrap:anywhere">Це ваш заклад? Підтвердити номером з картки</button><div id="previewClaimSlot" hidden></div>` : ''}
+                        <div class="map-preview-trust">
+                            <p class="map-preview-direct">${directCallCopy}</p>
+                            <button type="button" class="map-preview-stale" id="stalePhoneBtn"${staleReported ? ' disabled' : ''} onclick="event.stopPropagation(); reportStalePhone('${locIdAttr}')">${staleReported ? 'Дякуємо, ми перевіримо номер' : 'Номер неактуальний'}</button>
+                            <p class="map-preview-stale-note" id="stalePhoneNote" hidden></p>
+                        </div>
+                        ${canOfferClaim ? `<button type="button" class="map-preview-claimline" id="previewClaimLine" onclick="event.stopPropagation(); revealPreviewClaim(event)">Це ваш заклад? Підтвердити номером з картки</button><div id="previewClaimSlot" hidden></div>` : ''}
                         <p class="detail-preview-hint">Натисніть назву ще раз, щоб відкрити графік, ціни й опис</p>
                     </div>`;
                     renderDetailBody(loc, { claimBannerHtml: '', mode });
@@ -2024,17 +2210,17 @@
                     map.panTo([loc.lat, loc.lng]);
                     return;
                 }
+                if (!opts.keepServerSeo) seoListingTouched = true;
                 headerBox.innerHTML = `
                     <button class="back-btn" onclick="event.stopPropagation(); closeMasterDetail()">⬅️ Назад</button>
                     <div class="profile-identity">
                         <div class="profile-avatar-wrap">
                             <div class="profile-avatar">${locationAvatarHtml(loc)}</div>
-                            ${loc.providerId ? '<span class="profile-verified-dot" title="Перевірено"><i class="fa-solid fa-check"></i></span>' : ''}
                         </div>
                         <div class="profile-copy">
                             <div class="profile-name-row">
                                 <h2 class="profile-name" title="${escapeHtml(displayName)}">${escapeHtml(displayName)}</h2>
-                                ${loc.providerId ? '<span class="profile-verified-pill"><i class="fa-solid fa-shield-halved"></i> Verified</span>' : ''}
+                                ${ownerPillHtml}
                             </div>
                             ${tgUser ? `<p class="profile-handle">@${escapeHtml(tgUser)}</p>` : ''}
                             ${ratingRowHtml}
@@ -2043,6 +2229,7 @@
                         </div>
                     </div>
                     ${quickActionsHtml}
+                    <p class="profile-direct-call">${directCallCopy}</p>
                 `;
 
                 renderDetailBody(loc, { claimBannerHtml, mode });
@@ -2112,9 +2299,39 @@
                     line.hidden = true;
                     line.style.display = 'none';
                 }
-                document.getElementById('claimPhoneInput')?.focus();
-                setTimeout(() => map.invalidateSize(), 40);
+                const focusEl = document.getElementById('claimPhoneInput') || document.getElementById('claimLocBtn');
+                try { focusEl?.focus({ preventScroll: true }); } catch (_) { focusEl?.focus(); }
+                scrollClaimFormIntoView();
+                setTimeout(() => {
+                    map.invalidateSize();
+                    scrollClaimFormIntoView();
+                }, 40);
             };
+
+            function scrollClaimFormIntoView() {
+                const slot = document.getElementById('previewClaimSlot');
+                if (!slot) return;
+                let scroller = slot.parentElement;
+                while (scroller && scroller !== document.body) {
+                    if (scroller.scrollHeight > scroller.clientHeight + 4) break;
+                    scroller = scroller.parentElement;
+                }
+                if (!scroller || scroller === document.body) {
+                    try { slot.scrollIntoView({ block: 'end', inline: 'nearest' }); } catch (_) {}
+                    return;
+                }
+                const slotRect = slot.getBoundingClientRect();
+                const box = scroller.getBoundingClientRect();
+                const field = document.getElementById('claimPhoneInput') || document.getElementById('claimLocBtn');
+                const fits = slotRect.height <= box.height;
+                const focusRect = !fits && field ? field.getBoundingClientRect() : slotRect;
+                const pad = 4;
+                if (focusRect.bottom > box.bottom - pad) {
+                    scroller.scrollTop += focusRect.bottom - box.bottom + pad;
+                } else if (focusRect.top < box.top + pad) {
+                    scroller.scrollTop -= box.top + pad - focusRect.top;
+                }
+            }
 
             function refreshClaimButton(loc) {
                 const banner = document.getElementById('claimOwnerBanner');
@@ -2126,41 +2343,8 @@
                 return '/p/' + encodeURIComponent(locationId) + '?claim=1';
             }
 
-            function withCurrentUtm(url) {
-                try {
-                    const dest = new URL(url, window.location.origin);
-                    const current = new URLSearchParams(window.location.search);
-                    ['utm_source', 'utm_medium', 'utm_campaign', 'utm_content', 'utm_term'].forEach((key) => {
-                        const value = (current.get(key) || '').trim();
-                        if (value && !dest.searchParams.get(key)) dest.searchParams.set(key, value.slice(0, 80));
-                    });
-                    if (!dest.searchParams.get('utm_source')) {
-                        const stored = readVisitUtm();
-                        if (stored && stored.source) {
-                            dest.searchParams.set('utm_source', String(stored.source).slice(0, 48));
-                            if (stored.medium && !dest.searchParams.get('utm_medium')) {
-                                dest.searchParams.set('utm_medium', String(stored.medium).slice(0, 48));
-                            }
-                            if (stored.campaign && !dest.searchParams.get('utm_campaign')) {
-                                dest.searchParams.set('utm_campaign', String(stored.campaign).slice(0, 48));
-                            }
-                            if (stored.content && !dest.searchParams.get('utm_content')) {
-                                dest.searchParams.set('utm_content', String(stored.content).slice(0, 48));
-                            }
-                            if (stored.term && !dest.searchParams.get('utm_term')) {
-                                dest.searchParams.set('utm_term', String(stored.term).slice(0, 48));
-                            }
-                        }
-                    }
-                    if (dest.origin === window.location.origin) return dest.pathname + dest.search + dest.hash;
-                    return dest.toString();
-                } catch (_) {
-                    return url;
-                }
-            }
-
             function claimLoginUrl(locationId) {
-                return withCurrentUtm('/login.html?next=' + encodeURIComponent(claimReturnUrl(locationId)));
+                return withTrackingQuery('/login.html?next=' + encodeURIComponent(claimReturnUrl(locationId)));
             }
 
             function locationHasClaimPhone(locationId) {
@@ -2224,7 +2408,7 @@
                     const data = await res.json().catch(() => ({}));
                     if (!res.ok) throw new Error(data.error || 'Не вдалося забрати заклад');
                     if (data.needsRegister && data.registerUrl) {
-                        location.href = withCurrentUtm(data.registerUrl);
+                        location.href = withTrackingQuery(data.registerUrl);
                         return;
                     }
                     await loadSession();
@@ -2296,10 +2480,13 @@
                     scheduleRowsHtml = '<div style="font-size:12px;color:#94a3b8;">Графік не вказано</div>';
                 }
 
+                const reviewSplit = splitCardReviews(loc);
+                const reviewsTitle = cardReviewsTitle(loc, reviewSplit);
                 let reviewsHtml = '';
                 if (loc.reviews && loc.reviews.length > 0) {
                     loc.reviews.forEach(rev => {
                         const rating = Math.max(0, Math.min(5, Number(rev.rating) || 0));
+                        const fromGoogle = String(rev.source || '').toLowerCase() === 'google_maps';
                         reviewsHtml += `
                             <div class="review-item">
                                 <div class="review-top-line">
@@ -2307,6 +2494,7 @@
                                     <span>${escapeHtml(rev.date || '')}</span>
                                 </div>
                                 <div class="review-text">"${escapeHtml(rev.text || '')}"</div>
+                                ${fromGoogle ? '<div class="review-source">Google Maps</div>' : ''}
                             </div>`;
                     });
                 } else if (Number(loc.reviewsCount) > 0) {
@@ -2370,7 +2558,7 @@
                                 <div class="schedule-table">${scheduleRowsHtml}</div>
                             </div>
                             <div class="detail-section">
-                                <h4 class="section-title">⭐ Відгуки (${Number(loc.reviewsCount) || 0})</h4>
+                                <h4 class="section-title">⭐ ${escapeHtml(reviewsTitle)}</h4>
                                 <div style="display:flex; flex-direction:column; gap:6px;">${reviewsHtml}</div>
                             </div>
                             <div class="detail-section" style="background:#fdfdfd; border-color:#cbd5e1">
@@ -2474,7 +2662,7 @@
                 if (!text) { alert('Будь ласка, введіть текст вашого відгуку.'); return; }
                 if (!State.currentUser || State.currentUser.role !== 'client') {
                     if (confirm('Відгуки можуть залишати клієнти. Увійти?')) {
-                        location.href = '/login.html?next=' + encodeURIComponent('/p/' + encodeURIComponent(locId));
+                        location.href = withTrackingQuery('/login.html?next=' + encodeURIComponent('/p/' + encodeURIComponent(locId)));
                     }
                     return;
                 }
@@ -2518,6 +2706,7 @@
                 }
                 State.selectedLocation = null;
                 State.detailMode = null;
+                seoListingTouched = true;
                 highlightSelectedMarker(null);
                 if (!opts.fromSwipe && (State.service || State.subcategory || State.category || State.locationSearchQuery)) {
                     if (isMobileLayout()) browseBottomSheet();
@@ -2527,6 +2716,7 @@
                     syncMapMarkers();
                 }
                 applyPageSeoFromState();
+                renderRecentViewed();
             };
 
             window.panToMaster = function(lat, lng) {
@@ -2691,13 +2881,170 @@
                 }
                 el.setAttribute('content', content);
             }
-            function applyPageSeo({ title, description, keywords, url }) {
+            // Same formulas as CAT_COPY / SUB_COPY in seo.js. {p} is « у Києві» or « на …».
+            const CLIENT_CAT_SEO = {
+                home: {
+                    h1: 'Сантехнік і майстер додому{p}',
+                    title: 'Сантехнік і майстер додому{p} | Mapfix',
+                    description: 'Сантехнік, електрик і майстер додому{p}. Без комісій — дивіться графік, ціни й телефонуйте напряму на карті Mapfix.',
+                },
+                auto: {
+                    h1: 'СТО, шиномонтаж і автосервіс{p}',
+                    title: 'СТО, шиномонтаж і автосервіс{p} | Mapfix',
+                    description: 'Автосервіс, шиномонтаж і СТО{p}. Порівняйте майстрів на карті й зателефонуйте без комісії посередника.',
+                },
+                repair: {
+                    h1: 'Ремонт техніки{p}',
+                    title: 'Ремонт техніки{p} — майстри на карті | Mapfix',
+                    description: 'Ремонт побутової техніки{p}. Знайдіть майстра поруч, перегляньте відгуки й замовте послугу на Mapfix.',
+                },
+                beauty: {
+                    h1: 'Салони краси та майстри{p}',
+                    title: 'Салони краси, манікюр, барбер{p} | Mapfix',
+                    description: 'Манікюр, барбершоп і салони краси{p}. Оберіть майстра на карті Mapfix без комісій.',
+                },
+                pets: {
+                    h1: 'Грумінг і ветеринар{p}',
+                    title: 'Грумінг, ветклініка{p} | Mapfix',
+                    description: 'Грумінг і ветеринарні послуги{p}. Оберіть майстра на карті Mapfix без комісій.',
+                },
+                education: {
+                    h1: 'Репетитори та школи{p}',
+                    title: 'Репетитори, курси{p} | Mapfix',
+                    description: 'Репетитори, курси й школи{p}. Порівняйте на карті Mapfix і зателефонуйте напряму.',
+                },
+                sport: {
+                    h1: 'Спорт і тренери{p}',
+                    title: 'Спортзал, тренер{p} | Mapfix',
+                    description: 'Спортзали, тренери й секції{p}. Знайдіть поруч на карті Mapfix.',
+                },
+                rental: {
+                    h1: 'Оренда інструменту{p}',
+                    title: 'Оренда інструменту{p} | Mapfix',
+                    description: 'Оренда інструменту та техніки{p}. Дивіться на карті Mapfix і телефонуйте без комісії.',
+                },
+                medical: {
+                    h1: 'Медичні послуги{p}',
+                    title: 'Масаж, медпослуги{p} | Mapfix',
+                    description: 'Масаж і медичні послуги{p}. Оберіть фахівця на карті Mapfix.',
+                },
+                food: {
+                    h1: 'Їжа поруч{p}',
+                    title: 'Їжа та заклади{p} | Mapfix',
+                    description: 'Заклади харчування{p} на карті Mapfix. Телефонуйте напряму, без комісій.',
+                },
+                furniture: {
+                    h1: 'Меблі на замовлення{p}',
+                    title: 'Меблі, збірка меблів{p} | Mapfix',
+                    description: 'Збірка й виготовлення меблів{p}. Майстри на карті Mapfix без комісії посередника.',
+                },
+            };
+            const CLIENT_SUB_SEO = {
+                'home/plumber': {
+                    h1: 'Сантехнік{p}',
+                    title: 'Сантехнік{p} — виклик майстра | Mapfix',
+                    description: 'Сантехнік{p}: засмічення, змішувач, унітаз, підключення техніки. Дивіться майстрів на карті й телефонуйте без комісії.',
+                },
+                'home/electrician': {
+                    h1: 'Електрик{p}',
+                    title: 'Електрик{p} — розетка, щиток, люстра | Mapfix',
+                    description: 'Електрик{p}: розетка, люстра, проводка, електрощит. Порівняйте майстрів на карті Mapfix і зателефонуйте напряму.',
+                },
+                'home/handyman': {
+                    h1: 'Майстер на годину{p}',
+                    title: 'Майстер на годину{p} — дрібний ремонт | Mapfix',
+                    description: 'Чоловік на годину{p}: полиця, телевізор, дрібний ремонт. Без комісій — телефонуйте майстру з карти Mapfix.',
+                },
+                'auto/tyres': {
+                    h1: 'Шиномонтаж{p}',
+                    title: 'Шиномонтаж{p} — заміна шин | Mapfix',
+                    description: 'Шиномонтаж{p}: сезонна заміна, балансування. Оберіть сервіс на карті Mapfix і запишіться без комісії.',
+                },
+                'auto/auto_repair': {
+                    h1: 'СТО і ремонт авто{p}',
+                    title: 'СТО і ремонт авто{p} — ходова, двигун, ТО | Mapfix',
+                    description: 'СТО і ремонт авто{p}: ходова, двигун, ТО. Дивіться майстрів на карті Mapfix, графік і телефон — дзвоніть напряму, без комісії.',
+                },
+                'auto/auto_electric': {
+                    h1: 'Автоелектрик{p}',
+                    title: 'Автоелектрик{p} — генератор, стартер, проводка | Mapfix',
+                    description: 'Автоелектрик{p}: генератор, стартер, проводка. Дивіться майстрів на карті Mapfix, графік і телефон — дзвоніть напряму, без комісії.',
+                },
+                'auto/wash': {
+                    h1: 'Автомийка{p}',
+                    title: 'Автомийка{p} — мийка кузова й салону | Mapfix',
+                    description: 'Автомийка{p}: мийка кузова й салону. Дивіться майстрів на карті Mapfix, графік і телефон — дзвоніть напряму, без комісії.',
+                },
+                'beauty/nails': {
+                    h1: 'Манікюр{p}',
+                    title: 'Манікюр{p} — манікюр, педикюр, нарощування | Mapfix',
+                    description: 'Манікюр{p}: манікюр, педикюр, нарощування. Дивіться майстрів на карті Mapfix, графік і телефон — дзвоніть напряму, без комісії.',
+                },
+                'beauty/barber': {
+                    h1: 'Барбершоп{p}',
+                    title: 'Барбершоп{p} — чоловіча стрижка й борода | Mapfix',
+                    description: 'Барбершоп{p}: чоловіча стрижка й борода. Дивіться майстрів на карті Mapfix, графік і телефон — дзвоніть напряму, без комісії.',
+                },
+                'beauty/hair': {
+                    h1: 'Перукар{p}',
+                    title: 'Перукар{p} — стрижка, фарбування, укладка | Mapfix',
+                    description: 'Перукар{p}: стрижка, фарбування, укладка. Дивіться майстрів на карті Mapfix, графік і телефон — дзвоніть напряму, без комісії.',
+                },
+                'beauty/massage': {
+                    h1: 'Масаж{p}',
+                    title: 'Масаж{p} — класичний і лікувальний масаж | Mapfix',
+                    description: 'Масаж{p}: класичний і лікувальний масаж. Дивіться майстрів на карті Mapfix, графік і телефон — дзвоніть напряму, без комісії.',
+                },
+                'home/cleaning': {
+                    h1: 'Прибирання{p}',
+                    title: 'Прибирання{p} — квартири, після ремонту, вікна | Mapfix',
+                    description: 'Прибирання{p}: квартири, після ремонту, вікна. Дивіться майстрів на карті Mapfix, графік і телефон — дзвоніть напряму, без комісії.',
+                },
+                'home/locksmith': {
+                    h1: 'Відкриття і заміна замків{p}',
+                    title: 'Відкриття і заміна замків{p} — аварійне відкриття, заміна личинки | Mapfix',
+                    description: 'Відкриття і заміна замків{p}: аварійне відкриття, заміна личинки. Дивіться майстрів на карті Mapfix, графік і телефон — дзвоніть напряму, без комісії.',
+                },
+                'repair/appliances': {
+                    h1: 'Ремонт побутової техніки{p}',
+                    title: 'Ремонт побутової техніки{p} — пральна машина, холодильник, плита | Mapfix',
+                    description: 'Ремонт побутової техніки{p}: пральна машина, холодильник, плита. Дивіться майстрів на карті Mapfix, графік і телефон — дзвоніть напряму, без комісії.',
+                },
+                'repair/phones': {
+                    h1: 'Ремонт телефонів{p}',
+                    title: 'Ремонт телефонів{p} — екран, батарея, роз\'єм | Mapfix',
+                    description: 'Ремонт телефонів{p}: екран, батарея, роз\'єм. Дивіться майстрів на карті Mapfix, графік і телефон — дзвоніть напряму, без комісії.',
+                },
+                'pets/grooming': {
+                    h1: 'Грумінг{p}',
+                    title: 'Грумінг{p} — стрижка й догляд за тваринами | Mapfix',
+                    description: 'Грумінг{p}: стрижка й догляд за тваринами. Дивіться майстрів на карті Mapfix, графік і телефон — дзвоніть напряму, без комісії.',
+                },
+            };
+            function fillSeoPlace(row, place) {
+                const fill = (value) => String(value || '').replaceAll('{p}', place);
+                return { h1: fill(row.h1), title: fill(row.title), description: fill(row.description) };
+            }
+            function canonicalHrefFor(url) {
+                try {
+                    const parsed = new URL(url, 'https://www.mapfix.com.ua');
+                    let path = parsed.pathname || '/';
+                    if (path.length > 1 && path.endsWith('/')) path = path.slice(0, -1);
+                    const page = parsed.searchParams.get('page') || '';
+                    const pageQs = /^[1-9]\d*$/.test(page) && page !== '1' ? `?page=${page}` : '';
+                    return 'https://www.mapfix.com.ua' + path + pageQs;
+                } catch (_) {
+                    return 'https://www.mapfix.com.ua/';
+                }
+            }
+            function applyPageSeo({ title, description, keywords, url, h1 }) {
                 document.title = title;
                 setSeoMeta('name', 'description', description);
                 setSeoMeta('name', 'keywords', keywords);
                 setSeoMeta('property', 'og:title', title);
                 setSeoMeta('property', 'og:description', description);
-                setSeoMeta('property', 'og:url', url);
+                const canonical = canonicalHrefFor(url);
+                setSeoMeta('property', 'og:url', canonical);
                 setSeoMeta('name', 'twitter:title', title);
                 setSeoMeta('name', 'twitter:description', description);
                 let canon = document.querySelector('link[rel="canonical"]');
@@ -2706,19 +3053,94 @@
                     canon.rel = 'canonical';
                     document.head.appendChild(canon);
                 }
-                // Канонічна адреса — завжди www-хост і шлях без query (як у серверному HTML)
+                canon.setAttribute('href', canonical);
+                if (h1 && navTitle) navTitle.textContent = h1;
+            }
+            function restoreServerHead() {
+                if (serverHead.title) document.title = serverHead.title;
+                if (serverHead.description) setSeoMeta('name', 'description', serverHead.description);
+                if (serverHead.keywords) setSeoMeta('name', 'keywords', serverHead.keywords);
+                if (serverHead.ogTitle) setSeoMeta('property', 'og:title', serverHead.ogTitle);
+                if (serverHead.ogDescription) setSeoMeta('property', 'og:description', serverHead.ogDescription);
+                if (serverHead.ogUrl) setSeoMeta('property', 'og:url', serverHead.ogUrl);
+                if (serverHead.twTitle) setSeoMeta('name', 'twitter:title', serverHead.twTitle);
+                if (serverHead.twDescription) setSeoMeta('name', 'twitter:description', serverHead.twDescription);
+                const canon = document.querySelector('link[rel="canonical"]');
+                if (canon && serverHead.canonical) canon.setAttribute('href', serverHead.canonical);
+                if (navTitle && serverHead.h1) navTitle.textContent = serverHead.h1;
+            }
+            function syncAddressToServerPath() {
                 try {
-                    canon.href = 'https://www.mapfix.com.ua' + new URL(url, window.location.origin).pathname;
-                } catch (_) {
-                    canon.href = url;
+                    const cur = new URL(window.location.href);
+                    const target = new URL(shareUrlFromState(), window.location.origin);
+                    const page = (serverHead.path.match(/[?&]page=(\d+)/) || [])[1];
+                    if (page && page !== '1') target.searchParams.set('page', page);
+                    const next = target.pathname + target.search;
+                    if (cur.pathname + cur.search !== next) history.replaceState(null, '', next);
+                } catch (_) {}
+            }
+            function clientListingSeo() {
+                const place = cityScopeTitle();
+                const placeName = areaPlaceName();
+                if (State.selectedLocation) {
+                    const loc = State.selectedLocation;
+                    const catName = categoryLabel(window.masterCatalog?.[loc.cat]?.name || loc.cat || 'майстер');
+                    const rawTitle = String(loc.title || 'Майстер').replace(/\s+/g, ' ').trim() || 'Майстер';
+                    const shortTitle = rawTitle.slice(0, 58);
+                    return {
+                        h1: rawTitle,
+                        title: `${shortTitle} — ${catName} | Mapfix`,
+                        description: `${shortTitle}: ${loc.address || 'Київ'}. Телефон, маршрут і відгуки на карті Mapfix.`,
+                        keywords: `${shortTitle}, ${catName}, майстер додому, Київ, Mapfix`,
+                    };
                 }
+                if (State.category) {
+                    const cat = window.masterCatalog?.[State.category];
+                    const subKey = State.subcategory;
+                    const subRow = subKey ? CLIENT_SUB_SEO[`${State.category}/${subKey}`] : null;
+                    if (subRow) {
+                        const filled = fillSeoPlace(subRow, place);
+                        return {
+                            ...filled,
+                            keywords: `${filled.h1}, ${placeName || 'Київ'}, Mapfix`,
+                        };
+                    }
+                    if (!subKey && CLIENT_CAT_SEO[State.category]) {
+                        const filled = fillSeoPlace(CLIENT_CAT_SEO[State.category], place);
+                        return {
+                            ...filled,
+                            keywords: `${filled.h1}, ${placeName || 'Київ'}, майстер додому, Mapfix`,
+                        };
+                    }
+                    const name = categoryLabel((subKey && cat?.subcats?.[subKey]?.name) || cat?.name || State.category);
+                    return {
+                        h1: `${name}${place}`,
+                        title: `${name}${place} — майстри поруч | Mapfix`,
+                        description: `${name}${place}. Майстер додому, ремонт — оберіть виконавця на карті Mapfix.`,
+                        keywords: `${name}, ${placeName || 'Київ'}, майстер додому, сантехнік Київ, ремонт, Mapfix`,
+                    };
+                }
+                if (placeName) {
+                    return {
+                        h1: `Майстри${place}`,
+                        title: `Майстри${place} — карта послуг Mapfix`,
+                        description: `Карта майстрів${place}: сантехнік, ремонт, автосервіс. Телефонуйте напряму, без комісій посередника.`,
+                        keywords: `майстер ${placeName}, сантехнік ${placeName}, ремонт ${placeName}, Mapfix`,
+                    };
+                }
+                return {
+                    h1: 'Майстри та ремонт у Києві',
+                    title: 'Mapfix — майстер додому, сантехнік Київ, ремонт поруч',
+                    description: 'Карта майстрів у Києві: сантехнік, ремонт квартири, майстер додому. Знайдіть виконавця поруч, порівняйте ціни й замовте послугу на Mapfix.',
+                    keywords: 'майстер додому, сантехнік Київ, ремонт, майстер Київ, карта послуг, сантехнік, електрик, ремонт квартири, Mapfix',
+                };
             }
             function shareUrlFromState() {
                 const origin = window.location.origin;
                 const cur = new URLSearchParams(window.location.search);
                 const next = new URLSearchParams();
                 if (State.selectedLocation && cur.get('claim') === '1') next.set('claim', '1');
-                ['add', 'feedback', 'utm_source', 'utm_medium', 'utm_campaign', 'utm_content', 'utm_term'].forEach((k) => {
+                ['add', 'feedback', 'utm_source', 'utm_medium', 'utm_campaign', 'utm_content', 'utm_term', 'fbclid', 'gclid', 'ttclid', 'yclid'].forEach((k) => {
                     const v = cur.get(k);
                     if (v) next.set(k, v);
                 });
@@ -2726,77 +3148,20 @@
                 return origin + sharePathFromState() + (qs ? '?' + qs : '');
             }
             function applyPageSeoFromState() {
-                const origin = window.location.origin;
-                const url = shareUrlFromState();
-                const place = areaPlaceName();
-                const placeBit = cityScopeTitle();
-                if (State.selectedLocation) {
-                    const loc = State.selectedLocation;
-                    const catName = categoryLabel(
-                        window.masterCatalog?.[loc.cat]?.name || loc.cat || 'майстер'
-                    );
-                    const shortTitle = String(loc.title || 'Майстер').replace(/\s+/g, ' ').trim().slice(0, 58);
-                    applyPageSeo({
-                        title: `${shortTitle} — ${catName} | Mapfix`,
-                        description: `${shortTitle}: ${loc.address || 'Київ'}. Телефон, маршрут і відгуки на карті Mapfix.`,
-                        keywords: `${shortTitle}, ${catName}, майстер додому, Київ, Mapfix`,
-                        url,
-                    });
-                } else if (State.category) {
-                    const cat = window.masterCatalog?.[State.category];
-                    const name = categoryLabel(cat?.name || State.category);
-                    const subKey = State.subcategory;
-                    const subCopy = {
-                        'home/plumber': {
-                            title: `Сантехнік${placeBit} — виклик майстра | Mapfix`,
-                            description: `Сантехнік${placeBit}: засмічення, змішувач, унітаз. Телефонуйте майстру з карти Mapfix без комісії.`,
-                        },
-                        'home/electrician': {
-                            title: `Електрик${placeBit} — розетка, щиток, люстра | Mapfix`,
-                            description: `Електрик${placeBit}: розетка, люстра, проводка. Порівняйте майстрів на карті Mapfix.`,
-                        },
-                        'home/handyman': {
-                            title: `Майстер на годину${placeBit} — дрібний ремонт | Mapfix`,
-                            description: `Чоловік на годину${placeBit}: полиця, телевізор, дрібний ремонт. Без комісій на Mapfix.`,
-                        },
-                        'auto/tyres': {
-                            title: `Шиномонтаж${placeBit} — заміна шин | Mapfix`,
-                            description: `Шиномонтаж${placeBit}: сезонна заміна і балансування. Оберіть сервіс на карті Mapfix.`,
-                        },
-                    }[State.category + '/' + subKey];
-                    const homeNiche = State.category === 'home' && !subKey;
-                    applyPageSeo({
-                        title: subCopy
-                            ? subCopy.title
-                            : homeNiche
-                            ? `Сантехнік і майстер додому${placeBit} | Mapfix`
-                            : `${name}${placeBit} — майстри поруч | Mapfix`,
-                        description: subCopy
-                            ? subCopy.description
-                            : homeNiche
-                            ? `Сантехнік, електрик і майстер додому${placeBit}. Без комісій — оберіть виконавця на карті Mapfix.`
-                            : `${name}${placeBit}. Майстер додому, ремонт — оберіть виконавця на карті Mapfix.`,
-                        keywords: `${name}, ${place || 'Київ'}, майстер додому, сантехнік Київ, ремонт, Mapfix`,
-                        url,
-                    });
-                } else {
-                    applyPageSeo({
-                        title: place
-                            ? `Майстри${placeBit} — карта послуг Mapfix`
-                            : 'Mapfix — майстер додому, сантехнік Київ, ремонт поруч',
-                        description: place
-                            ? `Карта майстрів${placeBit}: сантехнік, ремонт, авто. Телефонуйте напряму, без комісій.`
-                            : 'Карта майстрів у Києві: сантехнік, ремонт квартири, майстер додому. Знайдіть виконавця поруч, порівняйте ціни й замовте послугу на Mapfix.',
-                        keywords: place
-                            ? `майстер ${place}, сантехнік ${place}, ремонт, Mapfix`
-                            : 'майстер додому, сантехнік Київ, ремонт, майстер Київ, карта послуг, сантехнік, електрик, ремонт квартири, Mapfix',
-                        url,
-                    });
+                const serverPath = serverHead.path.split('?')[0];
+                const onServerPath = sharePathFromState() === serverPath;
+                if (!seoListingTouched || onServerPath) {
+                    restoreServerHead();
+                    if (seoListingTouched && onServerPath) syncAddressToServerPath();
+                    return;
                 }
+                const seo = clientListingSeo();
+                const url = shareUrlFromState();
+                applyPageSeo({ ...seo, url });
                 try {
                     const cur = new URLSearchParams(window.location.search);
                     if (cur.get('claim') === '1') return;
-                    const parsed = new URL(url, origin);
+                    const parsed = new URL(url, window.location.origin);
                     history.replaceState(null, '', parsed.pathname + parsed.search);
                 } catch (_) {}
             }
@@ -2804,6 +3169,7 @@
             function syncUI() {
                 renderCatalogNav();
                 applyPageSeoFromState();
+                renderRecentViewed();
             }
 
             function buildLocationIcon(loc) {
@@ -2873,6 +3239,31 @@
                     const bounds = L.latLngBounds(visible.map((l) => [l.lat, l.lng]));
                     map.fitBounds(bounds, { padding: [60, 60], maxZoom: 13 });
                 }
+                updateListingCount(visible.length);
+            }
+
+            function placesWordUa(count) {
+                const n = Math.abs(Number(count) || 0);
+                const mod100 = n % 100;
+                const mod10 = n % 10;
+                if (mod100 > 10 && mod100 < 20) return 'місць';
+                if (mod10 === 1) return 'місце';
+                if (mod10 >= 2 && mod10 <= 4) return 'місця';
+                return 'місць';
+            }
+
+            function updateListingCount(markerCount) {
+                const el = document.getElementById('listingCount');
+                if (!el) return;
+                const area = MAPFIX_AREAS[State.area];
+                if (!area || !State.category) {
+                    el.hidden = true;
+                    el.textContent = '';
+                    return;
+                }
+                const n = Number(markerCount) || 0;
+                el.hidden = false;
+                el.textContent = `${n} ${placesWordUa(n)} на ${area.on || area.name}`;
             }
 
             function openPopupForLocation(loc) {
@@ -2893,6 +3284,7 @@
             }
 
             function resetToHome(opts = {}) {
+                seoListingTouched = true;
                 const keepSearch = Boolean(opts.keepSearch);
                 const searchField = document.getElementById('searchInput');
                 if (!keepSearch) {
@@ -2923,6 +3315,7 @@
             }
 
             function handleL1Click(catId) {
+                seoListingTouched = true;
                 // Повторний тап по активній категорії — зняти вибір і показати всі на карті
                 if (State.category === catId) {
                     resetToHome();
@@ -2944,6 +3337,7 @@
             }
 
             function handleL2Click(subId) {
+                seoListingTouched = true;
                 trackCatalogClick({
                     type: 'subcategory',
                     categoryKey: State.category,
@@ -2957,6 +3351,7 @@
             }
 
             function handleL3Click(srv) {
+                seoListingTouched = true;
                 trackCatalogClick({
                     type: 'service',
                     categoryKey: State.category,
@@ -3001,6 +3396,7 @@
             }
 
             function applyCatalogSearchFilter(result, opts = {}) {
+                seoListingTouched = true;
                 const { category, subcategory, service } = result || {};
                 if (!category || !window.masterCatalog[category]) {
                     throw new Error('Категорію не знайдено в каталозі');
@@ -3395,6 +3791,7 @@
             })();
 
             window.addEventListener('popstate', () => {
+                seoListingTouched = true;
                 const landing = parseClientLanding();
                 State.area = landing.area || null;
                 State.category = landing.cat && window.masterCatalog?.[landing.cat] ? landing.cat : null;
@@ -3539,6 +3936,7 @@
                 });
 
                 window.addEventListener('appinstalled', () => {
+                    window.MapfixAnalytics?.pwa?.('install');
                     deferredPrompt = null;
                     hideBanner();
                     closeModal();
@@ -3552,6 +3950,7 @@
                 });
 
                 document.getElementById('pwaInstallBannerBtn')?.addEventListener('click', () => {
+                    window.MapfixAnalytics?.pwa?.('banner');
                     promptInstall();
                 });
                 document.getElementById('installAppHeaderBtn')?.addEventListener('click', () => {
