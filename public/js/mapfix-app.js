@@ -1128,17 +1128,31 @@
                 else browseBottomSheet();
             }
 
+            function lowerOpenCard() {
+                if (!State.selectedLocation) return false;
+                if (State.detailMode === 'dive') {
+                    openMasterDetail(State.selectedLocation.id, {
+                        mode: 'preview',
+                        forceMode: true,
+                        fromMarker: true,
+                    });
+                    return true;
+                }
+                if (State.detailMode === 'preview') {
+                    closeMasterDetail();
+                    return true;
+                }
+                return false;
+            }
+
             function lowerSheetLevel() {
+                if (State.selectedLocation && (State.detailMode === 'preview' || State.detailMode === 'dive')) {
+                    lowerOpenCard();
+                    return;
+                }
                 const level = getSheetLevel();
                 if (level >= 2) {
-                    if (State.detailMode === 'dive') {
-                        // З dive не скидаємо картку — лише трохи зменшуємо шторку
-                        appShell.classList.remove('sheet-dive', 'sheet-browse');
-                        appShell.classList.add('sheet-expanded');
-                        setTimeout(() => map.invalidateSize(), 400);
-                    } else {
-                        expandBottomSheet();
-                    }
+                    expandBottomSheet();
                 } else if (level === 1) {
                     collapseBottomSheet();
                 }
@@ -1192,11 +1206,35 @@
             };
 
             const detailViewEl = document.getElementById('sidebar-detail-view');
+            let suppressDetailClick = false;
+            let cardDragStartY = 0;
+            let cardDragArmed = false;
             detailViewEl.addEventListener('click', (e) => {
+                if (suppressDetailClick) {
+                    suppressDetailClick = false;
+                    return;
+                }
                 if (State.detailMode !== 'preview' || !State.selectedLocation) return;
                 if (e.target.closest('a, button, input, textarea, select, label')) return;
                 diveIntoSelectedDetail();
             });
+            detailViewEl.addEventListener('touchstart', (e) => {
+                if (!isMobileLayout()) return;
+                if (e.target.closest('#detailBodyContent, a, button, input, textarea, select, label')) return;
+                cardDragArmed = true;
+                cardDragStartY = e.touches[0].clientY;
+            }, { passive: true });
+            detailViewEl.addEventListener('touchend', (e) => {
+                if (!cardDragArmed) return;
+                cardDragArmed = false;
+                const diff = e.changedTouches[0].clientY - cardDragStartY;
+                if (diff < 48) return;
+                suppressDetailClick = true;
+                lowerOpenCard();
+            }, { passive: true });
+            detailViewEl.addEventListener('touchcancel', () => {
+                cardDragArmed = false;
+            }, { passive: true });
 
             function pulseSheetContent() {
                 sidebarListView.classList.remove('sheet-content-enter');

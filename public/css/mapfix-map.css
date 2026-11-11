@@ -1937,8 +1937,14 @@
                 height: auto;
                 overflow: visible;
             }
-            #app-shell.showing-location .sheet-drag-handle::after {
-                content: '';
+            #app-shell.showing-location.sheet-peek .sheet-drag-handle::after {
+                content: 'Потягніть вниз, щоб закрити';
+            }
+            #app-shell.showing-location.sheet-dive .sheet-drag-handle::after {
+                content: 'Потягніть вниз, щоб згорнути';
+            }
+            #app-shell.showing-location .sheet-drag-handle {
+                height: 36px;
             }
 
             #sidebar-detail-view {
