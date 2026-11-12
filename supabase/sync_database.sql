@@ -292,7 +292,7 @@ CREATE TABLE IF NOT EXISTS public.import_candidates (
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now(),
   CONSTRAINT import_candidates_place_wave_unique UNIQUE (place_id, wave),
-  CONSTRAINT import_candidates_status_chk CHECK (status IN ('pending', 'approved', 'rejected', 'published')),
+  CONSTRAINT import_candidates_status_chk CHECK (status IN ('pending', 'approved', 'rejected', 'published', 'needs_classify')),
   CONSTRAINT import_candidates_dedup_chk CHECK (
     dedup_status = 'new'
     OR dedup_status LIKE 'duplicate_of %'
@@ -304,6 +304,20 @@ CREATE TABLE IF NOT EXISTS public.import_candidates (
 
 CREATE INDEX IF NOT EXISTS idx_import_candidates_wave_status
   ON public.import_candidates (wave, status);
+
+ALTER TABLE public.import_candidates DROP CONSTRAINT IF EXISTS import_candidates_status_chk;
+ALTER TABLE public.import_candidates
+  ADD CONSTRAINT import_candidates_status_chk
+  CHECK (status IN ('pending', 'approved', 'rejected', 'published', 'needs_classify'));
+
+UPDATE public.import_candidates
+SET
+  status = 'needs_classify',
+  needs_review = true,
+  reject_reason = NULL,
+  updated_at = now()
+WHERE status = 'rejected'
+  AND reject_reason = 'classify_error';
 
 ALTER TABLE public.import_candidates ENABLE ROW LEVEL SECURITY;
 

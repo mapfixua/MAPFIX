@@ -1116,6 +1116,39 @@ test('reset refuses a wave that is not a text search failure', async () => {
   assert.equal(store.rows.get('wave:A').text_search_used, 4);
 });
 
+test('classifier quota keeps the wave running so a later click can resume', async () => {
+  const store = memoryRuns();
+  const result = await executeWaveChunk({
+    body: { wave: 'A', timeBudgetMs: 1000 },
+    cache: false,
+    minIntervalMs: 0,
+    locations: [],
+    masterCatalog: catalog,
+    getRun: store.getRun,
+    saveRun: store.saveRun,
+    listStaged: async () => [],
+    upsertCandidates: async () => ({ ok: true }),
+    runWave: async () => ({
+      processed: 3,
+      total: 100,
+      done: false,
+      stoppedReason: 'classifier_quota',
+      nextCursor: { pairIndex: 3 },
+      counts: { skipped: { classifier_quota: 1 }, staged: 1, needsClassify: 1 },
+      cost: { textSearchRequests: 1, detailsRequests: 1, cacheHits: 0 },
+      candidates: [],
+      publishedLocations: 0,
+    }),
+  });
+  assert.equal(result.stoppedReason, 'classifier_quota');
+  assert.equal(result.done, false);
+  assert.equal(result.dryRun, true);
+  assert.equal(result.publishedLocations, 0);
+  assert.equal(store.rows.get('wave:A').status, 'running');
+  assert.equal(store.rows.get('wave:A').counts.stoppedReason, 'classifier_quota');
+  assert.deepEqual(store.rows.get('wave:A').cursor, { pairIndex: 3 });
+});
+
 test('admin import panel shows the text search error and offers a wave A reset', () => {
   const html = fs.readFileSync(path.join(__dirname, '..', 'public/admin.html'), 'utf8');
   const js = fs.readFileSync(path.join(__dirname, '..', 'public/admin-places-v2.js'), 'utf8');
@@ -1127,6 +1160,11 @@ test('admin import panel shows the text search error and offers a wave A reset',
   assert.match(js, /text_search_error/);
   assert.match(js, /google_quota/);
   assert.match(js, /google_billing/);
+  assert.match(js, /classifier_quota/);
+  assert.match(js, /Перекласифікувати/);
+  assert.match(js, /\/api\/admin\/places-v2\/reclassify/);
+  assert.match(html, /id="placesV2Reclassify"/);
+  assert.match(html, /needs_classify/);
   assert.match(js, /денна квота Google/);
   assert.match(js, /Лічильники Text Search і Details обнулено/);
   assert.match(js, /\/api\/admin\/places-v2\/reset-wave/);

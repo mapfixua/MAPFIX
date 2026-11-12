@@ -82,6 +82,22 @@ async function listImportCandidates({ wave, status, limit = 200 } = {}) {
   return { ok: true, rows: data || [] };
 }
 
+async function listImportCandidatesNeedingClassify({ wave, afterId, limit = 20 } = {}) {
+  const { client, error: clientError } = serviceClient();
+  if (!client) return { ok: false, error: clientError, rows: [] };
+  let query = client
+    .from(TABLE)
+    .select('*')
+    .eq('status', 'needs_classify')
+    .order('id', { ascending: true })
+    .limit(Math.min(50, Math.max(1, Number(limit) || 20)));
+  if (wave) query = query.eq('wave', wave);
+  if (afterId) query = query.gt('id', afterId);
+  const { data, error } = await query;
+  if (error) return { ok: false, error, rows: [] };
+  return { ok: true, rows: data || [] };
+}
+
 async function listStagedForDedup(wave) {
   const { client, error: clientError } = serviceClient();
   if (!client) return { ok: false, error: clientError, rows: [] };
@@ -148,6 +164,7 @@ async function bulkApproveImportCandidates({ wave, ids } = {}) {
 module.exports = {
   upsertImportCandidates,
   listImportCandidates,
+  listImportCandidatesNeedingClassify,
   listStagedForDedup,
   getImportCandidate,
   updateImportCandidate,

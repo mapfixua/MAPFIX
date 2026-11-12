@@ -43,7 +43,7 @@ CREATE TABLE IF NOT EXISTS public.import_candidates (
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now(),
   CONSTRAINT import_candidates_place_wave_unique UNIQUE (place_id, wave),
-  CONSTRAINT import_candidates_status_chk CHECK (status IN ('pending', 'approved', 'rejected', 'published')),
+  CONSTRAINT import_candidates_status_chk CHECK (status IN ('pending', 'approved', 'rejected', 'published', 'needs_classify')),
   CONSTRAINT import_candidates_dedup_chk CHECK (
     dedup_status = 'new'
     OR dedup_status LIKE 'duplicate_of %'

@@ -1375,6 +1375,7 @@
             <h2>Імпорт v2 — черга перевірки</h2>
             <p class="field-hint">
               Хвиля заповнює лише таблицю <b>import_candidates</b>. На карту нічого не потрапляє, поки ви не натиснете «Опублікувати схвалені».
+              Якщо Gemini повертає 429, хвиля зупиняється. Рядки <b>needs_classify</b> повторює «Перекласифікувати» зі збережених даних, без нових запитів до Google.
               Нові картки отримують <b>import_source=places_v2</b> і <b>google_place_id</b>.
               Видалені картки не відновлюються, зайняті майстром не перезаписуються.
             </p>
@@ -1389,6 +1390,7 @@
                 <label for="placesV2Status">Статус</label>
                 <select id="placesV2Status">
                   <option value="pending">pending</option>
+                  <option value="needs_classify">needs_classify</option>
                   <option value="">усі</option>
                   <option value="approved">approved</option>
                   <option value="rejected">rejected</option>
@@ -1397,6 +1399,7 @@
               </div>
               <button type="button" id="placesV2Reload" class="btn-secondary" style="width:auto">Оновити</button>
               <button type="button" id="placesV2Bulk" style="width:auto">Схвалити впевнені нові</button>
+              <button type="button" id="placesV2Reclassify" class="btn-secondary" style="width:auto">Перекласифікувати</button>
               <button type="button" id="placesV2Publish" class="btn-secondary" style="width:auto">Опублікувати схвалені</button>
             </div>
             <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:12px">
