@@ -587,7 +587,12 @@ test('text search records the HTTP status and Google error without the API key',
       masterCatalog: catalog,
       budget: budget(5),
     });
-    assert.equal(result.counts.skipped.text_search_error, 1);
+    assert.equal(result.stoppedReason, 'google_billing');
+    assert.equal(result.done, false);
+    assert.equal(result.processed, 0);
+    assert.equal(result.cost.textSearchRequests, 0);
+    assert.equal(result.counts.skipped.google_billing, 1);
+    assert.equal(result.counts.skipped.text_search_error, undefined);
     assert.equal(result.counts.lastTextSearchHttpStatus, 403);
     assert.match(result.counts.lastTextSearchError, /HTTP 403/);
     assert.match(result.counts.lastTextSearchError, /PERMISSION_DENIED/);
@@ -627,8 +632,8 @@ test('three identical text search errors stop the wave before the remaining pair
       listStaged: async () => [],
       textSearch: async () => {
         calls += 1;
-        const error = new Error('HTTP 403 PERMISSION_DENIED blocked https://maps.googleapis.com/maps?key=AIzaSyBreakerKey1234567890');
-        error.status = 403;
+        const error = new Error('HTTP 503 UNAVAILABLE blocked https://maps.googleapis.com/maps?key=AIzaSyBreakerKey1234567890');
+        error.status = 503;
         throw error;
       },
     });
@@ -638,8 +643,8 @@ test('three identical text search errors stop the wave before the remaining pair
     assert.equal(result.total > 3, true);
     assert.deepEqual(result.nextCursor, { pairIndex: 0 });
     assert.equal(result.counts.skipped.text_search_error, 3);
-    assert.equal(result.counts.lastTextSearchHttpStatus, 403);
-    assert.match(result.counts.lastTextSearchError, /PERMISSION_DENIED/);
+    assert.equal(result.counts.lastTextSearchHttpStatus, 503);
+    assert.match(result.counts.lastTextSearchError, /UNAVAILABLE/);
     assert.equal(result.counts.lastTextSearchError.includes('AIzaSyBreakerKey1234567890'), false);
     assert.equal(result.counts.lastTextSearchError.includes('http'), false);
     const row = store.rows.get('wave:A');
@@ -647,7 +652,7 @@ test('three identical text search errors stop the wave before the remaining pair
     assert.notEqual(row.status, 'done');
     assert.deepEqual(row.cursor, { pairIndex: 0 });
     assert.equal(row.counts.lastTextSearchError, result.counts.lastTextSearchError);
-    assert.equal(row.counts.lastTextSearchHttpStatus, 403);
+    assert.equal(row.counts.lastTextSearchHttpStatus, 503);
     assert.equal(row.counts.stoppedReason, 'text_search_error');
     assert.equal(row.text_search_used, 3);
     assert.equal(logs.length, 3);
@@ -711,6 +716,7 @@ test('different text search errors do not trip the breaker and keep the first on
   assert.equal(result.counts.skipped.text_search_error, 3);
   assert.equal(result.counts.lastTextSearchError, 'fail-1');
   assert.equal(result.counts.lastTextSearchHttpStatus, 500);
+  assert.equal(result.cost.textSearchRequests, 3);
 });
 
 function erroredWaveRow(extra = {}) {
@@ -771,10 +777,12 @@ test('a finished wave whose pairs all errored resets and retries on the next run
   assert.deepEqual(cursor, { pairIndex: 0 });
   const row = store.rows.get('wave:A');
   assert.equal(row.status, 'running');
-  assert.equal(row.text_search_used, 5);
+  assert.equal(row.text_search_used, 1);
+  assert.equal(row.details_used, 0);
   assert.equal(row.counts.pairsProcessed, 1);
-  assert.equal(row.counts.lastTextSearchError, 'HTTP 403 PERMISSION_DENIED blocked');
-  assert.equal(row.counts.lastTextSearchHttpStatus, 403);
+  assert.equal(row.counts.lastTextSearchError, null);
+  assert.equal(row.counts.lastTextSearchHttpStatus, null);
+  assert.equal(row.counts.stoppedReason, 'time_budget');
 });
 
 test('reset rewinds a text_search_error run and the next run retries those pairs', async () => {
@@ -807,12 +815,16 @@ test('reset rewinds a text_search_error run and the next run retries those pairs
   let row = store.rows.get('wave:A');
   assert.equal(row.status, 'running');
   assert.deepEqual(row.cursor, { pairIndex: 0 });
+  assert.equal(row.locked_until, null);
   assert.equal(row.counts.stoppedReason, null);
   assert.equal(row.counts.pairsProcessed, 0);
   assert.equal(row.counts.staged, 0);
-  assert.equal(row.text_search_used, 5);
-  assert.equal(row.details_used, 1);
-  assert.equal(row.counts.lastTextSearchHttpStatus, 403);
+  assert.equal(row.counts.lastTextSearchError, null);
+  assert.equal(row.counts.lastTextSearchHttpStatus, null);
+  assert.equal(row.text_search_used, 0);
+  assert.equal(row.details_used, 0);
+  assert.equal(reset.requests.textSearch, 0);
+  assert.equal(reset.requests.details, 0);
 
   let cursor = null;
   const again = await executeWaveChunk({
@@ -837,7 +849,247 @@ test('reset rewinds a text_search_error run and the next run retries those pairs
   });
   assert.deepEqual(cursor, { pairIndex: 0 });
   assert.equal(again.done, false);
-  assert.equal(store.rows.get('wave:A').text_search_used, 6);
+  assert.equal(again.stoppedReason, null);
+  assert.equal(store.rows.get('wave:A').text_search_used, 1);
+  assert.equal(store.rows.get('wave:A').status, 'running');
+});
+
+test('HTTP 429 RESOURCE_EXHAUSTED stops on the first searchText without spending the local cap', async () => {
+  const store = memoryRuns();
+  let calls = 0;
+  const result = await executeWaveChunk({
+    body: { wave: 'A', timeBudgetMs: 20000, maxTextSearch: 800 },
+    cache: false,
+    minIntervalMs: 0,
+    locations: [],
+    masterCatalog: catalog,
+    getRun: store.getRun,
+    saveRun: store.saveRun,
+    listStaged: async () => [],
+    textSearch: async () => {
+      calls += 1;
+      const error = new Error('HTTP 429 RESOURCE_EXHAUSTED Quota exceeded for the day');
+      error.status = 429;
+      error.googleStatus = 'RESOURCE_EXHAUSTED';
+      throw error;
+    },
+  });
+  assert.equal(calls, 1);
+  assert.equal(result.dryRun, true);
+  assert.equal(result.publishedLocations, 0);
+  assert.equal(result.done, false);
+  assert.equal(result.stoppedReason, 'google_quota');
+  assert.equal(result.processed, 0);
+  assert.equal(result.total > 1, true);
+  assert.equal(result.requests.textSearch, 0);
+  assert.equal(result.counts.pairsProcessed, 0);
+  assert.equal(result.counts.skipped.google_quota, 1);
+  assert.equal(result.counts.lastTextSearchHttpStatus, 429);
+  assert.match(result.counts.lastTextSearchError, /RESOURCE_EXHAUSTED/);
+  const row = store.rows.get('wave:A');
+  assert.equal(row.status, 'running');
+  assert.equal(row.text_search_used, 0);
+  assert.equal(row.details_used, 0);
+  assert.equal(row.counts.stoppedReason, 'google_quota');
+  assert.equal(row.counts.pairsProcessed, 0);
+  assert.deepEqual(row.cursor, { pairIndex: 0 });
+
+  const reset = await executeWaveReset({
+    body: { wave: 'A' },
+    getRun: store.getRun,
+    saveRun: store.saveRun,
+  });
+  assert.equal(reset.reset, true);
+  assert.equal(reset.requests.textSearch, 0);
+  assert.equal(store.rows.get('wave:A').counts.stoppedReason, null);
+  assert.equal(store.rows.get('wave:A').counts.lastTextSearchError, null);
+  assert.equal(store.rows.get('wave:A').counts.lastTextSearchHttpStatus, null);
+  assert.equal(store.rows.get('wave:A').status, 'running');
+});
+
+test('places:searchText HTTP 429 stops before the next pair', async () => {
+  const original = global.fetch;
+  let calls = 0;
+  global.fetch = async () => {
+    calls += 1;
+    return {
+      ok: false,
+      status: 429,
+      json: async () => ({
+        error: {
+          code: 429,
+          status: 'RESOURCE_EXHAUSTED',
+          message: 'Quota exceeded for quota metric SearchTextRequest per day',
+        },
+      }),
+    };
+  };
+  try {
+    const placesBudget = budget(800);
+    const result = await runWave({
+      apiKey: 'test-key',
+      wave: 'A',
+      tiles: [tile(0), tile(1), tile(2)],
+      targets: [plumber],
+      locations: [],
+      masterCatalog: catalog,
+      budget: placesBudget,
+    });
+    assert.equal(calls, 1);
+    assert.equal(result.dryRun, true);
+    assert.equal(result.publishedLocations, 0);
+    assert.equal(result.stoppedReason, 'google_quota');
+    assert.equal(result.processed, 0);
+    assert.equal(result.done, false);
+    assert.equal(result.candidates.length, 0);
+    assert.equal(placesBudget.stats.textSearch, 0);
+    assert.equal(result.cost.textSearchRequests, 0);
+    assert.equal(result.counts.lastTextSearchHttpStatus, 429);
+    assert.match(result.counts.lastTextSearchError, /RESOURCE_EXHAUSTED/);
+    assert.match(result.counts.lastTextSearchError, /Quota exceeded/);
+    assert.deepEqual(result.nextCursor, { pairIndex: 0 });
+  } finally {
+    global.fetch = original;
+  }
+});
+
+test('a quota error after a successful search does not consume another local call', async () => {
+  let calls = 0;
+  const placesBudget = budget(10);
+  const result = await runWave({
+    wave: 'A',
+    tiles: [tile(0), tile(1), tile(2)],
+    targets: [plumber],
+    locations: [],
+    masterCatalog: catalog,
+    budget: placesBudget,
+    textSearch: async () => {
+      calls += 1;
+      if (calls === 1) return [];
+      const error = new Error('HTTP 429 RESOURCE_EXHAUSTED daily quota');
+      error.status = 429;
+      error.googleStatus = 'RESOURCE_EXHAUSTED';
+      throw error;
+    },
+  });
+  assert.equal(calls, 2);
+  assert.equal(result.processed, 1);
+  assert.equal(result.stoppedReason, 'google_quota');
+  assert.equal(result.done, false);
+  assert.deepEqual(result.nextCursor, { pairIndex: 1 });
+  assert.equal(placesBudget.stats.textSearch, 1);
+  assert.equal(result.cost.textSearchRequests, 1);
+});
+
+test('quota and billing searchText errors do not spend the local cap, 5xx still does', async () => {
+  const placesBudget = createPlacesBudget({ maxTextSearch: 2, maxDetails: 2, minIntervalMs: 0, cache: false });
+  await assert.rejects(
+    () => placesBudget.spend('text', '', async () => {
+      const error = new Error('quota');
+      error.status = 429;
+      error.googleStatus = 'RESOURCE_EXHAUSTED';
+      throw error;
+    }),
+    /quota/
+  );
+  assert.equal(placesBudget.stats.textSearch, 0);
+  await assert.rejects(
+    () => placesBudget.spend('text', '', async () => {
+      const error = new Error('billing');
+      error.status = 403;
+      error.googleStatus = 'BILLING_DISABLED';
+      throw error;
+    }),
+    /billing/
+  );
+  assert.equal(placesBudget.stats.textSearch, 0);
+  await assert.rejects(
+    () => placesBudget.spend('text', '', async () => {
+      const error = new Error('permission');
+      error.status = 403;
+      throw error;
+    }),
+    /permission/
+  );
+  assert.equal(placesBudget.stats.textSearch, 0);
+  await assert.rejects(
+    () => placesBudget.spend('text', '', async () => {
+      const error = new Error('unavailable');
+      error.status = 503;
+      throw error;
+    }),
+    /unavailable/
+  );
+  assert.equal(placesBudget.stats.textSearch, 1);
+  assert.equal(placesBudget.stats.errors, 4);
+});
+
+test('reset clears a spent text search cap so the next run can call Places', async () => {
+  const store = memoryRuns();
+  await store.saveRun(erroredWaveRow({
+    status: 'done',
+    cursor: { pairIndex: 12 },
+    locked_until: '2000-01-01T00:00:00.000Z',
+    text_search_used: 800,
+    details_used: 17,
+    counts: {
+      pairsProcessed: 0,
+      pairsTotal: 100,
+      staged: 0,
+      byDedup: {},
+      skipped: {},
+      textSearch: 800,
+      details: 17,
+      stoppedReason: 'text_search_cap',
+      lastTextSearchError: 'HTTP 429 RESOURCE_EXHAUSTED Quota exceeded',
+      lastTextSearchHttpStatus: 429,
+    },
+  }));
+  const reset = await executeWaveReset({
+    body: { wave: 'A' },
+    getRun: store.getRun,
+    saveRun: store.saveRun,
+  });
+  assert.equal(reset.reset, true);
+  assert.equal(reset.requests.textSearch, 0);
+  assert.equal(reset.requests.details, 0);
+  assert.equal(reset.counts.stoppedReason, null);
+  assert.equal(reset.counts.lastTextSearchError, null);
+  assert.equal(reset.counts.lastTextSearchHttpStatus, null);
+  assert.deepEqual(reset.nextCursor, { pairIndex: 0 });
+  let row = store.rows.get('wave:A');
+  assert.equal(row.status, 'running');
+  assert.equal(row.text_search_used, 0);
+  assert.equal(row.details_used, 0);
+  assert.equal(row.locked_until, null);
+  assert.deepEqual(row.cursor, { pairIndex: 0 });
+
+  let called = false;
+  const again = await executeWaveChunk({
+    body: { wave: 'A' },
+    cache: false,
+    minIntervalMs: 0,
+    getRun: store.getRun,
+    saveRun: store.saveRun,
+    listStaged: async () => [],
+    runWave: async () => {
+      called = true;
+      return {
+        processed: 1,
+        total: 100,
+        done: false,
+        stoppedReason: null,
+        nextCursor: { pairIndex: 1 },
+        counts: { skipped: {} },
+        cost: { textSearchRequests: 1, detailsRequests: 0, cacheHits: 0 },
+      };
+    },
+  });
+  assert.equal(called, true);
+  assert.notEqual(again.stoppedReason, 'text_search_cap');
+  assert.equal(again.dryRun, true);
+  assert.equal(again.publishedLocations, 0);
+  assert.equal(store.rows.get('wave:A').text_search_used, 1);
   assert.equal(store.rows.get('wave:A').status, 'running');
 });
 
@@ -872,7 +1124,11 @@ test('admin import panel shows the text search error and offers a wave A reset',
   assert.match(html, /id="placesV2RunError"/);
   assert.match(js, /lastTextSearchError/);
   assert.match(js, /lastTextSearchHttpStatus/);
-  assert.match(js, /stoppedReason === 'text_search_error'/);
+  assert.match(js, /text_search_error/);
+  assert.match(js, /google_quota/);
+  assert.match(js, /google_billing/);
+  assert.match(js, /денна квота Google/);
+  assert.match(js, /Лічильники Text Search і Details обнулено/);
   assert.match(js, /\/api\/admin\/places-v2\/reset-wave/);
 });
 

@@ -103,7 +103,8 @@ function mergeCounts(prev, chunk, total) {
 function isTextSearchWaveResettable(run) {
   const counts = run?.counts;
   if (!counts || typeof counts !== 'object') return false;
-  if (counts.stoppedReason === 'text_search_error') return true;
+  const reason = counts.stoppedReason;
+  if (reason === 'text_search_error' || reason === 'google_quota' || reason === 'google_billing') return true;
   const errored = Number(counts.skipped?.text_search_error) || 0;
   const staged = Number(counts.staged) || 0;
   const processed = Number(counts.pairsProcessed) || 0;
@@ -113,6 +114,25 @@ function isTextSearchWaveResettable(run) {
   return run.status === 'done' || (total > 0 && processed >= total);
 }
 
+function budgetExhausted(run) {
+  const textMax = Number(run?.max_text_search) || 0;
+  const detailsMax = Number(run?.max_details) || 0;
+  const textUsed = Number(run?.text_search_used) || 0;
+  const detailsUsed = Number(run?.details_used) || 0;
+  return (textMax > 0 && textUsed >= textMax) || (detailsMax > 0 && detailsUsed >= detailsMax);
+}
+
+/** Reset button. Broader than the automatic retry so a stuck 800/800 cap can be cleared. */
+function isAdminWaveResettable(run) {
+  if (isTextSearchWaveResettable(run)) return true;
+  const counts = run?.counts;
+  if (!counts || typeof counts !== 'object') return false;
+  if ((Number(counts.staged) || 0) !== 0) return false;
+  const reason = counts.stoppedReason;
+  if (reason === 'text_search_cap' || reason === 'details_cap') return true;
+  return budgetExhausted(run);
+}
+
 function resetTextSearchWave(run) {
   const counts = run?.counts || {};
   return {
@@ -120,11 +140,9 @@ function resetTextSearchWave(run) {
     status: 'running',
     cursor: { pairIndex: 0 },
     locked_until: null,
-    counts: {
-      ...emptyWaveCounts(counts.pairsTotal || 0),
-      lastTextSearchError: counts.lastTextSearchError || null,
-      lastTextSearchHttpStatus: counts.lastTextSearchHttpStatus ?? null,
-    },
+    text_search_used: 0,
+    details_used: 0,
+    counts: emptyWaveCounts(counts.pairsTotal || 0),
   };
 }
 
@@ -155,7 +173,7 @@ function describeWaveRun(row, wave) {
       wave,
     }),
     status: row.status,
-    resettable: isTextSearchWaveResettable(row),
+    resettable: isAdminWaveResettable(row),
   };
 }
 
@@ -360,7 +378,9 @@ async function executeWaveChunk(options = {}) {
     const textUsed = (restart ? 0 : run.text_search_used || 0) + textUsedNow;
     const detailsUsed = (restart ? 0 : run.details_used || 0) + detailsUsedNow;
     const capStop = result.stoppedReason === 'text_search_cap' || result.stoppedReason === 'details_cap';
-    const textSearchStop = result.stoppedReason === 'text_search_error';
+    const textSearchStop = result.stoppedReason === 'text_search_error'
+      || result.stoppedReason === 'google_quota'
+      || result.stoppedReason === 'google_billing';
     const done = (Boolean(result.done) || capStop) && !textSearchStop;
     run = {
       ...run,
@@ -428,11 +448,11 @@ async function executeWaveReset(options = {}) {
       wave: waveDef.id,
     });
   }
-  if (!isTextSearchWaveResettable(existing)) {
+  if (!isAdminWaveResettable(existing)) {
     return {
       ok: false,
       status: 409,
-      error: 'Скидання доступне, коли хвиля зупинилась через помилку Text Search або всі пари завершились помилкою і в черзі нічого немає.',
+      error: 'Скидання доступне, коли хвиля зупинилась через помилку Text Search, квоту чи оплату Google, або локальний ліміт вичерпано і в черзі нічого немає.',
     };
   }
   const run = resetTextSearchWave(existing);
@@ -730,6 +750,7 @@ module.exports = {
   summarizeDedup,
   mergeCounts,
   isTextSearchWaveResettable,
+  isAdminWaveResettable,
   resetTextSearchWave,
   describeWaveRun,
   executeWaveChunk,
