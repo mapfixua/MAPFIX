@@ -4,7 +4,7 @@ const { getWave, looksLikeBakery } = require('./places-waves.js');
 const { coveringTiles, pointInAllowedArea, allowedAreaId } = require('./places-geo.js');
 const { classifyDedup, placeIdOf } = require('./places-dedup.js');
 const { mapPlacesReviews, summarizeReviewDates } = require('./places-reviews.js');
-const { createPlacesBudget, PlacesQuotaError } = require('./places-quota.js');
+const { createPlacesBudget, PlacesQuotaError, searchTextFailureKind } = require('./places-quota.js');
 const { classifyPlace, verifyPlace, gateClassification } = require('./places-classify.js');
 const { normalizePhone } = require('./phone-normalize.js');
 
@@ -52,6 +52,8 @@ function passesListingFilters(place) {
   return { ok: true, reason: null };
 }
 
+// Identical transient failures (HTTP 5xx and other non-quota errors) stop after three.
+// HTTP 429 RESOURCE_EXHAUSTED and HTTP 403 billing/permission stop on the first response.
 const TEXT_SEARCH_ERROR_BREAKER = 3;
 const TEXT_SEARCH_MESSAGE_LIMIT = 300;
 
@@ -568,25 +570,34 @@ async function runWave(options = {}) {
           const status = textSearchHttpStatus(err);
           const message = sanitizeTextSearchMessage(err?.message, apiKey);
           console.error('[places-v2] text_search_error', (status == null ? '' : String(status)) + ' ' + message);
-          if (counts.lastTextSearchError == null) {
-            counts.lastTextSearchError = message || (status ? `HTTP ${status}` : 'text_search_error');
+          const fatal = searchTextFailureKind(err);
+          if (fatal) {
+            counts.lastTextSearchError = message || (status ? `HTTP ${status}` : fatal);
             counts.lastTextSearchHttpStatus = status;
+            stoppedReason = fatal;
+            pairIncomplete = true;
+            bump(fatal);
+          } else {
+            if (counts.lastTextSearchError == null) {
+              counts.lastTextSearchError = message || (status ? `HTTP ${status}` : 'text_search_error');
+              counts.lastTextSearchHttpStatus = status;
+            }
+            const signature = `${status == null ? '' : status}\n${message}`;
+            if (signature === textErrorSignature) textErrorStreak += 1;
+            else {
+              textErrorSignature = signature;
+              textErrorStreak = 1;
+              textErrorStart = pairIndex;
+            }
+            bump('text_search_error');
+            if (textErrorStreak >= TEXT_SEARCH_ERROR_BREAKER) {
+              stoppedReason = 'text_search_error';
+              pairCursor = textErrorStart;
+              processedPairs = Math.max(0, textErrorStart - startPair);
+              break;
+            }
+            found = [];
           }
-          const signature = `${status == null ? '' : status}\n${message}`;
-          if (signature === textErrorSignature) textErrorStreak += 1;
-          else {
-            textErrorSignature = signature;
-            textErrorStreak = 1;
-            textErrorStart = pairIndex;
-          }
-          bump('text_search_error');
-          if (textErrorStreak >= TEXT_SEARCH_ERROR_BREAKER) {
-            stoppedReason = 'text_search_error';
-            pairCursor = textErrorStart;
-            processedPairs = Math.max(0, textErrorStart - startPair);
-            break;
-          }
-          found = [];
         }
       }
       if (!pairIncomplete) {

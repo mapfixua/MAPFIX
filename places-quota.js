@@ -26,6 +26,20 @@ class PlacesQuotaError extends Error {
   }
 }
 
+/**
+ * Daily quota and billing/permission failures from places:searchText.
+ * These are terminal for the wave and must not consume the local Text Search cap.
+ * Transient 5xx stay billable against that cap so the existing breaker still applies.
+ */
+function searchTextFailureKind(err) {
+  if (!err || typeof err !== 'object') return null;
+  const status = Number(err.status ?? err.httpStatus);
+  const google = String(err.googleStatus || '').trim().toUpperCase();
+  if (status === 429 || google === 'RESOURCE_EXHAUSTED') return 'google_quota';
+  if (status === 403 || google === 'PERMISSION_DENIED' || google === 'BILLING_DISABLED') return 'google_billing';
+  return null;
+}
+
 function resolveCacheDir(preferred) {
   const dir = preferred || path.join(process.cwd(), 'data', 'places-cache');
   try {
@@ -127,8 +141,11 @@ function createPlacesBudget(options = {}) {
       if (cacheKey && value) await writeCache(cacheKey, value);
       return { value, cached: false };
     } catch (err) {
-      if (kind === 'details') stats.details += 1;
-      else stats.textSearch += 1;
+      const terminalText = kind !== 'details' && searchTextFailureKind(err);
+      if (!terminalText) {
+        if (kind === 'details') stats.details += 1;
+        else stats.textSearch += 1;
+      }
       stats.errors += 1;
       throw err;
     }
@@ -171,5 +188,6 @@ module.exports = {
   TEXT_SEARCH_USD,
   DETAILS_USD,
   PlacesQuotaError,
+  searchTextFailureKind,
   createPlacesBudget,
 };

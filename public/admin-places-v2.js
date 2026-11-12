@@ -206,7 +206,30 @@
     const errorBit = counts.lastTextSearchError
       ? ` · помилка Text Search${httpStatus ? ' HTTP ' + httpStatus : ''}`
       : '';
-    return `Пари ${processed} / ${total} · Text Search ${req.textSearch ?? counts.textSearch ?? 0} / ${req.maxTextSearch ?? 800} · Details ${req.details ?? counts.details ?? 0} / ${req.maxDetails ?? 800} · у черзі ${counts.staged ?? 0} · ${dedupProgress(data)}${errorBit}`;
+    const stop = data.stoppedReason || counts.stoppedReason;
+    let stopBit = '';
+    if (stop === 'google_quota') stopBit = ' · зупинка: денна квота Google';
+    else if (stop === 'google_billing') stopBit = ' · зупинка: оплата або доступ Google';
+    else if (stop) stopBit = ` · зупинка: ${stop}`;
+    return `Пари ${processed} / ${total} · Text Search ${req.textSearch ?? counts.textSearch ?? 0} / ${req.maxTextSearch ?? 800} · Details ${req.details ?? counts.details ?? 0} / ${req.maxDetails ?? 800} · у черзі ${counts.staged ?? 0} · ${dedupProgress(data)}${errorBit}${stopBit}`;
+  }
+
+  function waveStopReason(reason) {
+    return reason === 'text_search_error' || reason === 'google_quota' || reason === 'google_billing';
+  }
+
+  function waveStopMessage(data) {
+    const detail = data?.counts?.lastTextSearchError || '';
+    if (data?.stoppedReason === 'google_quota') {
+      return `Хвилю A зупинено: денна квота Google Places вичерпана (HTTP 429). Локальний ліміт Text Search не зменшено. ${detail}`.trim();
+    }
+    if (data?.stoppedReason === 'google_billing') {
+      return `Хвилю A зупинено: Google відхилив Text Search (оплата або доступ, HTTP 403). ${detail}`.trim();
+    }
+    if (data?.stoppedReason === 'text_search_error') {
+      return `Хвилю A зупинено після трьох однакових помилок Text Search. ${detail} Натисніть «Запустити хвилю A» ще раз, щоб повторити ці пари, або «Скинути хвилю A».`.trim();
+    }
+    return '';
   }
 
   function showTextSearchError(data) {
@@ -266,7 +289,7 @@
         await sleep(1500);
         continue;
       }
-      if (data.stoppedReason === 'text_search_error') return data;
+      if (waveStopReason(data.stoppedReason)) return data;
       if (data.alreadyDone) {
         const again = window.confirm('Цей запуск уже завершено. Почати спочатку? Кеш зменшить повторні запити до Places.');
         if (!again) return data;
@@ -317,10 +340,11 @@
         setProgress(formatWaveProgress(step));
         showTextSearchError(step);
       });
-      if (data.stoppedReason === 'text_search_error') {
+      const pause = waveStopMessage(data);
+      if (pause) {
         showTextSearchError(data);
-        const detail = data.counts?.lastTextSearchError || '';
-        setMsg(`Хвилю A зупинено після трьох однакових помилок Text Search. ${detail} Натисніть «Запустити хвилю A» ще раз, щоб повторити ці пари, або «Скинути хвилю A».`, true);
+        setProgress(formatWaveProgress(data));
+        setMsg(pause, true);
         return;
       }
       const reason = data.stoppedReason ? ` · зупинка: ${data.stoppedReason}` : '';
@@ -342,9 +366,18 @@
         method: 'POST',
         body: JSON.stringify({ wave: 'A' }),
       });
+      if (data.busy) {
+        setMsg('Хвиля зараз виконується. Зачекайте і спробуйте скинути ще раз.', true);
+        return;
+      }
+      if (data.reset !== true) {
+        setMsg('Не вдалося скинути хвилю.', true);
+        return;
+      }
       setProgress(formatWaveProgress(data));
       showTextSearchError(data);
-      setMsg('Хвилю A скинуто. Натисніть «Запустити хвилю A», щоб повторити пари.');
+      setMsg('Хвилю A скинуто. Лічильники Text Search і Details обнулено, курсор на початку.');
+      await loadWaveStats();
     } catch (err) {
       setMsg(err.message, true);
     } finally {
