@@ -6,9 +6,23 @@ const {
   collectTaxonomy,
 } = require('./catalog-taxonomy.js');
 const { GEMINI_MODELS, geminiGenerateJson, modelConfidence, matchCatalogServices } = require('./search-ai.js');
+const { looksLikeBakery } = require('./places-waves.js');
 
 const CONFIDENCE_REJECT_BELOW = 0.55;
 const CONFIDENCE_AUTO_STAGE = 0.8;
+const KEYWORD_DRAFT_CONFIDENCE = 0.5;
+const CLASSIFIER_ATTEMPTS = 3;
+const CLASSIFIER_BACKOFF_MS = [400, 1200];
+
+const KEYWORD_HINTS = [
+  { cat: 'home', sub: 'plumber', types: ['plumber'], words: [/сантех/i, /plumber/i] },
+  { cat: 'home', sub: 'ac_climate', types: [], words: [/кондиціонер/i] },
+  { cat: 'medical', sub: 'dentistry', types: ['dentist', 'dental_clinic'], words: [/стомат/i, /dentist/i] },
+  { cat: 'repair', sub: 'phones', types: [], words: [/ремонт\s+телефон/i, /phone\s+repair/i] },
+  { cat: 'repair', sub: 'computers', types: [], words: [/ремонт\s+комп/i, /ремонт\s+ноутбук/i] },
+  { cat: 'pets', sub: 'vet', types: ['veterinary_care'], words: [/ветеринар/i, /ветклін/i] },
+  { cat: 'food', sub: 'bakery', types: ['bakery'], words: [/пекар/i, /bakery/i] },
+];
 
 function servicesFor(masterCatalog, category, subcategory, rawServices) {
   return matchCatalogServices(masterCatalog, category, subcategory, rawServices);
@@ -32,7 +46,140 @@ function normalizeProposal(raw, masterCatalog) {
   };
 }
 
-async function classifyPlace(place, masterCatalog, apiKey) {
+function classifierHttpStatus(err) {
+  const value = Number(err?.status ?? err?.httpStatus);
+  return Number.isFinite(value) && value > 0 ? value : null;
+}
+
+function classifierErrorText(err) {
+  return String(err?.message || '')
+    .replace(/AIza[0-9A-Za-z\-_]{8,}/g, '[redacted]')
+    .replace(/([?&]key=)[^&\s]+/gi, '$1[redacted]')
+    .slice(0, 240);
+}
+
+function isClassifierQuotaError(err) {
+  if (!err || typeof err !== 'object') return false;
+  if (err.code === 'classifier_quota') return true;
+  const message = String(err.message || '');
+  if (/exceeded your current quota/i.test(message)) return true;
+  if (classifierHttpStatus(err) === 429) return true;
+  if (/RESOURCE_EXHAUSTED/i.test(message)) return true;
+  return false;
+}
+
+function isClassifierTransientError(err) {
+  if (!err || isClassifierQuotaError(err)) return false;
+  const status = classifierHttpStatus(err);
+  if (status === 502 || status === 503 || status === 504) return true;
+  const message = String(err.message || '');
+  if (err.name === 'AbortError' || /operation was aborted/i.test(message)) return true;
+  if (/\b503\b/.test(message) && /gemini|unavailable/i.test(message)) return true;
+  return false;
+}
+
+function defaultSleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/**
+ * 503 and timeouts are retried twice (three attempts) with a short backoff.
+ * Daily quota (HTTP 429) is not retried. `deferred` means the clock ran out
+ * before another attempt, so the caller should resume later.
+ */
+async function withClassifierRetries(fn, options = {}) {
+  const attempts = Math.max(1, Number(options.attempts) || CLASSIFIER_ATTEMPTS);
+  const backoff = Array.isArray(options.backoffMs) ? options.backoffMs : CLASSIFIER_BACKOFF_MS;
+  const sleep = options.sleep || defaultSleep;
+  const now = options.now || (() => Date.now());
+  const deadline = Number.isFinite(options.deadlineAt) ? options.deadlineAt : null;
+  let lastError = null;
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    if (deadline != null && now() >= deadline) {
+      return { ok: false, deferred: true, error: lastError };
+    }
+    try {
+      const remaining = deadline == null ? 20000 : Math.max(0, deadline - now());
+      const timeoutMs = deadline == null ? 20000 : Math.min(20000, Math.max(1000, remaining));
+      const value = await fn({ timeoutMs, attempt });
+      return { ok: true, value };
+    } catch (err) {
+      lastError = err;
+      if (isClassifierQuotaError(err)) return { ok: false, quota: true, error: err };
+      if (!isClassifierTransientError(err)) return { ok: false, error: err };
+      const left = deadline == null ? Number.POSITIVE_INFINITY : deadline - now();
+      if (attempt >= attempts - 1 || left <= 0) {
+        return { ok: false, transient: true, error: err };
+      }
+      const wait = backoff[attempt] ?? backoff[backoff.length - 1] ?? 1200;
+      if (deadline != null && left < wait) {
+        return { ok: false, deferred: true, transient: true, error: err };
+      }
+      await sleep(wait);
+    }
+  }
+  return { ok: false, error: lastError };
+}
+
+function catalogHasSub(masterCatalog, cat, sub) {
+  return Boolean(cat && sub && masterCatalog?.[cat]?.subcats?.[sub]);
+}
+
+/**
+ * Cheap draft from Google types and title keywords. Confidence stays under the
+ * reject threshold. Callers must not approve or publish from this alone.
+ */
+function suggestFromKeywords(place, masterCatalog) {
+  const types = new Set((place?.types || []).map((item) => String(item || '').toLowerCase()));
+  const title = `${place?.title || ''} ${place?.searchQuery || ''}`;
+  for (const hint of KEYWORD_HINTS) {
+    if (!catalogHasSub(masterCatalog, hint.cat, hint.sub)) continue;
+    if (hint.sub === 'bakery') {
+      if (!looksLikeBakery(place)) continue;
+    } else {
+      const typeHit = hint.types.some((type) => types.has(type));
+      const wordHit = hint.words.some((pattern) => pattern.test(title));
+      if (!typeHit && !wordHit) continue;
+    }
+    return {
+      accepted: true,
+      category: hint.cat,
+      subcategory: hint.sub,
+      services: [],
+      confidence: KEYWORD_DRAFT_CONFIDENCE,
+      reasoning: 'Чернетка за типом Google або ключовими словами. Потрібна класифікація Gemini.',
+      source: 'keyword',
+    };
+  }
+  return null;
+}
+
+function unclassifiedFields({ place, masterCatalog, target, dedupStatus, error, classifier }) {
+  const suggestion = classifier?.category ? null : suggestFromKeywords(place, masterCatalog);
+  const category = classifier?.category || suggestion?.category || target?.cat || null;
+  const subcategory = classifier?.subcategory || suggestion?.subcategory || target?.sub || null;
+  const reasoning = [
+    suggestion && !classifier?.category ? suggestion.reasoning : '',
+    classifierErrorText(error),
+  ]
+    .filter(Boolean)
+    .join(' ')
+    .slice(0, 240);
+  return {
+    dedup_status: dedupStatus,
+    status: 'needs_classify',
+    needs_review: true,
+    reject_reason: null,
+    proposed_cat: category,
+    proposed_subcats: subcategory ? [subcategory] : [],
+    proposed_services: Array.isArray(classifier?.services) ? classifier.services : [],
+    classifier_confidence: null,
+    classifier_reasoning: reasoning,
+    verification: null,
+  };
+}
+
+async function classifyPlace(place, masterCatalog, apiKey, options = {}) {
   const taxHint = collectTaxonomy(masterCatalog);
   const schema = buildClassifyResponseSchema(masterCatalog);
   const prompt = `Ти класифікатор закладів для каталогу послуг Mapfix (Україна).
@@ -54,18 +201,20 @@ async function classifyPlace(place, masterCatalog, apiKey) {
 - confidence — число від 0 до 1, наскільки впевнений; не завищуй
 - reasoning — одне коротке речення українською`;
 
+  const timeoutMs = Number(options.timeoutMs) > 0 ? Number(options.timeoutMs) : 20000;
   const parsed = await geminiGenerateJson(apiKey, {
     prompt,
     schema,
-    timeoutMs: 20000,
+    timeoutMs,
     maxOutputTokens: 700,
     temperature: 0.1,
     models: GEMINI_MODELS,
+    maxAborts: options.maxAborts ?? 1,
   });
   return normalizeProposal(parsed, masterCatalog);
 }
 
-async function verifyPlace(place, proposal, masterCatalog, apiKey) {
+async function verifyPlace(place, proposal, masterCatalog, apiKey, options = {}) {
   const schema = buildVerifyResponseSchema(masterCatalog);
   const reviews = (place.reviews || [])
     .slice(0, 3)
@@ -93,13 +242,15 @@ decision:
 - unsure — схоже, але доказів мало
 confidence від 0 до 1. reasoning — одне коротке речення.`;
 
+  const timeoutMs = Number(options.timeoutMs) > 0 ? Number(options.timeoutMs) : 20000;
   const parsed = await geminiGenerateJson(apiKey, {
     prompt,
     schema,
-    timeoutMs: 20000,
+    timeoutMs,
     maxOutputTokens: 500,
     temperature: 0.1,
     models: GEMINI_MODELS,
+    maxAborts: options.maxAborts ?? 1,
   });
   const proposalLike = normalizeProposal(
     {
@@ -165,8 +316,17 @@ function gateClassification({ classifier, verification, target }) {
 module.exports = {
   CONFIDENCE_REJECT_BELOW,
   CONFIDENCE_AUTO_STAGE,
+  KEYWORD_DRAFT_CONFIDENCE,
+  CLASSIFIER_ATTEMPTS,
+  CLASSIFIER_BACKOFF_MS,
   classifyPlace,
   verifyPlace,
   gateClassification,
   normalizeProposal,
+  isClassifierQuotaError,
+  isClassifierTransientError,
+  classifierErrorText,
+  withClassifierRetries,
+  suggestFromKeywords,
+  unclassifiedFields,
 };

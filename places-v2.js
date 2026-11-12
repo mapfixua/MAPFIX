@@ -5,7 +5,15 @@ const { coveringTiles, pointInAllowedArea, allowedAreaId } = require('./places-g
 const { classifyDedup, placeIdOf } = require('./places-dedup.js');
 const { mapPlacesReviews, summarizeReviewDates } = require('./places-reviews.js');
 const { createPlacesBudget, PlacesQuotaError, searchTextFailureKind } = require('./places-quota.js');
-const { classifyPlace, verifyPlace, gateClassification } = require('./places-classify.js');
+const {
+  classifyPlace,
+  verifyPlace,
+  gateClassification,
+  withClassifierRetries,
+  unclassifiedFields,
+  isClassifierQuotaError,
+  classifierErrorText,
+} = require('./places-classify.js');
 const { normalizePhone } = require('./phone-normalize.js');
 
 const TEXT_FIELD_MASK = [
@@ -199,6 +207,8 @@ function candidateRow(wave, place, extra) {
         rating: place.rating,
         query: place.searchQuery,
         tile: place.tile || null,
+        hintCat: place.hintCat || null,
+        hintSub: place.hintSub || null,
       },
       details: place.rawDetails || null,
     },
@@ -306,8 +316,9 @@ async function runWave(options = {}) {
   const budget = options.budget || createPlacesBudget(options);
   const textSearch = options.textSearch || ((args) => defaultTextSearch({ ...args, apiKey }));
   const detailsFetch = options.details || ((args) => defaultDetails({ ...args, apiKey }));
-  const classify = options.classify || ((place, catalog) => classifyPlace(place, catalog, geminiKey));
-  const verify = options.verify || ((place, proposal, catalog) => verifyPlace(place, proposal, catalog, geminiKey));
+  const classify = options.classify || ((place, catalog, callOpts) => classifyPlace(place, catalog, geminiKey, callOpts));
+  const verify = options.verify || ((place, proposal, catalog, callOpts) => verifyPlace(place, proposal, catalog, geminiKey, callOpts));
+  const sleep = options.sleep || ((ms) => new Promise((resolve) => setTimeout(resolve, ms)));
   const locations = Array.isArray(options.locations) ? options.locations : [];
   const masterCatalog = options.masterCatalog || {};
   const onStage = typeof options.onStage === 'function' ? options.onStage : null;
@@ -321,6 +332,7 @@ async function runWave(options = {}) {
     staged: 0,
     pending: 0,
     pendingReview: 0,
+    needsClassify: 0,
     rejected: 0,
     lastTextSearchError: null,
     lastTextSearchHttpStatus: null,
@@ -355,11 +367,42 @@ async function runWave(options = {}) {
     return nowFn() - startedAt >= budgetMs;
   }
 
+  async function invokeClassifier(fn) {
+    const result = await withClassifierRetries(fn, {
+      sleep,
+      now: nowFn,
+      deadlineAt: hasBudget ? startedAt + budgetMs : null,
+    });
+    if (result.ok) return { outcome: 'ok', value: result.value };
+    if (result.quota) return { outcome: 'quota', error: result.error };
+    if (result.deferred) return { outcome: 'time', error: result.error };
+    return { outcome: 'fail', error: result.error };
+  }
+
+  async function stageUnclassified(place, dedup, target, err, classifier) {
+    bump(isClassifierQuotaError(err) ? 'classifier_quota' : 'needs_classify');
+    await flush(
+      candidateRow(
+        wave,
+        place,
+        unclassifiedFields({
+          place,
+          masterCatalog,
+          target,
+          dedupStatus: dedup.status,
+          error: err,
+          classifier,
+        })
+      )
+    );
+  }
+
   async function flush(row) {
     staged.push(row);
     counts.staged += 1;
     if (row.status === 'pending' && row.needs_review) counts.pendingReview += 1;
     else if (row.status === 'pending') counts.pending += 1;
+    else if (row.status === 'needs_classify') counts.needsClassify += 1;
     else if (row.status === 'rejected') counts.rejected += 1;
     batch.push({
       id: `batch:${row.place_id}`,
@@ -476,48 +519,38 @@ async function runWave(options = {}) {
     }
 
     if (overTime()) return 'time';
-    let classifier;
-    try {
-      classifier = await classify(detailed, masterCatalog);
-    } catch (err) {
-      bump('classify_error');
-      await flush(
-        candidateRow(wave, detailed, {
-          dedup_status: dedup.status,
-          status: 'rejected',
-          needs_review: false,
-          reject_reason: 'classify_error',
-          classifier_reasoning: String(err.message || '').slice(0, 240),
-          proposed_cat: target.cat,
-          proposed_subcats: [target.sub],
-        })
-      );
+    const classified = await invokeClassifier((opts) => classify(detailed, masterCatalog, opts));
+    if (classified.outcome === 'time') return 'time';
+    if (classified.outcome === 'quota') {
+      console.error('[places-v2] classifier_quota', classifierErrorText(classified.error));
+      await stageUnclassified(detailed, dedup, target, classified.error, null);
+      stoppedReason = 'classifier_quota';
+      return 'quota';
+    }
+    if (classified.outcome === 'fail') {
+      await stageUnclassified(detailed, dedup, target, classified.error, null);
       return 'ok';
     }
+    const classifier = classified.value;
 
     if (overTime()) return 'time';
-    let verification;
-    try {
-      verification = await verify(detailed, classifier, masterCatalog);
-    } catch (err) {
-      bump('classify_error');
-      await flush(
-        candidateRow(wave, detailed, {
-          dedup_status: dedup.status,
-          status: 'rejected',
-          needs_review: false,
-          reject_reason: 'classify_error',
-          classifier_reasoning: String(err.message || '').slice(0, 240),
-          proposed_cat: target.cat,
-          proposed_subcats: [target.sub],
-        })
-      );
+    const verified = await invokeClassifier((opts) => verify(detailed, classifier, masterCatalog, opts));
+    if (verified.outcome === 'time') return 'time';
+    if (verified.outcome === 'quota') {
+      console.error('[places-v2] classifier_quota', classifierErrorText(verified.error));
+      await stageUnclassified(detailed, dedup, target, verified.error, classifier);
+      stoppedReason = 'classifier_quota';
+      return 'quota';
+    }
+    if (verified.outcome === 'fail') {
+      await stageUnclassified(detailed, dedup, target, verified.error, classifier);
       return 'ok';
     }
+    const verification = verified.value;
 
     const gate = gateClassification({ classifier, verification, target });
     const dedupBlocks = dedup.status !== 'new' && !String(dedup.status).startsWith('possible_branch_of ');
-    let status = gate.status;
+    let status = gate.status === 'rejected' ? 'rejected' : 'pending';
     let needsReview = gate.needsReview;
     if (dedup.status !== 'new') needsReview = true;
     if (status === 'pending' && dedupBlocks) {
@@ -609,7 +642,7 @@ async function runWave(options = {}) {
             pairIncomplete = true;
             break;
           }
-          if (outcome === 'cap') {
+          if (outcome === 'cap' || outcome === 'quota') {
             pairIncomplete = true;
             break;
           }
@@ -659,6 +692,32 @@ async function runWave(options = {}) {
   };
 }
 
+function placeFromCandidateRow(row) {
+  const raw = row?.raw_payload && typeof row.raw_payload === 'object' ? row.raw_payload : {};
+  const text = raw.text && typeof raw.text === 'object' ? raw.text : {};
+  const lat = Number(text.lat ?? row?.proposed_lat);
+  const lng = Number(text.lng ?? row?.proposed_lng);
+  const base = {
+    placeId: String(row?.place_id || text.placeId || '').replace(/^places\//, ''),
+    title: text.title || row?.proposed_title || '',
+    address: text.address || row?.proposed_address || '',
+    phone: text.phone || row?.proposed_phone || '',
+    lat: Number.isFinite(lat) ? lat : null,
+    lng: Number.isFinite(lng) ? lng : null,
+    rating: Number(text.rating) || 0,
+    reviewsCount: Number(text.reviewsCount) || 0,
+    businessStatus: text.businessStatus || row?.business_status || '',
+    types: Array.isArray(text.types) ? text.types : [],
+    hintCat: text.hintCat || '',
+    hintSub: text.hintSub || '',
+    searchQuery: text.query || '',
+    workingHours: '',
+    reviews: [],
+  };
+  if (raw.details && typeof raw.details === 'object') return detailsToPlace(base, raw.details);
+  return base;
+}
+
 module.exports = {
   TEXT_FIELD_MASK,
   DETAILS_FIELD_MASK,
@@ -668,4 +727,5 @@ module.exports = {
   runWave,
   candidateRow,
   placeIdOf,
+  placeFromCandidateRow,
 };

@@ -214,3 +214,156 @@ test('publishing creates places_v2 rows and refuses deleted, claimed and duplica
   assert.equal(reasons.c4, 'duplicate');
   assert.equal(reasons.c5, 'not_approved');
 });
+
+function livePlace(placeId, title, lat) {
+  return {
+    placeId,
+    title,
+    phone: '+380671234567',
+    lat,
+    lng: 30.525,
+    businessStatus: 'OPERATIONAL',
+    reviewsCount: 4,
+    types: ['plumber'],
+  };
+}
+
+function liveDetails(placeId, title) {
+  return {
+    id: placeId,
+    displayName: { text: title },
+    formattedAddress: 'Київ',
+    location: { latitude: 50.451, longitude: 30.525 },
+    nationalPhoneNumber: '+380671234567',
+    businessStatus: 'OPERATIONAL',
+    userRatingCount: 4,
+    rating: 4.6,
+    types: ['plumber'],
+    reviews: [{ rating: 5, text: { text: 'Прийхав' }, publishTime: new Date().toISOString() }],
+  };
+}
+
+test('classifier 429 stops the wave before another Details or Text Search call', async () => {
+  let text = 0;
+  let details = 0;
+  let verified = 0;
+  const result = await runWave({
+    wave: 'A',
+    tiles: [
+      { south: 50.44, west: 30.51, north: 50.46, east: 30.54 },
+      { south: 50.44, west: 30.48, north: 50.46, east: 30.51 },
+    ],
+    targets: [{ key: 'plumber', cat: 'home', sub: 'plumber', query: 'сантехнік' }],
+    locations: [],
+    masterCatalog: catalog,
+    sleep: async () => {},
+    budget: createPlacesBudget({ maxTextSearch: 20, maxDetails: 20, minIntervalMs: 0, cache: false }),
+    textSearch: async () => {
+      text += 1;
+      return [livePlace('place-a', 'Сантехнік А', 50.451), livePlace('place-b', 'Сантехнік Б', 50.452)];
+    },
+    details: async ({ placeId }) => {
+      details += 1;
+      return liveDetails(placeId, 'Сантехнік');
+    },
+    classify: async () => {
+      const err = new Error('Gemini 429 (gemini-3.1-flash-lite): You exceeded your current quota');
+      err.status = 429;
+      err.code = 'classifier_quota';
+      throw err;
+    },
+    verify: async () => {
+      verified += 1;
+      return { decision: 'accept', confidence: 0.9, reasoning: 'ok' };
+    },
+  });
+  assert.equal(result.stoppedReason, 'classifier_quota');
+  assert.equal(result.dryRun, true);
+  assert.equal(result.publishedLocations, 0);
+  assert.equal(text, 1);
+  assert.equal(details, 1);
+  assert.equal(verified, 0);
+  assert.equal(result.candidates.length, 1);
+  assert.equal(result.candidates[0].status, 'needs_classify');
+  assert.equal(result.candidates[0].needs_review, true);
+  assert.equal(result.candidates[0].reject_reason, null);
+  assert.equal(result.candidates[0].place_id, 'place-a');
+  assert.equal(result.candidates[0].raw_payload.text.hintCat, 'home');
+  assert.notEqual(result.nextCursor, null);
+});
+
+test('503 and timeouts stay needs_classify after retries and the wave continues', async () => {
+  const sleeps = [];
+  let classifyCalls = 0;
+  let details = 0;
+  const result = await runWave({
+    wave: 'A',
+    tiles: [{ south: 50.44, west: 30.51, north: 50.46, east: 30.54 }],
+    targets: [{ key: 'dentistry', cat: 'medical', sub: 'dentistry', query: 'стоматологія' }],
+    locations: [],
+    masterCatalog: catalog,
+    sleep: async (ms) => {
+      sleeps.push(ms);
+    },
+    budget: createPlacesBudget({ maxTextSearch: 20, maxDetails: 20, minIntervalMs: 0, cache: false }),
+    textSearch: async () => [
+      livePlace('place-503', 'Сантехнік на Подолі', 50.451),
+      {
+        ...livePlace('place-abort', 'Кафе Хліб', 50.452),
+        types: ['cafe', 'restaurant'],
+      },
+      livePlace('place-ok', 'Сантехнік Ок', 50.453),
+    ],
+    details: async ({ placeId }) => {
+      details += 1;
+      const title = placeId === 'place-abort' ? 'Кафе Хліб' : 'Сантехнік на Подолі';
+      const types = placeId === 'place-abort' ? ['cafe', 'restaurant'] : ['plumber'];
+      return { ...liveDetails(placeId, title), types };
+    },
+    classify: async (place) => {
+      classifyCalls += 1;
+      if (place.placeId === 'place-ok') {
+        return {
+          accepted: true,
+          category: 'medical',
+          subcategory: 'dentistry',
+          services: [],
+          confidence: 0.92,
+          reasoning: 'стоматологія',
+        };
+      }
+      if (place.placeId === 'place-abort') {
+        const err = new Error('This operation was aborted');
+        err.name = 'AbortError';
+        throw err;
+      }
+      const err = new Error('Gemini 503 (gemini-3.1-flash-lite): unavailable');
+      err.status = 503;
+      throw err;
+    },
+    verify: async () => ({
+      decision: 'accept',
+      category: 'medical',
+      subcategory: 'dentistry',
+      services: [],
+      confidence: 0.9,
+      reasoning: 'ok',
+    }),
+  });
+  const byId = Object.fromEntries(result.candidates.map((row) => [row.place_id, row]));
+  assert.equal(result.stoppedReason, null);
+  assert.equal(details, 3);
+  assert.equal(classifyCalls, 7);
+  assert.deepEqual(sleeps, [400, 1200, 400, 1200]);
+  assert.equal(byId['place-503'].status, 'needs_classify');
+  assert.equal(byId['place-503'].reject_reason, null);
+  assert.equal(byId['place-503'].needs_review, true);
+  assert.equal(byId['place-503'].classifier_confidence, null);
+  assert.equal(byId['place-503'].proposed_cat, 'home');
+  assert.deepEqual(byId['place-503'].proposed_subcats, ['plumber']);
+  assert.equal(byId['place-abort'].status, 'needs_classify');
+  assert.equal(byId['place-abort'].proposed_cat, 'medical');
+  assert.equal(byId['place-ok'].status, 'pending');
+  assert.notEqual(byId['place-ok'].status, 'approved');
+  assert.equal(result.publishedLocations, 0);
+});

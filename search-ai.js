@@ -87,15 +87,28 @@ function parseGeminiJson(text) {
  */
 async function geminiGenerateJson(
   apiKey,
-  { prompt, schema, timeoutMs = 12000, maxOutputTokens = 800, temperature = 0.15, models = GEMINI_MODELS } = {}
+  {
+    prompt,
+    schema,
+    timeoutMs = 12000,
+    maxOutputTokens = 800,
+    temperature = 0.15,
+    models = GEMINI_MODELS,
+    maxAborts = 0,
+  } = {}
 ) {
   if (!apiKey) throw new Error('GEMINI_API_KEY is not set');
   let lastError = null;
+  let quotaError = null;
+  let aborts = 0;
+  let stopAll = false;
+  const abortLimit = Number.isFinite(Number(maxAborts)) && Number(maxAborts) > 0 ? Number(maxAborts) : 0;
   for (const model of models) {
+    if (stopAll) break;
     const modes = schema ? ['schema', 'plain'] : ['plain'];
     let skipModel = false;
     for (const mode of modes) {
-      if (skipModel) break;
+      if (skipModel || stopAll) break;
       const controller = new AbortController();
       const timer = setTimeout(() => controller.abort(), timeoutMs);
       try {
@@ -122,6 +135,14 @@ async function geminiGenerateJson(
           const err = new Error(`Gemini ${res.status} (${model}): ${errText.slice(0, 180)}`);
           err.status = res.status;
           lastError = err;
+          // limit:0 means this model is not on the free tier. A daily quota 429 is remembered
+          // so a later free model can still answer, and the wave stops if none of them do.
+          if (res.status === 429 && !/limit:\s*0/i.test(errText)) {
+            err.code = 'classifier_quota';
+            quotaError = err;
+            skipModel = true;
+            break;
+          }
           if (mode === 'schema' && (res.status === 400 || /schema|enum|INVALID_ARGUMENT/i.test(errText))) {
             continue;
           }
@@ -136,7 +157,18 @@ async function geminiGenerateJson(
         return parseGeminiJson(raw);
       } catch (err) {
         lastError = err;
-        if (err.name === 'AbortError') {
+        if (err?.code === 'classifier_quota') {
+          quotaError = err;
+          skipModel = true;
+          break;
+        }
+        const aborted = err?.name === 'AbortError' || /operation was aborted/i.test(String(err?.message || ''));
+        if (aborted) {
+          aborts += 1;
+          if (abortLimit && aborts >= abortLimit) {
+            stopAll = true;
+            break;
+          }
           skipModel = true;
           break;
         }
@@ -147,7 +179,7 @@ async function geminiGenerateJson(
       }
     }
   }
-  throw lastError || new Error('Gemini unavailable');
+  throw quotaError || lastError || new Error('Gemini unavailable');
 }
 
 function tokenize(text) {

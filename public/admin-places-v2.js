@@ -86,7 +86,7 @@
     if (!list) return;
     list.innerHTML = '<p class="list-item-meta">Завантаження…</p>';
     setMsg('');
-    loadWaveStats();
+    await loadWaveStats();
     try {
       const query = new URLSearchParams({ wave });
       if (status) query.set('status', status);
@@ -124,6 +124,7 @@
             </div>
             <div class="list-item-meta">Дедуп: ${esc(dedupLabel(row.dedup_status))}${row.needs_review ? ' · ручна перевірка' : ''}</div>
             <div class="list-item-meta">Впевненість ${esc(confidence)} · останній відгук ${esc(review)} · ${esc(row.business_status || '')}</div>
+            ${row.status === 'needs_classify' ? '<div class="list-item-meta">Класифікація не завершена. «Перекласифікувати» повторить її без Google.</div>' : ''}
             ${row.reject_reason ? `<div class="list-item-meta">Причина: ${esc(row.reject_reason)}</div>` : ''}
             <div class="list-item-actions">
               <button type="button" class="btn-small" data-focus="${esc(row.id)}">На карті</button>
@@ -186,7 +187,7 @@
   }
 
   function setRunButtons(disabled) {
-    ['placesV2RunWave', 'placesV2ResetWave', 'placesV2Backfill', 'placesV2BackfillWrite'].forEach((id) => {
+    ['placesV2RunWave', 'placesV2ResetWave', 'placesV2Backfill', 'placesV2BackfillWrite', 'placesV2Reclassify'].forEach((id) => {
       const button = document.getElementById(id);
       if (button) button.disabled = disabled;
     });
@@ -210,12 +211,13 @@
     let stopBit = '';
     if (stop === 'google_quota') stopBit = ' · зупинка: денна квота Google';
     else if (stop === 'google_billing') stopBit = ' · зупинка: оплата або доступ Google';
+    else if (stop === 'classifier_quota') stopBit = ' · зупинка: денна квота класифікатора (Gemini 429)';
     else if (stop) stopBit = ` · зупинка: ${stop}`;
     return `Пари ${processed} / ${total} · Text Search ${req.textSearch ?? counts.textSearch ?? 0} / ${req.maxTextSearch ?? 800} · Details ${req.details ?? counts.details ?? 0} / ${req.maxDetails ?? 800} · у черзі ${counts.staged ?? 0} · ${dedupProgress(data)}${errorBit}${stopBit}`;
   }
 
   function waveStopReason(reason) {
-    return reason === 'text_search_error' || reason === 'google_quota' || reason === 'google_billing';
+    return reason === 'text_search_error' || reason === 'google_quota' || reason === 'google_billing' || reason === 'classifier_quota';
   }
 
   function waveStopMessage(data) {
@@ -225,6 +227,9 @@
     }
     if (data?.stoppedReason === 'google_billing') {
       return `Хвилю A зупинено: Google відхилив Text Search (оплата або доступ, HTTP 403). ${detail}`.trim();
+    }
+    if (data?.stoppedReason === 'classifier_quota') {
+      return 'Хвилю A зупинено: денна безкоштовна квота Gemini вичерпана (HTTP 429). Нові запити Text Search і Place Details не виконуються. Кандидати лишаються needs_classify — «Перекласифікувати» повторить класифікацію зі збережених даних, без Google.';
     }
     if (data?.stoppedReason === 'text_search_error') {
       return `Хвилю A зупинено після трьох однакових помилок Text Search. ${detail} Натисніть «Запустити хвилю A» ще раз, щоб повторити ці пари, або «Скинути хвилю A».`.trim();
@@ -317,6 +322,46 @@
       setMsg(err.message, true);
     }
   });
+  document.getElementById('placesV2Reclassify')?.addEventListener('click', async () => {
+    const wave = document.getElementById('placesV2Wave')?.value || 'A';
+    setRunButtons(true);
+    setMsg('');
+    let reclassified = 0;
+    let stillPending = 0;
+    try {
+      let cursor = null;
+      for (let step = 0; step < 200; step += 1) {
+        const data = await api('/api/admin/places-v2/reclassify', {
+          method: 'POST',
+          body: JSON.stringify({ wave, cursor }),
+        });
+        reclassified += data.reclassified || 0;
+        stillPending += data.stillPending || 0;
+        const quota = data.stoppedReason === 'classifier_quota';
+        setProgress(
+          `Перекласифікація: ${reclassified} готово · ще без класифікації ${stillPending}${quota ? ' · зупинка: денна квота класифікатора' : ''}`
+        );
+        if (quota) {
+          await loadPlacesV2();
+          setProgress(
+            `Перекласифікація: ${reclassified} готово · ще без класифікації ${stillPending} · зупинка: денна квота класифікатора`
+          );
+          setMsg('Класифікатор зупинено: денна безкоштовна квота Gemini (HTTP 429). Запити до Google не виконувались. Натисніть «Перекласифікувати» після відновлення квоти.', true);
+          return;
+        }
+        if (data.done) break;
+        cursor = data.nextCursor;
+        await sleep(250);
+      }
+      await loadPlacesV2();
+      setMsg(`Перекласифіковано ${reclassified}. Ще очікують класифікації: ${stillPending}. На карту нічого не публікується.`);
+    } catch (err) {
+      setMsg(err.message, true);
+    } finally {
+      setRunButtons(false);
+    }
+  });
+
   document.getElementById('placesV2Publish')?.addEventListener('click', async () => {
     const wave = document.getElementById('placesV2Wave')?.value || 'A';
     if (!window.confirm('Опублікувати схвалені рядки цієї хвилі на карту? Дублі, видалені й зайняті картки буде пропущено.')) return;
@@ -342,6 +387,7 @@
       });
       const pause = waveStopMessage(data);
       if (pause) {
+        await loadPlacesV2();
         showTextSearchError(data);
         setProgress(formatWaveProgress(data));
         setMsg(pause, true);

@@ -3,6 +3,7 @@
 const { planWave } = require('../places-v2.js');
 const { getWave } = require('../places-waves.js');
 const { executeWaveChunk, executeWaveReset, executeBackfillChunk, waveRunId, describeWaveRun } = require('../places-chunk.js');
+const { executeReclassifyChunk } = require('../places-reclassify.js');
 const { searchBackfillCandidates } = require('../places-backfill.js');
 const { createSupabasePlacesCache } = require('../places-cache-store.js');
 const { getImportRun, saveImportRun, writeGooglePlaceId } = require('../import-runs-store.js');
@@ -10,6 +11,7 @@ const { getServiceRoleClient } = require('../supabaseClient.js');
 const {
   upsertImportCandidates,
   listImportCandidates,
+  listImportCandidatesNeedingClassify,
   listStagedForDedup,
   getImportCandidate,
   updateImportCandidate,
@@ -20,6 +22,9 @@ const { selectPublishable } = require('../places-publish.js');
 
 function migrationHint(message) {
   const text = String(message || '');
+  if (/needs_classify|import_candidates_status_chk/i.test(text)) {
+    return 'Застосуйте міграцію supabase/migrations/025_import_candidates_needs_classify.sql у Supabase SQL editor.';
+  }
   if (/import_runs|import_candidates|places_response_cache|schema cache|does not exist|Could not find the table/i.test(text)) {
     return 'Застосуйте міграцію supabase/migrations/022_places_import_chunks_and_rls.sql у Supabase SQL editor.';
   }
@@ -156,6 +161,35 @@ function mountPlacesV2Admin(app, deps) {
       console.error('[POST /api/admin/places-v2/run]', err.message);
       const status = /Немає цілі|Невідома хвиля/.test(err.message || '') ? 400 : 500;
       res.status(status).json({ error: migrationHint(err.message) || 'Хвиля не виконана' });
+    }
+  });
+
+  app.post('/api/admin/places-v2/reclassify', requireAuth, requireAdmin, async (req, res) => {
+    try {
+      if (!requireServiceRole(res)) return;
+      if (!process.env.GEMINI_API_KEY) {
+        return res.status(503).json({ error: 'GEMINI_API_KEY is not set' });
+      }
+      const data = await readData();
+      const payload = await executeReclassifyChunk({
+        body: req.body || {},
+        masterCatalog: data.masterCatalog || {},
+        geminiApiKey: process.env.GEMINI_API_KEY,
+        listCandidates: async (query) => {
+          const listed = await listImportCandidatesNeedingClassify(query);
+          if (!listed.ok) throw new Error(migrationHint(listed.error?.message));
+          return listed.rows;
+        },
+        updateCandidate: async (id, patch) => {
+          const updated = await updateImportCandidate(id, patch);
+          if (!updated.ok) throw new Error(migrationHint(updated.error?.message));
+          return updated.row;
+        },
+      });
+      res.json(payload);
+    } catch (err) {
+      console.error('[POST /api/admin/places-v2/reclassify]', err.message);
+      res.status(500).json({ error: migrationHint(err.message) || 'Перекласифікацію не виконано' });
     }
   });
 
