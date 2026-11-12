@@ -908,6 +908,18 @@
             overflow: hidden;
             word-break: break-word;
         }
+        .profile-subtitle {
+            margin: 2px 0 0;
+            font-size: 13px;
+            font-weight: 700;
+            line-height: 1.35;
+            color: var(--muted);
+            display: -webkit-box;
+            -webkit-box-orient: vertical;
+            -webkit-line-clamp: 2;
+            overflow: hidden;
+            word-break: break-word;
+        }
         .profile-new-badge {
             display: inline-flex;
             align-items: center;
@@ -1608,6 +1620,12 @@
             transform: scale(1.28);
             box-shadow: 0 0 0 3px var(--primary), 0 4px 14px rgba(11, 13, 16, 0.28);
             z-index: 2;
+            animation: markerSelectIn 320ms ease-out;
+        }
+        @keyframes markerSelectIn {
+            0% { transform: scale(1); box-shadow: 0 0 0 0 rgba(20, 184, 166, 0.55); }
+            55% { transform: scale(1.48); box-shadow: 0 0 0 10px rgba(20, 184, 166, 0); }
+            100% { transform: scale(1.28); box-shadow: 0 0 0 3px var(--primary), 0 4px 14px rgba(11, 13, 16, 0.28); }
         }
         .mapfix-marker-price {
             background: white;
@@ -1865,6 +1883,10 @@
                 height: var(--map-h);
                 flex-shrink: 0;
                 transition: height 0.38s var(--ease-sheet);
+                border-radius: 0 0 24px 24px;
+                overflow: visible;
+            }
+            #map-container #map {
                 border-radius: 0 0 24px 24px;
                 overflow: hidden;
             }
@@ -2297,5 +2319,107 @@
             font-size: 12px;
             font-weight: 600;
             cursor: pointer;
+        }
+
+        /* Шпилька і нитка від маркера до картки / шторки */
+        .pin-link-svg {
+            position: absolute;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            overflow: visible;
+            pointer-events: none;
+            z-index: 4;
+            opacity: 0;
+            transition: opacity 220ms ease;
+        }
+        .pin-link-svg.is-on { opacity: 1; }
+        .pin-poster {
+            position: absolute;
+            left: 0;
+            top: 0;
+            width: 34px;
+            height: 44px;
+            z-index: 6;
+            pointer-events: none;
+            transform: translate(-50%, -100%);
+            filter: drop-shadow(0 3px 3px rgba(0, 0, 0, 0.35));
+            opacity: 0;
+        }
+        .pin-poster.is-in {
+            opacity: 1;
+            animation: pinDrop 280ms cubic-bezier(0.2, 0.8, 0.2, 1);
+        }
+        .pin-poster svg { display: block; }
+        @keyframes pinDrop {
+            from { transform: translate(-50%, -165%) scale(0.72); opacity: 0; }
+            to { transform: translate(-50%, -100%) scale(1); opacity: 1; }
+        }
+        .map-preview-namebtn .profile-subtitle { text-decoration: none; }
+
+        @media (min-width: 769px) {
+            #app-shell.poster-anchored #sidebar-detail-view.show {
+                position: fixed;
+                z-index: 25;
+                display: flex;
+                flex-direction: column;
+                width: min(360px, calc(100vw - 24px));
+                height: auto;
+                max-height: min(68vh, 620px);
+                overflow: hidden;
+                border-radius: 18px;
+                background: #fff;
+                border: 1px solid rgba(20, 184, 166, 0.45);
+                box-shadow: 0 18px 46px rgba(11, 13, 16, 0.28);
+                transform: none;
+                pointer-events: auto;
+                margin: 0;
+            }
+            #app-shell.poster-anchored #sidebar-detail-view.show .detail-scroll-body {
+                min-height: 0;
+                overflow: auto;
+            }
+            #app-shell.poster-anchored #sidebar-detail-view.show.poster-fresh {
+                animation: posterUnfold 320ms cubic-bezier(0.22, 0.9, 0.3, 1);
+            }
+            #app-shell.poster-anchored #sidebar-detail-view.show.poster-fresh.poster-above {
+                animation-name: posterUnfoldUp;
+            }
+            #app-shell.poster-anchored #sidebar-detail-view.show.is-folding {
+                animation: posterFold 260ms ease forwards;
+                pointer-events: none;
+            }
+            #app-shell.poster-anchored #sidebar-detail-view.show.is-folding.poster-above {
+                animation-name: posterFoldUp;
+            }
+        }
+        @keyframes posterUnfold {
+            from { opacity: 0; clip-path: inset(0 0 100% 0 round 18px); }
+            to { opacity: 1; clip-path: inset(0 round 18px); }
+        }
+        @keyframes posterUnfoldUp {
+            from { opacity: 0; clip-path: inset(100% 0 0 0 round 18px); }
+            to { opacity: 1; clip-path: inset(0 round 18px); }
+        }
+        @keyframes posterFold {
+            from { opacity: 1; clip-path: inset(0 round 18px); }
+            to { opacity: 0; clip-path: inset(0 0 100% 0 round 18px); }
+        }
+        @keyframes posterFoldUp {
+            from { opacity: 1; clip-path: inset(0 round 18px); }
+            to { opacity: 0; clip-path: inset(100% 0 0 0 round 18px); }
+        }
+        @media (prefers-reduced-motion: reduce) {
+            .pin-link-svg,
+            .pin-poster,
+            .pin-poster.is-in,
+            .mapfix-marker-category.is-selected,
+            .mapfix-marker-price.is-selected,
+            #app-shell.poster-anchored #sidebar-detail-view.show.poster-fresh,
+            #app-shell.poster-anchored #sidebar-detail-view.show.is-folding {
+                animation: none !important;
+                transition: none !important;
+            }
         }
     

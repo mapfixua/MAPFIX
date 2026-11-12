@@ -42,7 +42,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;600;700;800&display=swap" rel="stylesheet" media="print" onload="this.media='all'">
     <noscript><link href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;600;700;800&display=swap" rel="stylesheet"></noscript>
     
-    <link rel="stylesheet" href="/css/mapfix-map.css?v=7">
+    <link rel="stylesheet" href="/css/mapfix-map.css?v=8">
 </head>
 <body>
     <!--MAPFIX_CRAWL-->
@@ -87,6 +87,16 @@
             <span>Поруч зі мною</span>
         </button>
         <div id="map" role="application" aria-label="Карта майстрів Києва"></div>
+        <svg id="pinLinkSvg" class="pin-link-svg" aria-hidden="true" focusable="false">
+            <path id="pinLinkHalo" fill="none" stroke="#ffffff" stroke-width="11" stroke-linecap="round" stroke-linejoin="round"></path>
+            <path id="pinLinkPath" fill="none" stroke="#14b8a6" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"></path>
+        </svg>
+        <div id="pinPoster" class="pin-poster" aria-hidden="true">
+            <svg viewBox="0 0 32 44" width="34" height="44" aria-hidden="true">
+                <path fill="#e11d48" stroke="#ffffff" stroke-width="2" d="M16 43.2C16 43.2 3.2 26.4 3.2 16.2a12.8 12.8 0 1 1 25.6 0C28.8 26.4 16 43.2 16 43.2z"></path>
+                <circle cx="16" cy="15.6" r="5" fill="#ffffff"></circle>
+            </svg>
+        </div>
 
         <div class="data-load-banner" id="dataLoadBanner" role="alert">
             <span>Не вдалося завантажити карту. Перевірте інтернет і спробуйте ще раз.</span>
@@ -217,6 +227,6 @@
     <script src="/mapfix-sync.js" defer></script>
     <script src="/mf-analytics.js" defer></script>
 
-    <script src="/js/mapfix-app.js?v=8"></script>
+    <script src="/js/mapfix-app.js?v=11"></script>
 <script>window.va=window.va||function(){(window.vaq=window.vaq||[]).push(arguments)};</script><script defer src="/_vercel/insights/script.js"></script>
 </body></html>
