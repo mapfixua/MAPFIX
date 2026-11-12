@@ -86,6 +86,7 @@
     if (!list) return;
     list.innerHTML = '<p class="list-item-meta">Завантаження…</p>';
     setMsg('');
+    loadWaveStats();
     try {
       const query = new URLSearchParams({ wave });
       if (status) query.set('status', status);
@@ -185,7 +186,7 @@
   }
 
   function setRunButtons(disabled) {
-    ['placesV2RunWave', 'placesV2Backfill', 'placesV2BackfillWrite'].forEach((id) => {
+    ['placesV2RunWave', 'placesV2ResetWave', 'placesV2Backfill', 'placesV2BackfillWrite'].forEach((id) => {
       const button = document.getElementById(id);
       if (button) button.disabled = disabled;
     });
@@ -201,7 +202,37 @@
     const counts = data.counts || {};
     const processed = data.processed ?? counts.pairsProcessed ?? 0;
     const total = data.total ?? counts.pairsTotal ?? 0;
-    return `Пари ${processed} / ${total} · Text Search ${req.textSearch ?? counts.textSearch ?? 0} / ${req.maxTextSearch ?? 800} · Details ${req.details ?? counts.details ?? 0} / ${req.maxDetails ?? 800} · у черзі ${counts.staged ?? 0} · ${dedupProgress(data)}`;
+    const httpStatus = counts.lastTextSearchHttpStatus;
+    const errorBit = counts.lastTextSearchError
+      ? ` · помилка Text Search${httpStatus ? ' HTTP ' + httpStatus : ''}`
+      : '';
+    return `Пари ${processed} / ${total} · Text Search ${req.textSearch ?? counts.textSearch ?? 0} / ${req.maxTextSearch ?? 800} · Details ${req.details ?? counts.details ?? 0} / ${req.maxDetails ?? 800} · у черзі ${counts.staged ?? 0} · ${dedupProgress(data)}${errorBit}`;
+  }
+
+  function showTextSearchError(data) {
+    const el = document.getElementById('placesV2RunError');
+    if (!el) return;
+    const message = data?.counts?.lastTextSearchError || '';
+    if (!message) {
+      el.style.display = 'none';
+      el.textContent = '';
+      return;
+    }
+    const status = data.counts.lastTextSearchHttpStatus;
+    el.style.display = 'block';
+    el.textContent = `Text Search${status ? ' HTTP ' + status : ''}: ${message}`;
+  }
+
+  async function loadWaveStats() {
+    const wave = document.getElementById('placesV2Wave')?.value || 'A';
+    try {
+      const data = await api('/api/admin/places-v2/run?wave=' + encodeURIComponent(wave), { method: 'GET' });
+      if (!data?.counts) return;
+      setProgress(formatWaveProgress(data));
+      showTextSearchError(data);
+    } catch (_) {
+      /* queue still loads when the run row is missing */
+    }
   }
 
   function formatBackfillProgress(data) {
@@ -235,6 +266,7 @@
         await sleep(1500);
         continue;
       }
+      if (data.stoppedReason === 'text_search_error') return data;
       if (data.alreadyDone) {
         const again = window.confirm('Цей запуск уже завершено. Почати спочатку? Кеш зменшить повторні запити до Places.');
         if (!again) return data;
@@ -283,12 +315,38 @@
     try {
       const data = await loopChunks('/api/admin/places-v2/run', { wave: 'A' }, (step) => {
         setProgress(formatWaveProgress(step));
+        showTextSearchError(step);
       });
+      if (data.stoppedReason === 'text_search_error') {
+        showTextSearchError(data);
+        const detail = data.counts?.lastTextSearchError || '';
+        setMsg(`Хвилю A зупинено після трьох однакових помилок Text Search. ${detail} Натисніть «Запустити хвилю A» ще раз, щоб повторити ці пари, або «Скинути хвилю A».`, true);
+        return;
+      }
       const reason = data.stoppedReason ? ` · зупинка: ${data.stoppedReason}` : '';
       setMsg(`Хвилю A завершено. У черзі ${data.counts?.staged || 0}.${reason}`);
       await loadPlacesV2();
     } catch (err) {
       setMsg(`${err.message} Можна натиснути ще раз — курсор збережено.`, true);
+    } finally {
+      setRunButtons(false);
+    }
+  });
+
+  document.getElementById('placesV2ResetWave')?.addEventListener('click', async () => {
+    if (!window.confirm('Скинути курсор хвилі A і повторити пари з помилкою Text Search? Уже зібрані кандидати лишаться в черзі.')) return;
+    setRunButtons(true);
+    setMsg('');
+    try {
+      const data = await api('/api/admin/places-v2/reset-wave', {
+        method: 'POST',
+        body: JSON.stringify({ wave: 'A' }),
+      });
+      setProgress(formatWaveProgress(data));
+      showTextSearchError(data);
+      setMsg('Хвилю A скинуто. Натисніть «Запустити хвилю A», щоб повторити пари.');
+    } catch (err) {
+      setMsg(err.message, true);
     } finally {
       setRunButtons(false);
     }
