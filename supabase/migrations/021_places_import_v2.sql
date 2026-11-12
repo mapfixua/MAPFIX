@@ -74,20 +74,15 @@ DROP POLICY IF EXISTS "import_candidates_select_all" ON public.import_candidates
 DROP POLICY IF EXISTS "import_candidates_insert_all" ON public.import_candidates;
 DROP POLICY IF EXISTS "import_candidates_update_all" ON public.import_candidates;
 DROP POLICY IF EXISTS "import_candidates_delete_all" ON public.import_candidates;
+DROP POLICY IF EXISTS "import_candidates_service_all" ON public.import_candidates;
 
-CREATE POLICY "import_candidates_select_all"
-  ON public.import_candidates FOR SELECT
-  USING (true);
+-- No anon or authenticated access. The API uses the service role, which bypasses RLS.
+REVOKE ALL ON TABLE public.import_candidates FROM PUBLIC, anon, authenticated;
+GRANT ALL ON TABLE public.import_candidates TO service_role;
 
-CREATE POLICY "import_candidates_insert_all"
-  ON public.import_candidates FOR INSERT
-  WITH CHECK (true);
-
-CREATE POLICY "import_candidates_update_all"
-  ON public.import_candidates FOR UPDATE
+CREATE POLICY "import_candidates_service_all"
+  ON public.import_candidates
+  FOR ALL
+  TO service_role
   USING (true)
   WITH CHECK (true);
-
-CREATE POLICY "import_candidates_delete_all"
-  ON public.import_candidates FOR DELETE
-  USING (true);

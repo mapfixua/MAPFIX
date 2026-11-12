@@ -94,7 +94,7 @@
       if (summary) {
         summary.textContent = rows.length
           ? `${rows.length} у черзі. Зелені мітки на карті — нові, жовті — потрібне рішення.`
-          : 'Черга порожня. Хвилю запускають скриптом import-places-v2.js (dry-run пише лише сюди).';
+          : 'Черга порожня. «Запустити хвилю A» заповнює її короткими кроками і нічого не публікує на карту.';
       }
       showOnMap(rows);
       if (!rows.length) {
@@ -175,6 +175,78 @@
     }
   });
 
+  function sleep(ms) {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+  }
+
+  function setProgress(text) {
+    const el = document.getElementById('placesV2RunProgress');
+    if (el) el.textContent = text || '';
+  }
+
+  function setRunButtons(disabled) {
+    ['placesV2RunWave', 'placesV2Backfill', 'placesV2BackfillWrite'].forEach((id) => {
+      const button = document.getElementById(id);
+      if (button) button.disabled = disabled;
+    });
+  }
+
+  function dedupProgress(data) {
+    const buckets = data?.counts?.dedupBuckets || {};
+    return `нові ${buckets.new || 0} · дублі ${buckets.duplicate || 0} · філіали ${buckets.branch || 0} · видалені ${buckets.deleted || 0} · зайняті ${buckets.claimed || 0}`;
+  }
+
+  function formatWaveProgress(data) {
+    const req = data.requests || {};
+    const counts = data.counts || {};
+    const processed = data.processed ?? counts.pairsProcessed ?? 0;
+    const total = data.total ?? counts.pairsTotal ?? 0;
+    return `Пари ${processed} / ${total} · Text Search ${req.textSearch ?? counts.textSearch ?? 0} / ${req.maxTextSearch ?? 800} · Details ${req.details ?? counts.details ?? 0} / ${req.maxDetails ?? 800} · у черзі ${counts.staged ?? 0} · ${dedupProgress(data)}`;
+  }
+
+  function formatBackfillProgress(data) {
+    const req = data.requests || {};
+    const counts = data.counts || {};
+    const mode = data.write ? 'запис' : 'dry-run';
+    return `Backfill (${mode}) ${data.processed || 0} / ${data.total || 0} · впевнені ${counts.confident || 0} · пропущено ${counts.skipped || 0} · записано ${counts.written || 0} · Text Search ${req.textSearch || 0} / ${req.maxTextSearch || 500}`;
+  }
+
+  function downloadJson(filename, data) {
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+  }
+
+  async function loopChunks(url, body, onProgress) {
+    let restart = false;
+    for (let step = 0; step < 500; step += 1) {
+      const payload = { ...body };
+      if (restart) payload.restart = true;
+      restart = false;
+      const data = await api(url, { method: 'POST', body: JSON.stringify(payload) });
+      onProgress(data);
+      if (data.busy) {
+        await sleep(1500);
+        continue;
+      }
+      if (data.alreadyDone) {
+        const again = window.confirm('Цей запуск уже завершено. Почати спочатку? Кеш зменшить повторні запити до Places.');
+        if (!again) return data;
+        restart = true;
+        continue;
+      }
+      if (data.done) return data;
+      await sleep(250);
+    }
+    throw new Error('Забагато кроків. Натисніть ще раз — курсор збережено, запуск продовжиться.');
+  }
+
   document.getElementById('placesV2Reload')?.addEventListener('click', () => loadPlacesV2());
   document.getElementById('placesV2Status')?.addEventListener('change', () => loadPlacesV2());
   document.getElementById('placesV2Bulk')?.addEventListener('click', async () => {
@@ -202,6 +274,57 @@
       await loadPlacesV2();
     } catch (err) {
       setMsg(err.message, true);
+    }
+  });
+
+  document.getElementById('placesV2RunWave')?.addEventListener('click', async () => {
+    setRunButtons(true);
+    setMsg('');
+    try {
+      const data = await loopChunks('/api/admin/places-v2/run', { wave: 'A' }, (step) => {
+        setProgress(formatWaveProgress(step));
+      });
+      const reason = data.stoppedReason ? ` · зупинка: ${data.stoppedReason}` : '';
+      setMsg(`Хвилю A завершено. У черзі ${data.counts?.staged || 0}.${reason}`);
+      await loadPlacesV2();
+    } catch (err) {
+      setMsg(`${err.message} Можна натиснути ще раз — курсор збережено.`, true);
+    } finally {
+      setRunButtons(false);
+    }
+  });
+
+  document.getElementById('placesV2Backfill')?.addEventListener('click', async () => {
+    setRunButtons(true);
+    setMsg('');
+    try {
+      const data = await loopChunks('/api/admin/places-v2/backfill', {}, (step) => {
+        setProgress(formatBackfillProgress(step));
+      });
+      if (data.report) downloadJson('place-id-backfill.json', data.report);
+      setMsg(`Dry-run завершено. Впевнені збіги: ${data.counts?.confident || 0}. Картки не змінювались.`);
+    } catch (err) {
+      setMsg(`${err.message} Можна натиснути ще раз — курсор збережено.`, true);
+    } finally {
+      setRunButtons(false);
+    }
+  });
+
+  document.getElementById('placesV2BackfillWrite')?.addEventListener('click', async () => {
+    if (!window.confirm('Записати знайдені Google place id у наявні картки? Зміниться лише поле google_place_id. Назву, телефон, адресу й інші поля не буде перезаписано.')) {
+      return;
+    }
+    setRunButtons(true);
+    setMsg('');
+    try {
+      const data = await loopChunks('/api/admin/places-v2/backfill', { write: true }, (step) => {
+        setProgress(formatBackfillProgress(step));
+      });
+      setMsg(`Записано google_place_id: ${data.counts?.written || 0}. Інші поля карток не змінювались.`);
+    } catch (err) {
+      setMsg(`${err.message} Можна натиснути ще раз — курсор збережено.`, true);
+    } finally {
+      setRunButtons(false);
     }
   });
 

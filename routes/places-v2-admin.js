@@ -1,18 +1,51 @@
 'use strict';
 
-const fs = require('fs');
-const path = require('path');
-const { planWave, runWave } = require('../places-v2.js');
+const { planWave } = require('../places-v2.js');
 const { getWave } = require('../places-waves.js');
+const { executeWaveChunk, executeBackfillChunk } = require('../places-chunk.js');
+const { searchBackfillCandidates } = require('../places-backfill.js');
+const { createSupabasePlacesCache } = require('../places-cache-store.js');
+const { getImportRun, saveImportRun, writeGooglePlaceId } = require('../import-runs-store.js');
+const { getServiceRoleClient } = require('../supabaseClient.js');
 const {
   upsertImportCandidates,
   listImportCandidates,
+  listStagedForDedup,
   getImportCandidate,
   updateImportCandidate,
   bulkApproveImportCandidates,
   approvable,
 } = require('../import-candidates-store.js');
 const { selectPublishable } = require('../places-publish.js');
+
+function migrationHint(message) {
+  const text = String(message || '');
+  if (/import_runs|import_candidates|places_response_cache|schema cache|does not exist|Could not find the table/i.test(text)) {
+    return 'Застосуйте міграцію supabase/migrations/022_places_import_chunks_and_rls.sql у Supabase SQL editor.';
+  }
+  return text.slice(0, 300);
+}
+
+function requireServiceRole(res) {
+  if (getServiceRoleClient()) return true;
+  res.status(503).json({ error: 'SUPABASE_SERVICE_ROLE_KEY is not set' });
+  return false;
+}
+
+async function readRun(id) {
+  const loaded = await getImportRun(id);
+  if (!loaded.ok) throw new Error(migrationHint(loaded.error?.message));
+  return loaded.row;
+}
+
+async function writeRun(row) {
+  const saved = await saveImportRun(row);
+  if (!saved.ok) throw new Error(migrationHint(saved.error?.message));
+}
+
+function placesApiKey() {
+  return process.env.GOOGLE_PLACES_API_KEY || process.env.GOOGLE_MAPS_API_KEY || '';
+}
 
 function mountPlacesV2Admin(app, deps) {
   const { requireAuth, requireAdmin, readData, persistLocationsPatch } = deps;
@@ -42,7 +75,7 @@ function mountPlacesV2Admin(app, deps) {
         limit: Number(req.query.limit) || 200,
       });
       if (!listed.ok) {
-        return res.status(500).json({ error: listed.error?.message || 'Не вдалося прочитати чергу' });
+        return res.status(500).json({ error: migrationHint(listed.error?.message) || 'Не вдалося прочитати чергу' });
       }
       res.json({ ok: true, candidates: listed.rows });
     } catch (err) {
@@ -52,52 +85,65 @@ function mountPlacesV2Admin(app, deps) {
 
   app.post('/api/admin/places-v2/run', requireAuth, requireAdmin, async (req, res) => {
     try {
-      const waveName = req.body?.wave || 'A';
-      getWave(waveName);
+      if (!requireServiceRole(res)) return;
+      if (!placesApiKey()) {
+        return res.status(503).json({ error: 'GOOGLE_PLACES_API_KEY is not set' });
+      }
+      getWave(req.body?.wave || 'A');
       const data = await readData();
-      const reportDir = path.join(process.cwd(), 'reports');
-      let stagedCount = 0;
-      const result = await runWave({
-        wave: waveName,
+      const payload = await executeWaveChunk({
+        body: req.body || {},
         locations: data.mockLocations || [],
         masterCatalog: data.masterCatalog || {},
-        apiKey: process.env.GOOGLE_PLACES_API_KEY || process.env.GOOGLE_MAPS_API_KEY,
+        apiKey: placesApiKey(),
         geminiApiKey: process.env.GEMINI_API_KEY,
-        maxTextSearch: req.body?.maxTextSearch,
-        maxDetails: req.body?.maxDetails,
-        onStage: async (chunk) => {
-          if (!chunk.length) return;
-          const saved = await upsertImportCandidates(chunk);
+        cacheStore: createSupabasePlacesCache(),
+        minIntervalMs: undefined,
+        getRun: readRun,
+        saveRun: writeRun,
+        listStaged: async (wave) => {
+          const listed = await listStagedForDedup(wave);
+          if (!listed.ok) throw new Error(migrationHint(listed.error?.message));
+          return listed.rows;
+        },
+        upsertCandidates: async (rows) => {
+          const saved = await upsertImportCandidates(rows);
           if (!saved.ok) {
-            const message = saved.error?.message || 'staging failed';
-            throw new Error(message);
+            return { ok: false, error: { message: migrationHint(saved.error?.message) } };
           }
-          stagedCount += saved.upserted;
+          return saved;
         },
       });
-      try {
-        fs.mkdirSync(reportDir, { recursive: true });
-        fs.writeFileSync(
-          path.join(reportDir, `places-v2-wave-${result.wave}.json`),
-          JSON.stringify({ ...result, candidates: undefined, candidateCount: result.candidates.length }, null, 2)
-        );
-      } catch (_) {
-        /* report file is optional */
-      }
-      res.json({
-        ok: true,
-        dryRun: true,
-        publishedLocations: 0,
-        wave: result.wave,
-        label: result.label,
-        stoppedReason: result.stoppedReason,
-        counts: result.counts,
-        cost: result.cost,
-        staged: stagedCount,
-      });
+      res.json(payload);
     } catch (err) {
       console.error('[POST /api/admin/places-v2/run]', err.message);
-      res.status(500).json({ error: err.message || 'Хвиля не виконана' });
+      const status = /Немає цілі|Невідома хвиля/.test(err.message || '') ? 400 : 500;
+      res.status(status).json({ error: migrationHint(err.message) || 'Хвиля не виконана' });
+    }
+  });
+
+  app.post('/api/admin/places-v2/backfill', requireAuth, requireAdmin, async (req, res) => {
+    try {
+      if (!requireServiceRole(res)) return;
+      if (!placesApiKey()) {
+        return res.status(503).json({ error: 'GOOGLE_PLACES_API_KEY is not set' });
+      }
+      const write = req.body?.write === true;
+      const data = await readData();
+      const apiKey = placesApiKey();
+      const payload = await executeBackfillChunk({
+        body: req.body || {},
+        loadLocations: async () => data.mockLocations || [],
+        search: (loc) => searchBackfillCandidates(loc, apiKey),
+        writePlaceId: write ? writeGooglePlaceId : null,
+        cacheStore: createSupabasePlacesCache(),
+        getRun: readRun,
+        saveRun: writeRun,
+      });
+      res.json(payload);
+    } catch (err) {
+      console.error('[POST /api/admin/places-v2/backfill]', err.message);
+      res.status(500).json({ error: migrationHint(err.message) || 'Backfill не виконано' });
     }
   });
 

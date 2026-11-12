@@ -47,7 +47,8 @@
           "analytics.js",
           "analytics-events.js",
           "ops-monitor.js",
-          "seo.js"
+          "seo.js",
+          "geo/**"
         ]
       }
     }

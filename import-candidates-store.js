@@ -1,8 +1,15 @@
 'use strict';
 
-const { supabaseClient } = require('./supabaseClient.js');
+const { getServiceRoleClient } = require('./supabaseClient.js');
 
 const TABLE = 'import_candidates';
+const SERVICE_ROLE_ERROR = { message: 'SUPABASE_SERVICE_ROLE_KEY is not set' };
+
+function serviceClient() {
+  const client = getServiceRoleClient();
+  if (!client) return { client: null, error: SERVICE_ROLE_ERROR };
+  return { client, error: null };
+}
 
 function rowFromCandidate(candidate) {
   return {
@@ -38,7 +45,9 @@ async function upsertImportCandidates(candidates) {
   let upserted = 0;
   let kept = 0;
   for (const candidate of list) {
-    const { data: existing, error: readError } = await supabaseClient
+    const { client, error: clientError } = serviceClient();
+    if (!client) return { ok: false, error: clientError, upserted, kept };
+    const { data: existing, error: readError } = await client
       .from(TABLE)
       .select('id,status')
       .eq('place_id', candidate.place_id)
@@ -51,10 +60,10 @@ async function upsertImportCandidates(candidates) {
     }
     const payload = rowFromCandidate(candidate);
     if (existing) {
-      const { error } = await supabaseClient.from(TABLE).update(payload).eq('id', existing.id);
+      const { error } = await client.from(TABLE).update(payload).eq('id', existing.id);
       if (error) return { ok: false, error, upserted, kept };
     } else {
-      const { error } = await supabaseClient.from(TABLE).insert(payload);
+      const { error } = await client.from(TABLE).insert(payload);
       if (error) return { ok: false, error, upserted, kept };
     }
     upserted += 1;
@@ -63,7 +72,9 @@ async function upsertImportCandidates(candidates) {
 }
 
 async function listImportCandidates({ wave, status, limit = 200 } = {}) {
-  let query = supabaseClient.from(TABLE).select('*').order('created_at', { ascending: false }).limit(Math.min(500, Math.max(1, limit)));
+  const { client, error: clientError } = serviceClient();
+  if (!client) return { ok: false, error: clientError, rows: [] };
+  let query = client.from(TABLE).select('*').order('created_at', { ascending: false }).limit(Math.min(500, Math.max(1, limit)));
   if (wave) query = query.eq('wave', wave);
   if (status) query = query.eq('status', status);
   const { data, error } = await query;
@@ -71,14 +82,36 @@ async function listImportCandidates({ wave, status, limit = 200 } = {}) {
   return { ok: true, rows: data || [] };
 }
 
+async function listStagedForDedup(wave) {
+  const { client, error: clientError } = serviceClient();
+  if (!client) return { ok: false, error: clientError, rows: [] };
+  const rows = [];
+  const pageSize = 1000;
+  for (let from = 0; from < 20000; from += pageSize) {
+    const { data, error } = await client
+      .from(TABLE)
+      .select('id,place_id,proposed_title,proposed_phone,proposed_lat,proposed_lng,dedup_status,status')
+      .eq('wave', wave)
+      .range(from, from + pageSize - 1);
+    if (error) return { ok: false, error, rows };
+    rows.push(...(data || []));
+    if (!data || data.length < pageSize) break;
+  }
+  return { ok: true, rows };
+}
+
 async function getImportCandidate(id) {
-  const { data, error } = await supabaseClient.from(TABLE).select('*').eq('id', id).maybeSingle();
+  const { client, error: clientError } = serviceClient();
+  if (!client) return { ok: false, error: clientError, row: null };
+  const { data, error } = await client.from(TABLE).select('*').eq('id', id).maybeSingle();
   if (error) return { ok: false, error, row: null };
   return { ok: true, row: data };
 }
 
 async function updateImportCandidate(id, patch) {
-  const { data, error } = await supabaseClient
+  const { client, error: clientError } = serviceClient();
+  if (!client) return { ok: false, error: clientError, row: null };
+  const { data, error } = await client
     .from(TABLE)
     .update({ ...patch, updated_at: new Date().toISOString() })
     .eq('id', id)
@@ -115,6 +148,7 @@ async function bulkApproveImportCandidates({ wave, ids } = {}) {
 module.exports = {
   upsertImportCandidates,
   listImportCandidates,
+  listStagedForDedup,
   getImportCandidate,
   updateImportCandidate,
   bulkApproveImportCandidates,

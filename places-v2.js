@@ -202,9 +202,46 @@ function planWave(waveName, tileOptions) {
   };
 }
 
+function buildWavePairs(targets, tiles) {
+  const pairs = [];
+  const targetList = Array.isArray(targets) ? targets : [];
+  const tileList = Array.isArray(tiles) ? tiles : [];
+  for (let targetIndex = 0; targetIndex < targetList.length; targetIndex += 1) {
+    for (let tileIndex = 0; tileIndex < tileList.length; tileIndex += 1) {
+      pairs.push({ targetIndex, tileIndex });
+    }
+  }
+  return pairs;
+}
+
+function filterTargets(targets, query) {
+  if (!query) return targets;
+  const needle = String(query).trim().toLowerCase();
+  return targets.filter((target) => {
+    const text = String(target.query || '').trim().toLowerCase();
+    const key = String(target.key || '').trim().toLowerCase();
+    return text === needle || key === needle;
+  });
+}
+
+function sliceTiles(tiles, tileStart, tileCount) {
+  if (tileStart == null && tileCount == null) return tiles;
+  const start = Math.max(0, Number(tileStart) || 0);
+  const count = tileCount == null || tileCount === '' ? tiles.length : Math.max(0, Number(tileCount) || 0);
+  return tiles.slice(start, start + count);
+}
+
+function isQuotaError(err) {
+  return err instanceof PlacesQuotaError || err?.code === 'cap';
+}
+
 /**
  * Dry-run a wave into staging rows. Never inserts into `locations`.
  * Network callers are injectable so tests do not hit Google.
+ *
+ * A chunk passes `cursor.pairIndex`, `timeBudgetMs`, and `now`. The clock is
+ * checked before every network call. An unfinished pair keeps the same cursor
+ * so the next chunk can continue it (Places responses should be cached).
  */
 async function runWave(options = {}) {
   const plan = planWave(options.wave || 'A', {
@@ -214,11 +251,19 @@ async function runWave(options = {}) {
   if (Array.isArray(options.targets) && options.targets.length) {
     plan.waveDef = { ...plan.waveDef, targets: options.targets };
   }
+  if (options.query) {
+    const filtered = filterTargets(plan.waveDef.targets, options.query);
+    if (!filtered.length) {
+      throw new Error(`Немає цілі хвилі для запиту «${String(options.query).slice(0, 80)}»`);
+    }
+    plan.waveDef = { ...plan.waveDef, targets: filtered };
+  }
   if (Array.isArray(options.tiles) && options.tiles.length) {
     plan.tiles = options.tiles;
-    plan.tileCount = options.tiles.length;
-    plan.plannedTextSearch = options.tiles.length * plan.waveDef.targets.length;
   }
+  plan.tiles = sliceTiles(plan.tiles, options.tileStart, options.tileCount);
+  plan.tileCount = plan.tiles.length;
+  plan.plannedTextSearch = plan.tiles.length * plan.waveDef.targets.length;
   const wave = plan.waveDef;
   const apiKey = options.apiKey || process.env.GOOGLE_PLACES_API_KEY || process.env.GOOGLE_MAPS_API_KEY || '';
   const geminiKey = options.geminiApiKey || process.env.GEMINI_API_KEY || '';
@@ -246,10 +291,31 @@ async function runWave(options = {}) {
     counts.skipped[reason] = (counts.skipped[reason] || 0) + 1;
   };
 
-  const seen = new Map();
-  const batch = [];
+  const seen = new Set();
+  const knownPlaceIds = options.knownPlaceIds instanceof Set
+    ? options.knownPlaceIds
+    : new Set(options.knownPlaceIds || []);
+  const batch = (Array.isArray(options.batchSeed) ? options.batchSeed : []).map((row) => ({
+    id: row.id || `staged:${row.place_id || row.placeId || ''}`,
+    placeId: row.place_id || row.placeId,
+    title: row.title || row.proposed_title,
+    phone: row.phone || row.proposed_phone,
+    lat: row.lat ?? row.proposed_lat,
+    lng: row.lng ?? row.proposed_lng,
+  }));
   const staged = [];
   let stoppedReason = null;
+  const pairs = buildWavePairs(wave.targets, plan.tiles);
+  const startPair = Math.max(0, Math.min(pairs.length, Number(options.cursor?.pairIndex ?? options.pairStart ?? 0) || 0));
+  const budgetMs = Number(options.timeBudgetMs);
+  const hasBudget = Number.isFinite(budgetMs) && budgetMs > 0;
+  const nowFn = typeof options.now === 'function' ? options.now : () => Date.now();
+  const startedAt = nowFn();
+
+  function overTime() {
+    if (!hasBudget) return false;
+    return nowFn() - startedAt >= budgetMs;
+  }
 
   async function flush(row) {
     staged.push(row);
@@ -268,174 +334,224 @@ async function runWave(options = {}) {
     if (onStage && staged.length % 20 === 0) await onStage(staged.slice(-20));
   }
 
+  let pairCursor = startPair;
+  let processedPairs = 0;
+
+  async function consumePlace(place, target, tile) {
+    if (!place?.placeId || seen.has(place.placeId) || knownPlaceIds.has(place.placeId)) return 'ok';
+    seen.add(place.placeId);
+    counts.unique += 1;
+    const listing = passesListingFilters(place);
+    if (!listing.ok) {
+      bump(listing.reason);
+      return 'ok';
+    }
+    if (target.bakeryOnly && !looksLikeBakery(place)) {
+      bump('not_bakery');
+      return 'ok';
+    }
+    const area = allowedAreaId(place.lat, place.lng);
+    const enriched = {
+      ...place,
+      searchQuery: target.query,
+      hintCat: target.cat,
+      hintSub: target.sub,
+      tile: { ...tile, area },
+    };
+    const preDedup = classifyDedup(
+      { ...enriched, googlePlaceId: enriched.placeId },
+      locations,
+      { batch }
+    );
+    const exactId = preDedup.via === 'place_id';
+    if (exactId && preDedup.status !== 'new') {
+      await flush(
+        candidateRow(wave, enriched, {
+          dedup_status: preDedup.status,
+          status: 'pending',
+          needs_review: true,
+          reject_reason: null,
+          proposed_cat: target.cat,
+          proposed_subcats: [target.sub],
+        })
+      );
+      return 'ok';
+    }
+
+    if (overTime()) return 'time';
+    let detailed = enriched;
+    try {
+      const cacheKey = `details:${enriched.placeId}:${DETAILS_FIELD_MASK}`;
+      const spent = await budget.spend('details', cacheKey, () =>
+        detailsFetch({ placeId: enriched.placeId, apiKey })
+      );
+      detailed = detailsToPlace(enriched, spent.value);
+    } catch (err) {
+      if (isQuotaError(err)) {
+        stoppedReason = 'details_cap';
+        return 'cap';
+      }
+      bump('details_error');
+      return 'ok';
+    }
+
+    const again = passesListingFilters(detailed);
+    if (!again.ok) {
+      bump(again.reason);
+      return 'ok';
+    }
+    if (!detailed.freshReviews) {
+      await flush(
+        candidateRow(wave, detailed, {
+          dedup_status: preDedup.status,
+          status: 'rejected',
+          needs_review: false,
+          reject_reason: 'stale_reviews',
+          proposed_cat: target.cat,
+          proposed_subcats: [target.sub],
+        })
+      );
+      return 'ok';
+    }
+
+    const dedup = classifyDedup(
+      { ...detailed, googlePlaceId: detailed.placeId },
+      locations,
+      { batch }
+    );
+
+    if (!geminiKey && !options.classify) {
+      await flush(
+        candidateRow(wave, detailed, {
+          dedup_status: dedup.status,
+          status: 'rejected',
+          needs_review: false,
+          reject_reason: 'no_gemini_key',
+          proposed_cat: target.cat,
+          proposed_subcats: [target.sub],
+        })
+      );
+      return 'ok';
+    }
+
+    if (overTime()) return 'time';
+    let classifier;
+    try {
+      classifier = await classify(detailed, masterCatalog);
+    } catch (err) {
+      bump('classify_error');
+      await flush(
+        candidateRow(wave, detailed, {
+          dedup_status: dedup.status,
+          status: 'rejected',
+          needs_review: false,
+          reject_reason: 'classify_error',
+          classifier_reasoning: String(err.message || '').slice(0, 240),
+          proposed_cat: target.cat,
+          proposed_subcats: [target.sub],
+        })
+      );
+      return 'ok';
+    }
+
+    if (overTime()) return 'time';
+    let verification;
+    try {
+      verification = await verify(detailed, classifier, masterCatalog);
+    } catch (err) {
+      bump('classify_error');
+      await flush(
+        candidateRow(wave, detailed, {
+          dedup_status: dedup.status,
+          status: 'rejected',
+          needs_review: false,
+          reject_reason: 'classify_error',
+          classifier_reasoning: String(err.message || '').slice(0, 240),
+          proposed_cat: target.cat,
+          proposed_subcats: [target.sub],
+        })
+      );
+      return 'ok';
+    }
+
+    const gate = gateClassification({ classifier, verification, target });
+    const dedupBlocks = dedup.status !== 'new' && !String(dedup.status).startsWith('possible_branch_of ');
+    let status = gate.status;
+    let needsReview = gate.needsReview;
+    if (dedup.status !== 'new') needsReview = true;
+    if (status === 'pending' && dedupBlocks) {
+      status = 'pending';
+    }
+    await flush(
+      candidateRow(wave, detailed, {
+        dedup_status: dedup.status,
+        status,
+        needs_review: needsReview || gate.needsReview,
+        reject_reason: status === 'rejected' ? gate.reason : null,
+        proposed_cat: classifier.category || target.cat,
+        proposed_subcats: classifier.subcategory ? [classifier.subcategory] : [target.sub],
+        proposed_services: classifier.services || [],
+        classifier_confidence: gate.confidence,
+        classifier_reasoning: classifier.reasoning || '',
+        verification,
+      })
+    );
+    return 'ok';
+  }
+
   try {
     if (!apiKey && !options.textSearch) {
       throw new Error('GOOGLE_PLACES_API_KEY is not set');
     }
-    for (const target of wave.targets) {
-      for (const tile of plan.tiles) {
-        let found = [];
-        try {
-          const cacheKey = JSON.stringify({ q: target.query, tile, mask: TEXT_FIELD_MASK });
-          const spent = await budget.spend('text', cacheKey, () =>
-            textSearch({ query: target.query, bounds: tile, apiKey, target })
-          );
-          found = Array.isArray(spent.value) ? spent.value : [];
-        } catch (err) {
-          if (err instanceof PlacesQuotaError || err.code === 'cap') {
-            stoppedReason = 'text_search_cap';
-            break;
-          }
+    for (let pairIndex = startPair; pairIndex < pairs.length; pairIndex += 1) {
+      if (overTime()) {
+        stoppedReason = 'time_budget';
+        pairCursor = pairIndex;
+        break;
+      }
+      const target = wave.targets[pairs[pairIndex].targetIndex];
+      const tile = plan.tiles[pairs[pairIndex].tileIndex];
+      let found = [];
+      let pairIncomplete = false;
+      try {
+        const cacheKey = JSON.stringify({ q: target.query, tile, mask: TEXT_FIELD_MASK });
+        const spent = await budget.spend('text', cacheKey, () =>
+          textSearch({ query: target.query, bounds: tile, apiKey, target })
+        );
+        found = Array.isArray(spent.value) ? spent.value : [];
+      } catch (err) {
+        if (isQuotaError(err)) {
+          stoppedReason = 'text_search_cap';
+          pairIncomplete = true;
+        } else {
           bump('text_search_error');
-          continue;
+          found = [];
         }
+      }
+      if (!pairIncomplete) {
         counts.textHits += found.length;
         for (const place of found) {
-          if (!place?.placeId || seen.has(place.placeId)) continue;
-          seen.set(place.placeId, true);
-          counts.unique += 1;
-          const listing = passesListingFilters(place);
-          if (!listing.ok) {
-            bump(listing.reason);
-            continue;
+          const outcome = await consumePlace(place, target, tile);
+          if (outcome === 'time') {
+            stoppedReason = 'time_budget';
+            pairIncomplete = true;
+            break;
           }
-          if (target.bakeryOnly && !looksLikeBakery(place)) {
-            bump('not_bakery');
-            continue;
+          if (outcome === 'cap') {
+            pairIncomplete = true;
+            break;
           }
-          const area = allowedAreaId(place.lat, place.lng);
-          const enriched = {
-            ...place,
-            searchQuery: target.query,
-            hintCat: target.cat,
-            hintSub: target.sub,
-            tile: { ...tile, area },
-          };
-          const preDedup = classifyDedup(
-            { ...enriched, googlePlaceId: enriched.placeId },
-            locations,
-            { batch }
-          );
-          const exactId = preDedup.via === 'place_id';
-          if (exactId && preDedup.status !== 'new') {
-            await flush(
-              candidateRow(wave, enriched, {
-                dedup_status: preDedup.status,
-                status: 'pending',
-                needs_review: true,
-                reject_reason: null,
-                proposed_cat: target.cat,
-                proposed_subcats: [target.sub],
-              })
-            );
-            continue;
-          }
-
-          let detailed = enriched;
-          try {
-            const cacheKey = `details:${enriched.placeId}:${DETAILS_FIELD_MASK}`;
-            const spent = await budget.spend('details', cacheKey, () =>
-              detailsFetch({ placeId: enriched.placeId, apiKey })
-            );
-            detailed = detailsToPlace(enriched, spent.value);
-          } catch (err) {
-            if (err instanceof PlacesQuotaError || err.code === 'cap') {
-              stoppedReason = 'details_cap';
-              break;
-            }
-            bump('details_error');
-            continue;
-          }
-
-          const again = passesListingFilters(detailed);
-          if (!again.ok) {
-            bump(again.reason);
-            continue;
-          }
-          if (!detailed.freshReviews) {
-            await flush(
-              candidateRow(wave, detailed, {
-                dedup_status: preDedup.status,
-                status: 'rejected',
-                needs_review: false,
-                reject_reason: 'stale_reviews',
-                proposed_cat: target.cat,
-                proposed_subcats: [target.sub],
-              })
-            );
-            continue;
-          }
-
-          const dedup = classifyDedup(
-            { ...detailed, googlePlaceId: detailed.placeId },
-            locations,
-            { batch }
-          );
-
-          if (!geminiKey && !options.classify) {
-            await flush(
-              candidateRow(wave, detailed, {
-                dedup_status: dedup.status,
-                status: 'rejected',
-                needs_review: false,
-                reject_reason: 'no_gemini_key',
-                proposed_cat: target.cat,
-                proposed_subcats: [target.sub],
-              })
-            );
-            continue;
-          }
-
-          let classifier;
-          let verification;
-          try {
-            classifier = await classify(detailed, masterCatalog);
-            verification = await verify(detailed, classifier, masterCatalog);
-          } catch (err) {
-            bump('classify_error');
-            await flush(
-              candidateRow(wave, detailed, {
-                dedup_status: dedup.status,
-                status: 'rejected',
-                needs_review: false,
-                reject_reason: 'classify_error',
-                classifier_reasoning: String(err.message || '').slice(0, 240),
-                proposed_cat: target.cat,
-                proposed_subcats: [target.sub],
-              })
-            );
-            continue;
-          }
-
-          const gate = gateClassification({ classifier, verification, target });
-          const dedupBlocks = dedup.status !== 'new' && !String(dedup.status).startsWith('possible_branch_of ');
-          let status = gate.status;
-          let needsReview = gate.needsReview;
-          if (dedup.status !== 'new') needsReview = true;
-          if (status === 'pending' && dedupBlocks) {
-            status = 'pending';
-          }
-          await flush(
-            candidateRow(wave, detailed, {
-              dedup_status: dedup.status,
-              status,
-              needs_review: needsReview || gate.needsReview,
-              reject_reason: status === 'rejected' ? gate.reason : null,
-              proposed_cat: classifier.category || target.cat,
-              proposed_subcats: classifier.subcategory ? [classifier.subcategory] : [target.sub],
-              proposed_services: classifier.services || [],
-              classifier_confidence: gate.confidence,
-              classifier_reasoning: classifier.reasoning || '',
-              verification,
-            })
-          );
         }
-        if (stoppedReason) break;
       }
-      if (stoppedReason) break;
+      if (pairIncomplete) {
+        pairCursor = pairIndex;
+        break;
+      }
+      processedPairs += 1;
+      pairCursor = pairIndex + 1;
     }
   } catch (err) {
-    if (err instanceof PlacesQuotaError || err.code === 'cap') {
+    if (isQuotaError(err)) {
       stoppedReason = stoppedReason || 'cap';
     } else {
       throw err;
@@ -449,8 +565,9 @@ async function runWave(options = {}) {
   }
 
   const cost = budget.estimateCost();
+  const finished = pairCursor >= pairs.length;
   console.log(
-    `[places-v2] wave ${wave.id} text=${cost.textSearchRequests} details=${cost.detailsRequests} cacheHits=${cost.cacheHits} staged=${counts.staged} estUsdIfUncapped=${cost.estimatedUsdIfFreeTierExhausted}`
+    `[places-v2] wave ${wave.id} pairs=${processedPairs}/${pairs.length} cursor=${pairCursor} text=${cost.textSearchRequests} details=${cost.detailsRequests} cacheHits=${cost.cacheHits} staged=${counts.staged} estUsdIfUncapped=${cost.estimatedUsdIfFreeTierExhausted}`
   );
 
   return {
@@ -463,6 +580,10 @@ async function runWave(options = {}) {
     counts,
     cost,
     candidates: staged,
+    processed: processedPairs,
+    total: pairs.length,
+    done: finished,
+    nextCursor: finished ? null : { pairIndex: pairCursor },
   };
 }
 
@@ -471,6 +592,7 @@ module.exports = {
   DETAILS_FIELD_MASK,
   passesListingFilters,
   planWave,
+  buildWavePairs,
   runWave,
   candidateRow,
   placeIdOf,
