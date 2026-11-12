@@ -8,6 +8,7 @@
 const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
+const { mapPlacesReviews } = require('./places-reviews.js');
 
 const OVERPASS_URLS = [
   'https://overpass-api.de/api/interpreter',
@@ -914,23 +915,7 @@ async function searchGooglePlacesText({
 }
 
 function mapGoogleReviews(reviews) {
-  if (!Array.isArray(reviews)) return [];
-  return reviews
-    .slice(0, 8)
-    .map((rev) => {
-      const rating = Math.max(1, Math.min(5, Number(rev.rating) || 5));
-      const text = String(rev.text?.text || rev.originalText?.text || '').trim();
-      const author = rev.authorAttribution?.displayName || 'Google';
-      const relative = rev.relativePublishTimeDescription || '';
-      return {
-        rating,
-        text: text || 'Відгук з Google Maps',
-        author,
-        date: relative || new Date().toISOString().slice(0, 10),
-        source: 'google_maps',
-      };
-    })
-    .filter((r) => r.text);
+  return mapPlacesReviews(reviews);
 }
 
 const GOOGLE_DAY_TO_SHORT = {
@@ -1044,7 +1029,7 @@ async function fetchGooglePlaceDetails({ placeId, apiKey }) {
   };
 }
 
-const BULK_GOOGLE_IMPORT_SOURCES = new Set(['city_gemini', 'region_gemini', 'google_places']);
+const BULK_GOOGLE_IMPORT_SOURCES = new Set(['city_gemini', 'region_gemini', 'google_places', 'places_v2']);
 
 function foldPlaceTitle(raw) {
   return String(raw || '')
@@ -2039,6 +2024,7 @@ module.exports = {
   importExcelRowsToLocations,
   loadLocationsFromFile,
   mergeLocations,
+  mapGoogleReviews,
   parseCsv,
   csvRowToLocation,
   normalizePhone,
