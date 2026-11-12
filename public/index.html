@@ -42,7 +42,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;600;700;800&display=swap" rel="stylesheet" media="print" onload="this.media='all'">
     <noscript><link href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;600;700;800&display=swap" rel="stylesheet"></noscript>
     
-    <link rel="stylesheet" href="/css/mapfix-map.css?v=8">
+    <link rel="stylesheet" href="/css/mapfix-map.css?v=9">
 </head>
 <body>
     <!--MAPFIX_CRAWL-->
@@ -88,8 +88,10 @@
         </button>
         <div id="map" role="application" aria-label="Карта майстрів Києва"></div>
         <svg id="pinLinkSvg" class="pin-link-svg" aria-hidden="true" focusable="false">
-            <path id="pinLinkHalo" fill="none" stroke="#ffffff" stroke-width="11" stroke-linecap="round" stroke-linejoin="round"></path>
-            <path id="pinLinkPath" fill="none" stroke="#14b8a6" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"></path>
+            <path id="pinThreadHaloL" class="pin-thread-halo" fill="none" stroke-linecap="round"></path>
+            <path id="pinThreadHaloR" class="pin-thread-halo" fill="none" stroke-linecap="round"></path>
+            <path id="pinThreadL" class="pin-thread" fill="none" stroke-linecap="round"></path>
+            <path id="pinThreadR" class="pin-thread" fill="none" stroke-linecap="round"></path>
         </svg>
         <div id="pinPoster" class="pin-poster" aria-hidden="true">
             <svg viewBox="0 0 32 44" width="34" height="44" aria-hidden="true">
@@ -227,6 +229,6 @@
     <script src="/mapfix-sync.js" defer></script>
     <script src="/mf-analytics.js" defer></script>
 
-    <script src="/js/mapfix-app.js?v=11"></script>
+    <script src="/js/mapfix-app.js?v=14"></script>
 <script>window.va=window.va||function(){(window.vaq=window.vaq||[]).push(arguments)};</script><script defer src="/_vercel/insights/script.js"></script>
 </body></html>

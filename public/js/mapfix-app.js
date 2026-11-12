@@ -2086,11 +2086,12 @@
                 return document.getElementById('map-container');
             }
 
+            const PIN_THREAD_IDS = ['pinThreadHaloL', 'pinThreadL', 'pinThreadHaloR', 'pinThreadR'];
+
             function clearPinPaths() {
-                const path = document.getElementById('pinLinkPath');
-                const halo = document.getElementById('pinLinkHalo');
-                if (path) path.setAttribute('d', '');
-                if (halo) halo.setAttribute('d', '');
+                PIN_THREAD_IDS.forEach((id) => {
+                    document.getElementById(id)?.setAttribute('d', '');
+                });
             }
 
             function hidePinPoster() {
@@ -2099,18 +2100,32 @@
                 clearPinPaths();
             }
 
-            function setLinkPath(d, mobile) {
+            function hangThread(x1, y1, x2, y2) {
+                const dx = x2 - x1;
+                const dy = y2 - y1;
+                const dist = Math.hypot(dx, dy) || 1;
+                const sideways = Math.abs(dx) > Math.abs(dy);
+                const sag = sideways
+                    ? Math.min(12, Math.max(6, dist * 0.04))
+                    : Math.min(28, Math.max(8, dist * 0.08));
+                const outward = (Math.sign(dx) || 1) * Math.min(16, dist * 0.05);
+                const cx = (x1 + x2) / 2 + (sideways ? 0 : outward);
+                const cy = (y1 + y2) / 2 + sag;
+                return `M ${x1.toFixed(1)} ${y1.toFixed(1)} Q ${cx.toFixed(1)} ${cy.toFixed(1)}, ${x2.toFixed(1)} ${y2.toFixed(1)}`;
+            }
+
+            function setThreads(dLeft, dRight) {
                 const svg = document.getElementById('pinLinkSvg');
-                const path = document.getElementById('pinLinkPath');
-                const halo = document.getElementById('pinLinkHalo');
-                if (!svg || !path || !halo || !d) {
+                if (!svg || !dLeft || !dRight) {
                     hidePinPoster();
                     return;
                 }
-                path.setAttribute('stroke-width', mobile ? '7' : '6');
-                halo.setAttribute('stroke-width', mobile ? '11' : '10');
-                path.setAttribute('d', d);
-                halo.setAttribute('d', d);
+                const paint = (haloId, pathId, d) => {
+                    document.getElementById(haloId)?.setAttribute('d', d);
+                    document.getElementById(pathId)?.setAttribute('d', d);
+                };
+                paint('pinThreadHaloL', 'pinThreadL', dLeft);
+                paint('pinThreadHaloR', 'pinThreadR', dRight);
                 svg.classList.add('is-on');
             }
 
@@ -2120,27 +2135,6 @@
                 pin.style.left = x + 'px';
                 pin.style.top = y + 'px';
                 pin.classList.add('is-in');
-            }
-
-            function curveToSheet(x1, y1, x2, y2) {
-                const dx = x2 - x1;
-                const dy = Math.max(36, y2 - y1);
-                const bow = Math.max(-130, Math.min(130, dx * 0.55 + (dx >= 0 ? 46 : -46)));
-                const c1x = x1 + bow;
-                const c1y = y1 + dy * 0.42;
-                const c2x = x2 - bow * 0.12;
-                const c2y = y2 - Math.min(110, dy * 0.38);
-                return `M ${x1.toFixed(1)} ${y1.toFixed(1)} C ${c1x.toFixed(1)} ${c1y.toFixed(1)}, ${c2x.toFixed(1)} ${c2y.toFixed(1)}, ${x2.toFixed(1)} ${y2.toFixed(1)}`;
-            }
-
-            function curveShort(x1, y1, x2, y2) {
-                const dx = x2 - x1;
-                const dy = y2 - y1;
-                const len = Math.hypot(dx, dy) || 1;
-                const bend = Math.min(28, Math.max(12, len * 0.38));
-                const cx = (x1 + x2) / 2 + (-dy / len) * bend;
-                const cy = (y1 + y2) / 2 + (dx / len) * bend;
-                return `M ${x1.toFixed(1)} ${y1.toFixed(1)} Q ${cx.toFixed(1)} ${cy.toFixed(1)}, ${x2.toFixed(1)} ${y2.toFixed(1)}`;
             }
 
             function markerNeedsPan(loc) {
@@ -2191,9 +2185,10 @@
                 const preferLeft = pt.x > size.x * 0.5;
                 const header = document.querySelector('.top-header')?.getBoundingClientRect();
                 const topPad = (header ? Math.min(header.height, 88) : 72) + 64;
+                const sidePad = cardW + 88;
                 map.panInside([Number(loc.lat), Number(loc.lng)], {
-                    paddingTopLeft: L.point(preferLeft ? cardW + 36 : 48, topPad),
-                    paddingBottomRight: L.point(preferLeft ? 40 : cardW + 28, 72),
+                    paddingTopLeft: L.point(preferLeft ? sidePad : 48, topPad),
+                    paddingBottomRight: L.point(preferLeft ? 40 : sidePad, 72),
                     animate,
                     duration: 0.32,
                 });
@@ -2215,48 +2210,39 @@
                 const minLeft = mapRect.left + 10;
                 const maxRight = mapRect.right - 10;
                 const h = Math.min(detail.scrollHeight || 280, maxH);
-                const gap = 54;
-                const roomBelow = maxBottom - (pinVy + gap);
-                const roomAbove = pinVy - gap - minTop;
-                let above = roomBelow < 190 && roomAbove > roomBelow;
+                const sideGap = 72;
+                const drop = 78;
                 const placeLeft = pinVx > (minLeft + maxRight) / 2;
-                let left = placeLeft ? pinVx - gap - cardW : pinVx + gap;
-                let top = above ? pinVy - gap - h : pinVy + gap;
+                let left = placeLeft ? pinVx - sideGap - cardW : pinVx + sideGap;
+                let top = pinVy + drop;
                 left = Math.max(minLeft, Math.min(left, maxRight - cardW));
-                top = Math.max(minTop, Math.min(top, Math.max(minTop, maxBottom - Math.min(h, maxH))));
+                const minVisible = 200;
+                if (top + minVisible > maxBottom) top = Math.max(minTop, maxBottom - Math.min(h, maxH));
+                if (top < minTop) top = minTop;
                 detail.style.left = Math.round(left) + 'px';
                 detail.style.top = Math.round(top) + 'px';
-                detail.classList.toggle('poster-above', above);
+                detail.classList.toggle('poster-above', top + 8 < pinVy);
 
                 let cardRect = detail.getBoundingClientRect();
                 const coversPin =
-                    pinVx >= cardRect.left - 6 &&
-                    pinVx <= cardRect.right + 6 &&
-                    pinVy >= cardRect.top - 6 &&
-                    pinVy <= cardRect.bottom + 6;
+                    pinVx >= cardRect.left - 4 &&
+                    pinVx <= cardRect.right + 4 &&
+                    pinVy >= cardRect.top - 4 &&
+                    pinVy <= cardRect.bottom + 4;
                 if (coversPin) {
-                    if (!above && roomAbove > 140) {
-                        above = true;
-                        top = Math.max(minTop, pinVy - gap - Math.min(h, maxH));
-                    } else if (placeLeft) {
-                        left = Math.max(minLeft, pinVx - gap - cardW);
-                    } else {
-                        left = Math.min(maxRight - cardW, pinVx + gap);
-                    }
+                    left = placeLeft
+                        ? Math.max(minLeft, pinVx - sideGap - cardW)
+                        : Math.min(maxRight - cardW, pinVx + sideGap);
                     detail.style.left = Math.round(left) + 'px';
-                    detail.style.top = Math.round(top) + 'px';
-                    detail.classList.toggle('poster-above', above);
                     cardRect = detail.getBoundingClientRect();
                 }
 
-                let ax = placeLeft ? cardRect.right - 28 : cardRect.left + 28;
-                ax = Math.max(cardRect.left + 18, Math.min(ax, cardRect.right - 18));
-                let ay = above ? cardRect.bottom : cardRect.top;
-                if (pinVy > cardRect.top + 16 && pinVy < cardRect.bottom - 16) {
-                    ax = pinVx <= cardRect.left + cardRect.width / 2 ? cardRect.left : cardRect.right;
-                    ay = Math.max(cardRect.top + 18, Math.min(pinVy, cardRect.bottom - 18));
-                }
-                return curveShort(pinX, pinY, ax - hostRect.left, ay - hostRect.top);
+                const inset = 18;
+                const yTop = cardRect.top - hostRect.top;
+                return {
+                    left: { x: cardRect.left + inset - hostRect.left, y: yTop },
+                    right: { x: cardRect.right - inset - hostRect.left, y: yTop },
+                };
             }
 
             function positionPinLink() {
@@ -2289,13 +2275,20 @@
                     }
                     const sheet = document.getElementById('sidebar')?.getBoundingClientRect();
                     if (!sheet) return;
-                    const endX = sheet.left + sheet.width / 2 - hostRect.left;
                     const endY = sheet.top - hostRect.top + 1;
-                    setLinkPath(curveToSheet(x, y, endX, endY), true);
+                    const inset = 18;
+                    const leftX = sheet.left + inset - hostRect.left;
+                    const rightX = sheet.right - inset - hostRect.left;
+                    setThreads(hangThread(x, y, leftX, endY), hangThread(x, y, rightX, endY));
                     return;
                 }
                 appShell.classList.add('poster-anchored');
-                setLinkPath(positionDesktopPoster(x, y), false);
+                const corners = positionDesktopPoster(x, y);
+                if (!corners) return;
+                setThreads(
+                    hangThread(x, y, corners.left.x, corners.left.y),
+                    hangThread(x, y, corners.right.x, corners.right.y)
+                );
             }
 
             function bindPinLink() {
