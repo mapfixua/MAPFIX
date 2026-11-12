@@ -46,6 +46,8 @@
           "billing.js",
           "analytics.js",
           "analytics-events.js",
+          "analytics-dimensions.js",
+          "analytics-rollups.js",
           "ops-monitor.js",
           "seo.js",
           "geo/**"

@@ -16,7 +16,8 @@
     "import:wave-a": "node scripts/import-places-v2.js --wave A",
     "import:wave-a:plan": "node scripts/import-places-v2.js --wave A --plan",
     "import:backfill-place-ids": "node scripts/backfill-google-place-ids.js",
-    "import:kotsyubynske": "node scripts/import-places.js --source osm --city kotsyubynske --category beauty --write"
+    "import:kotsyubynske": "node scripts/import-places.js --source osm --city kotsyubynske --category beauty --write",
+    "analytics:backfill": "node scripts/backfill-analytics-rollups.js"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.108.2",

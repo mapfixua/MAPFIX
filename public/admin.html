@@ -937,6 +937,51 @@
       border-color: #fcd34d;
       background: #fffbeb;
     }
+    .analytics-filters {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      align-items: flex-end;
+      margin: 4px 0 10px;
+    }
+    .analytics-filters label {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      font-size: 0.75rem;
+      font-weight: 700;
+      color: #6b7280;
+    }
+    .analytics-filters label[hidden] { display: none; }
+    .analytics-filters select,
+    .analytics-filters input {
+      font: inherit;
+      color: #111827;
+      padding: 6px 8px;
+      border: 1px solid #d1d5db;
+      border-radius: 8px;
+      background: #fff;
+    }
+    .stat-delta {
+      display: inline-block;
+      margin-left: 6px;
+      font-size: 0.72rem;
+      font-weight: 800;
+      letter-spacing: 0;
+      vertical-align: middle;
+    }
+    .stat-delta.up { color: #047857; }
+    .stat-delta.down { color: #b91c1c; }
+    .stat-delta.flat { color: #6b7280; }
+    .analytics-funnel {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      align-items: center;
+      margin: 0 0 14px;
+      font-size: 0.9rem;
+    }
+    .analytics-funnel b { color: #0f766e; }
   </style>
 </head>
 <body>
@@ -988,17 +1033,78 @@
             <p class="field-hint">Натисніть на будь-який показник, щоб побачити деталі: хто, коли, на якій картці, з якого пристрою і звідки прийшов. Онлайн оновлюється кожні ~30 с.</p>
             <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">
               <button type="button" class="btn-secondary" style="width:auto" id="analyticsRefreshBtn">Оновити</button>
+              <button type="button" class="btn-secondary" style="width:auto" id="analyticsExcelBtn">Завантажити Excel</button>
+              <button type="button" class="btn-secondary" style="width:auto" id="analyticsCsvBtn">CSV</button>
+              <label class="field-hint" style="margin:0;align-self:center">Таблиця CSV
+                <select id="analyticsCsvSheet">
+                  <option value="KPI">Щоденне</option>
+                  <option value="Райони">Райони</option>
+                  <option value="Категорії">Категорії</option>
+                  <option value="Джерела">Джерела</option>
+                  <option value="Пошук">Пошук</option>
+                  <option value="Картки">Картки (усі майстри)</option>
+                </select>
+              </label>
               <button type="button" class="btn-secondary" style="width:auto" data-drill="events" data-drill-type="pwa" data-drill-title="Встановлення на екран">Встановлення на екран</button>
               <span class="field-hint" id="analyticsUpdatedAt" style="margin:0;align-self:center"></span>
             </div>
+            <div class="analytics-filters" id="analyticsFilters">
+              <label>Період
+                <select id="analyticsRange">
+                  <option value="today">Сьогодні</option>
+                  <option value="7d" selected>7 днів</option>
+                  <option value="30d">30 днів</option>
+                  <option value="90d">90 днів</option>
+                  <option value="custom">Свій</option>
+                </select>
+              </label>
+              <label id="analyticsCustomDates" hidden>Дати
+                <span style="display:flex;gap:4px">
+                  <input type="date" id="analyticsFrom" aria-label="Від">
+                  <input type="date" id="analyticsTo" aria-label="До">
+                </span>
+              </label>
+              <label>Район
+                <select id="analyticsDistrict">
+                  <option value="">Усі</option>
+                  <option value="sviatoshyn">Святошин</option>
+                  <option value="borshchahivka">Борщагівка</option>
+                  <option value="akademmistechko">Академмістечко</option>
+                  <option value="kotsiubynske">Коцюбинське</option>
+                  <option value="kyiv">Київ</option>
+                  <option value="__unknown__">невідомо</option>
+                </select>
+              </label>
+              <label>Категорія
+                <select id="analyticsCategory"><option value="">Усі</option></select>
+              </label>
+              <label>Джерело
+                <select id="analyticsSource"><option value="">Усі</option></select>
+              </label>
+              <label>Пристрій
+                <select id="analyticsDevice">
+                  <option value="">Усі</option>
+                  <option value="mobile">Телефон</option>
+                  <option value="tablet">Планшет</option>
+                  <option value="desktop">Комп’ютер</option>
+                  <option value="__unknown__">невідомо</option>
+                </select>
+              </label>
+              <button type="button" class="btn-secondary" style="width:auto" id="analyticsApplyBtn">Застосувати</button>
+            </div>
+            <p class="field-hint" id="analyticsFilterHint" style="margin-top:0"></p>
             <h3 style="font-size:1rem;margin:0 0 8px">Зараз на сайті</h3>
             <div class="stat-grid" id="analyticsLiveStats" style="margin-bottom:14px"></div>
             <div id="analyticsLivePaths" class="field-hint" style="margin-bottom:16px"></div>
 
+            <h3 style="font-size:1rem;margin:0 0 8px">Попит за обраний період</h3>
+            <div class="stat-grid" id="analyticsDemandStats" style="margin-bottom:8px"></div>
+            <div class="analytics-funnel" id="analyticsFunnel"></div>
+
             <h3 style="font-size:1rem;margin:0 0 8px">Ключові метрики по днях</h3>
             <p class="field-hint" style="margin-top:0" id="analyticsChartsHint">
-              Кожне вікно показує 10 днів. Справа — найновіший день у вибраному періоді.
-              Пунктирна лінія — медіана. Дати підписані вертикально. Повзунок нижче — попередні періоди.
+              Графік показує дні обраного фільтра, зокрема дзвінки, чат і маршрути.
+              Якщо днів більше десяти, повзунок гортає вікно. Пунктирна лінія — медіана.
             </p>
             <div class="metric-charts-grid" id="analyticsKpis" style="margin-bottom:10px"></div>
             <div class="metric-window-bar">
@@ -1007,21 +1113,31 @@
               <p class="metric-window-label" id="analyticsRangeLabel">Останні 10 днів</p>
             </div>
 
-            <h3 style="font-size:1rem;margin:0 0 8px">Стан платформи (загалом)</h3>
+            <h3 style="font-size:1rem;margin:0 0 8px">Стан бази (за весь час, не фільтр періоду)</h3>
             <div class="stat-grid" id="analyticsPlatformStats" style="margin-bottom:16px"></div>
 
             <h3 style="font-size:1rem;margin:0 0 8px">Взаємодії з картками (CTA)</h3>
-            <p class="field-hint" style="margin-top:0">Як у Google Business: дзвінки, маршрути, поділитись, обране, замовлення, детальніше. Call rate = дзвінки / перегляди.</p>
+            <p class="field-hint" style="margin-top:0">Як у Google Business. Call rate = дзвінки / відкриття карток за той самий період, не за весь час. Стрілка — порівняння з попереднім вікном тієї ж довжини.</p>
             <div class="stat-grid" id="analyticsCtaStats" style="margin-bottom:12px"></div>
             <h3 style="font-size:0.95rem;margin:0 0 6px">Топ локацій за дзвінками</h3>
             <p class="field-hint" style="margin:0 0 6px">Натисніть на картку — всі її події</p>
             <div id="analyticsTopCalls"><p class="list-item-meta">—</p></div>
+            <p class="field-hint" style="margin:6px 0 0">На екрані — до 25 карток. У Excel аркуш «Картки» містить усіх майстрів, з фото, прайсом, графіком, власником, свіжістю і скаргами «номер неактуальний».</p>
 
-            <h3 style="font-size:1rem;margin:16px 0 8px">Куди заходять (сторінки)</h3>
+            <h3 style="font-size:1rem;margin:16px 0 8px">Райони</h3>
+            <div id="analyticsDistricts"><p class="list-item-meta">—</p></div>
+
+            <h3 style="font-size:1rem;margin:16px 0 8px">Категорії</h3>
+            <div id="analyticsEventCats"><p class="list-item-meta">—</p></div>
+
+            <h3 style="font-size:1rem;margin:16px 0 8px">Пристрої</h3>
+            <div id="analyticsDevices"><p class="list-item-meta">—</p></div>
+
+            <h3 style="font-size:1rem;margin:16px 0 8px">Куди заходять (сторінки, за весь час)</h3>
             <div id="analyticsPages"><p class="list-item-meta">Завантаження…</p></div>
 
-            <h3 style="font-size:1rem;margin:16px 0 8px">Звідки прийшли (UTM)</h3>
-            <p class="field-hint" style="margin:0 0 6px">utm_source / medium / campaign, наприклад <code>/kyiv/borshchahivka/home?utm_source=meta&amp;utm_medium=cpc</code></p>
+            <h3 style="font-size:1rem;margin:16px 0 8px">Звідки прийшли (UTM і конверсія контакту)</h3>
+            <p class="field-hint" style="margin:0 0 6px">Джерело за обраний період. Конверсія = (дзвінок + чат + маршрут) / відкриття картки.</p>
             <div id="analyticsUtms"><p class="list-item-meta">—</p></div>
 
             <h3 style="font-size:1rem;margin:16px 0 8px">Категорії (кліки)</h3>
@@ -1036,10 +1152,10 @@
             <p class="field-hint" style="margin:0 0 6px">Подвійний клік — відкрити в каталозі</p>
             <div id="analyticsSvcs"><p class="list-item-meta">—</p></div>
 
-            <h3 style="font-size:1rem;margin:16px 0 8px">Що шукають</h3>
+            <h3 style="font-size:1rem;margin:16px 0 8px">Що шукають (включно з нульовими)</h3>
             <div id="analyticsSearches"><p class="list-item-meta">—</p></div>
 
-            <h3 style="font-size:1rem;margin:16px 0 8px">Останні пошукові запити</h3>
+            <h3 style="font-size:1rem;margin:16px 0 8px">Пошуки без результату</h3>
             <div id="analyticsRecentSearches"><p class="list-item-meta">—</p></div>
 
             <h3 style="font-size:1rem;margin:16px 0 8px">Топ локацій за залученістю</h3>
@@ -2329,33 +2445,92 @@
       return isoDay;
     }
 
-    function padAnalyticsDaily(daily, todayIso, days = 60) {
-      const byDay = {};
-      (daily || []).forEach((d) => {
-        if (d?.day) byDay[d.day] = d;
-      });
-      const end = todayIso || (daily && daily.length ? daily[daily.length - 1].day : null);
-      if (!end) return [];
-      const [y, m, d] = end.split('-').map(Number);
-      const out = [];
-      for (let i = days - 1; i >= 0; i--) {
-        const dt = new Date(Date.UTC(y, m - 1, d - i, 12, 0, 0));
-        const key = dt.toISOString().slice(0, 10);
-        const row = byDay[key] || {};
-        out.push({
-          day: key,
-          uniqueVisits: row.uniqueVisits ?? row.uniqueSessions ?? 0,
-          pageViews: row.pageViews || 0,
-          mapLoads: row.mapLoads || 0,
-          locationOpens: row.locationOpens || 0,
-          searches: row.searches || 0,
-          orders: row.orders || 0,
-          favorites: row.favorites || 0,
-          logins: row.logins || 0,
-          registers: row.registers || 0,
-        });
+    function padAnalyticsDaily(daily) {
+      return (daily || []).map((row) => ({
+        day: row.day,
+        uniqueVisits: row.uniqueVisits ?? row.sessions ?? 0,
+        pageViews: row.pageViews || 0,
+        mapLoads: row.mapLoads || 0,
+        locationOpens: row.locationOpens || row.views || 0,
+        searches: row.searches || 0,
+        zeroSearches: row.zeroSearches || 0,
+        impressions: row.impressions || 0,
+        orders: row.orders || 0,
+        favorites: row.favorites || 0,
+        calls: row.calls || row.callClicks || 0,
+        chats: row.chats || 0,
+        directions: row.directions || row.directionsClicks || 0,
+        callRate: row.callRate || 0,
+        logins: row.logins || 0,
+        registers: row.registers || 0,
+      }));
+    }
+
+    function analyticsDeltaHtml(delta) {
+      if (!delta || !delta.show) return '';
+      if (delta.pct == null) {
+        const dir = delta.dir === 'down' ? 'down' : 'up';
+        const arrow = dir === 'down' ? '↓' : '↑';
+        return `<span class="stat-delta ${dir}">${arrow} нове</span>`;
       }
-      return out;
+      if (delta.dir === 'flat' || Number(delta.pct) === 0) return '<span class="stat-delta flat">→ 0%</span>';
+      const up = delta.dir === 'up';
+      const n = Math.abs(Number(delta.pct) || 0);
+      const text = Number.isInteger(n) ? String(n) : n.toFixed(1);
+      return `<span class="stat-delta ${up ? 'up' : 'down'}">${up ? '↑' : '↓'} ${text}%</span>`;
+    }
+
+    function analyticsSheetTable(rows) {
+      if (!rows || !rows.length) return '<p class="list-item-meta">Немає рядків за цей фільтр</p>';
+      const headers = Object.keys(rows[0]);
+      const head = headers
+        .map((h) => `<th style="text-align:left;padding:6px;border-bottom:1px solid #e5e7eb">${esc(h)}</th>`)
+        .join('');
+      const body = rows
+        .map(
+          (row) =>
+            `<tr>${headers
+              .map(
+                (h) =>
+                  `<td style="padding:6px;border-bottom:1px solid #f1f5f9">${esc(row[h] == null ? '' : String(row[h]))}</td>`
+              )
+              .join('')}</tr>`
+        )
+        .join('');
+      return `<div style="overflow:auto"><table style="width:100%;border-collapse:collapse;font-size:0.85rem"><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table></div>`;
+    }
+
+    function analyticsFilterQuery() {
+      const range = document.getElementById('analyticsRange')?.value || '7d';
+      const from = document.getElementById('analyticsFrom')?.value || '';
+      const to = document.getElementById('analyticsTo')?.value || '';
+      const district = document.getElementById('analyticsDistrict')?.value || '';
+      const category = document.getElementById('analyticsCategory')?.value || '';
+      const source = document.getElementById('analyticsSource')?.value || '';
+      const device = document.getElementById('analyticsDevice')?.value || '';
+      const params = new URLSearchParams();
+      params.set('range', range === 'custom' ? 'custom' : range);
+      if (range === 'custom') {
+        if (from) params.set('from', from);
+        if (to) params.set('to', to);
+      }
+      if (district) params.set('district', district);
+      if (category) params.set('category', category);
+      if (source) params.set('source', source);
+      if (device) params.set('device', device);
+      window.adminAnalyticsFilters = { range, from, to, district, category, source, device };
+      return params.toString();
+    }
+
+    function fillAnalyticsSelect(id, pairs) {
+      const el = document.getElementById(id);
+      if (!el) return;
+      const current = el.value;
+      const options = [['', 'Усі']].concat(pairs || []);
+      el.innerHTML = options
+        .map(([value, label]) => `<option value="${esc(value)}">${esc(label)}</option>`)
+        .join('');
+      if ([...el.options].some((opt) => opt.value === current)) el.value = current;
     }
 
     const ANALYTICS_WINDOW = 10;
@@ -2389,11 +2564,13 @@
       const todayIso = analyticsTodayIso || windowRows[windowRows.length - 1]?.day;
       if (label) label.textContent = analyticsWindowRangeText(windowRows, todayIso);
       const charts = [
-        ['Унікальні заходи', 'uniqueVisits', true, 'page_view'],
-        ['Перегляди сторінок', 'pageViews', false, 'page_view'],
-        ['Завантаження карти', 'mapLoads', false, 'page_view'],
+        ['Унікальні сесії', 'uniqueVisits', true, 'page_view'],
+        ['Відкриття карти', 'mapLoads', false, 'page_view'],
+        ['Пошуки', 'searches', false, 'search'],
         ['Відкриття карток', 'locationOpens', false, 'view'],
-        ['Пошукові запити', 'searches', false, 'search'],
+        ['Дзвінки', 'calls', true, 'call'],
+        ['Чат', 'chats', false, 'chat'],
+        ['Маршрути', 'directions', false, 'directions'],
         ['Замовлення', 'orders', false, 'order'],
       ];
       const dayKeys = windowRows.map((d) => d.day);
@@ -2470,22 +2647,42 @@
         if (mode) a += ` data-drill-mode="${esc(mode)}"`;
         return a;
       };
-      const card = (label, value, highlight, drill) =>
-        `<div class="stat-card${highlight ? ' stat-highlight' : ''}"${drillAttrs(drill)}><div class="stat-label">${esc(label)}</div><div class="stat-value">${esc(String(value ?? 0))}</div></div>`;
+      const card = (label, value, highlight, drill, deltaKey) =>
+        `<div class="stat-card${highlight ? ' stat-highlight' : ''}"${drillAttrs(drill)}><div class="stat-label">${esc(label)}</div><div class="stat-value">${esc(String(value ?? 0))}${analyticsDeltaHtml(deltaKey ? dataDelta[deltaKey] : null)}</div></div>`;
+      let dataDelta = {};
+      analyticsLoading = true;
       try {
-        const data = await apiFetch('/api/admin/analytics');
+        const data = await apiFetch('/api/admin/analytics?' + analyticsFilterQuery());
         window.adminAnalyticsLast = data;
         const live = data.live || {};
         const kpis = data.kpis || {};
-        const todayIso = data.today?.day || null;
+        const period = data.period || {};
+        dataDelta = data.delta || {};
+        const todayIso = data.filters?.toDay || data.today?.day || null;
+        const hint = document.getElementById('analyticsFilterHint');
+        if (hint) hint.textContent = data.hint || '';
+        const optionCategories = (data.filterOptions?.categories || []).map((row) => [
+          row.key ? row.key : '__unknown__',
+          row.label || row.key || 'невідомо',
+        ]);
+        const optionSources = (data.filterOptions?.sources || []).map((key) => [
+          key ? key : '__unknown__',
+          !key ? 'невідомо' : key === 'direct' ? 'прямий' : key,
+        ]);
+        fillAnalyticsSelect('analyticsCategory', optionCategories);
+        fillAnalyticsSelect('analyticsSource', optionSources);
         const onlineEl = document.getElementById('navCountOnline');
         if (onlineEl) onlineEl.textContent = String(live.onlineNow || 0);
         const updated = document.getElementById('analyticsUpdatedAt');
         if (updated) updated.textContent = 'Оновлено: ' + formatBillingDate(data.generatedAt);
 
+        const todayFromSeries = (data.daily || []).find((row) => row.day === todayIso);
+        const visitsToday = todayFromSeries
+          ? (todayFromSeries.sessions ?? todayFromSeries.uniqueVisits ?? 0)
+          : (kpis.uniqueVisitsToday || 0);
         liveEl.innerHTML = [
           ['Онлайн зараз', live.onlineNow || 0, 'online'],
-          ['Заходів сьогодні', kpis.uniqueVisitsToday || 0, 'events:page_view'],
+          ['Заходів сьогодні', visitsToday, 'events:page_view'],
         ]
           .map(([label, value, drill]) => card(label, value, false, drill))
           .join('');
@@ -2499,24 +2696,7 @@
             : 'Ніхто не на звʼязку (відкрийте карту в іншій вкладці для перевірки).';
         }
 
-        const series = padAnalyticsDaily(data.daily || [], todayIso, 60);
-        if (data.today?.day && series.length) {
-          const last = series[series.length - 1];
-          if (last.day === data.today.day) {
-            series[series.length - 1] = {
-              ...last,
-              uniqueVisits: data.today.uniqueVisits ?? last.uniqueVisits,
-              pageViews: data.today.pageViews ?? last.pageViews,
-              mapLoads: data.today.mapLoads ?? last.mapLoads,
-              locationOpens: data.today.locationOpens ?? last.locationOpens,
-              searches: data.today.searches ?? last.searches,
-              orders: data.today.orders ?? last.orders,
-              favorites: data.today.favorites ?? last.favorites,
-              logins: data.today.logins ?? last.logins,
-              registers: data.today.registers ?? last.registers,
-            };
-          }
-        }
+        const series = padAnalyticsDaily(data.daily || []);
         analyticsDailySeries = series;
         analyticsTodayIso = todayIso || (series.length ? series[series.length - 1].day : null);
         const slider = document.getElementById('analyticsRangeSlider');
@@ -2528,19 +2708,45 @@
         }
         renderAnalyticsChartsWindow();
 
+        const demandEl = document.getElementById('analyticsDemandStats');
+        if (demandEl) {
+          const zeroShare = period.zeroShare != null ? period.zeroShare : 0;
+          demandEl.innerHTML = [
+            ['Унікальні сесії', period.sessions || 0, false, 'events:page_view', 'sessions'],
+            ['Відкриття карти', period.mapLoads || 0, false, 'events:page_view', 'mapLoads'],
+            ['Пошуки', period.searches || 0, false, 'events:search', 'searches'],
+            ['Без результату %', zeroShare, false, 'events:search', 'zeroShare'],
+            ['Покази', period.impressions || 0, false, '', 'impressions'],
+            ['Відкриття карток', period.views || 0, true, 'events:view', 'views'],
+          ]
+            .map(([label, value, hi, drill, key]) => card(label, value, hi, drill, key))
+            .join('');
+        }
+        const funnelEl = document.getElementById('analyticsFunnel');
+        if (funnelEl) {
+          const contacts = period.contacts || (period.calls || 0) + (period.chats || 0) + (period.directions || 0);
+          funnelEl.innerHTML = [
+            ['Пошук', period.searches || 0],
+            ['Показ', period.impressions || 0],
+            ['Відкриття', period.views || 0],
+            ['Контакт', contacts],
+          ]
+            .map(([label, value], i) => `${i ? '<span>→</span>' : ''}<span>${esc(label)} <b>${esc(String(value))}</b></span>`)
+            .join('');
+        }
+
         if (platformEl) {
           platformEl.innerHTML = [
             ['Користувачі', kpis.usersTotal, 'list:users'],
             ['Провайдери', kpis.providersCount, 'list:providers'],
             ['Клієнти', kpis.clientsCount, 'list:clients'],
-            ['🆕 Реєстрації', kpis.registersTotal, 'events:register'],
-            ['🔐 Входи', kpis.loginsTotal, 'events:login'],
-            ['🔍 Пошуки', kpis.searchesTotal, 'events:search'],
+            ['🆕 Реєстрації за весь час', kpis.registersTotal, 'events:register'],
+            ['🔐 Входи за весь час', kpis.loginsTotal, 'events:login'],
             ['Локації', kpis.locationsTotal, 'list:locations'],
             ['З власником', kpis.locationsClaimed, 'list:claimed'],
             ['З фото', kpis.locationsWithPhotos, 'list:photos'],
             ['З прайсом', kpis.locationsWithPrices, 'list:prices'],
-            ['👁 Перегляди карток (усього)', kpis.locationCardViews, 'events:view'],
+            ['👁 Перегляди карток за весь час', kpis.locationCardViews, 'list:views'],
             ['Кліки донат', kpis.donateClicks, 'events:donate'],
             ['Кліки Pro', kpis.subscribeClicks, 'events:subscribe'],
             ['Активні Pro', kpis.activePaid, 'list:pro'],
@@ -2551,23 +2757,23 @@
 
         const ctaEl = document.getElementById('analyticsCtaStats');
         if (ctaEl) {
-          const ctaAll = data.locationCta?.totalCtaClicks || 0;
+          const contacts = period.contacts || (period.calls || 0) + (period.chats || 0) + (period.directions || 0);
           ctaEl.innerHTML = [
-            ['📞 Дзвінки', kpis.callClicks, true, 'events:call'],
-            ['🧭 Маршрути', kpis.directionsClicks, true, 'events:directions'],
-            ['Call rate %', kpis.callRate, true, 'events:call:callrate'],
-            ['💬 Написати', kpis.chatClicks || 0, false, 'events:chat'],
-            ['🔎 Детальніше', kpis.diveClicks, false, 'events:dive'],
-            ['↗ Поділитись', kpis.shareClicks, false, 'events:share'],
-            ['☆ В обране', kpis.favoriteClicks, false, 'events:favorite'],
-            ['🛒 Замовлення (клік)', kpis.orderClicks, false, 'events:order'],
-            ['🗺️ На карті', kpis.mapFocusClicks, false, 'events:map_focus'],
-            ['🔑 Claim', kpis.claimClicks, false, 'events:claim'],
-            ['⭐ Відгук', kpis.reviewClicks, false, 'events:review'],
-            ['⚑ Скарга', kpis.reportClicks, false, 'events:report'],
-            ['Усі взаємодії', ctaAll, false, 'events:cta'],
+            ['📞 Дзвінки', period.calls || 0, true, 'events:call', 'calls'],
+            ['💬 Написати', period.chats || 0, true, 'events:chat', 'chats'],
+            ['🧭 Маршрути', period.directions || 0, true, 'events:directions', 'directions'],
+            ['Call rate %', period.callRate || 0, true, 'events:call:callrate', 'callRate'],
+            ['☆ В обране', period.favorites || 0, false, 'events:favorite', 'favorites'],
+            ['↗ Поділитись', period.shares || 0, false, 'events:share', 'shares'],
+            ['🛒 Замовлення', period.orders || 0, false, 'events:order', 'orders'],
+            ['🔎 Детальніше', period.dives || 0, false, 'events:dive', ''],
+            ['🗺️ На карті', period.mapFocus || 0, false, 'events:map_focus', ''],
+            ['🔑 Claim', period.claims || 0, false, 'events:claim', ''],
+            ['⭐ Відгук', period.reviews || 0, false, 'events:review', ''],
+            ['⚑ Скарга', period.reports || 0, false, 'events:report', ''],
+            ['Контакти', contacts, false, 'events:cta', 'contacts'],
           ]
-            .map(([label, value, hi, drill]) => card(label, value, hi, drill))
+            .map(([label, value, hi, drill, key]) => card(label, value, hi, drill, key))
             .join('');
         }
 
@@ -2592,10 +2798,22 @@
         );
         const utmsEl = document.getElementById('analyticsUtms');
         if (utmsEl) {
-          utmsEl.innerHTML = rankingListHtml(
-            data.utmSources,
-            'UTM ще немає — з’являться після переходів з ?utm_source=',
-            (x) => esc(x.key)
+          const sourceSheet = (data.exportSheets || []).find((sheet) => sheet.name === 'Джерела');
+          utmsEl.innerHTML = sourceSheet
+            ? analyticsSheetTable(sourceSheet.rows)
+            : rankingListHtml(data.sources, 'Джерел за цей період ще немає', (x) => esc(x.label || x.key));
+        }
+        const districtEl = document.getElementById('analyticsDistricts');
+        const categoryEl = document.getElementById('analyticsEventCats');
+        const deviceEl = document.getElementById('analyticsDevices');
+        const sheetByName = (name) => (data.exportSheets || []).find((sheet) => sheet.name === name);
+        if (districtEl) districtEl.innerHTML = analyticsSheetTable(sheetByName('Райони')?.rows);
+        if (categoryEl) categoryEl.innerHTML = analyticsSheetTable(sheetByName('Категорії')?.rows);
+        if (deviceEl) {
+          deviceEl.innerHTML = rankingListHtml(
+            (data.devices || []).map((row) => ({ ...row, count: row.contacts || row.views || row.sessions || 0 })),
+            'Немає подій за цей фільтр',
+            (x) => esc(x.label || x.key || 'невідомо')
           );
         }
         document.getElementById('analyticsCats').innerHTML = rankingListHtml(
@@ -2620,23 +2838,30 @@
             `data-jump-catalog-filter="${esc([x.catName, x.subName, x.name].filter(Boolean).join(' '))}"`
         );
         document.getElementById('analyticsSearches').innerHTML = rankingListHtml(
-          data.searchesTop,
+          (data.searchesTop || []).map((row) => ({
+            ...row,
+            key: row.q || row.key,
+            count: row.events || row.count,
+          })),
           'Пошукових запитів ще немає',
-          (x) => `«${esc(x.key)}»`,
-          (x) => `data-jump-catalog-filter="${esc(x.key || '')}"`
+          (x) =>
+            `«${esc(x.q || x.key)}» · ${esc(x.districtLabel || '')}${
+              x.zeroEvents ? ` · без результату ${esc(String(x.zeroEvents))}` : ''
+            }${x.zeroShare ? ` · ${esc(String(x.zeroShare))}%` : ''}`,
+          (x) => `data-jump-catalog-filter="${esc(x.q || x.key || '')}"`
         );
-        const recent = data.recentSearches || [];
+        const recent = data.zeroSearches || [];
         document.getElementById('analyticsRecentSearches').innerHTML = recent.length
-          ? recent
-              .map(
-                (s) =>
-                  `<div class="list-item analytics-jump" style="margin-bottom:6px;cursor:pointer" data-jump-catalog-filter="${esc(s.q || '')}" title="Подвійний клік — шукати в каталозі">
-                    <div class="list-item-title">«${esc(s.q)}»</div>
-                    <div class="list-item-meta">${esc(formatBillingDate(s.at))} · ${esc(s.source || '')}${s.zero === 1 || s.resultCount === 0 ? ' · без результату' : (s.matched ? ' · matched' : '')}${Number.isFinite(Number(s.resultCount)) && Number(s.resultCount) > 0 ? ' · ' + Number(s.resultCount) : ''}</div>
-                  </div>`
-              )
-              .join('')
-          : '<p class="list-item-meta">Порожньо</p>';
+          ? analyticsSheetTable(
+              recent.map((row) => ({
+                Фраза: row.q,
+                Район: row.districtLabel || 'невідомо',
+                Кількість: row.events,
+                'Без результату': row.zeroEvents,
+                'Частка %': row.zeroShare,
+              }))
+            )
+          : '<p class="list-item-meta">Порожніх пошуків за цей період немає</p>';
 
         document.getElementById('analyticsTopLocs').innerHTML = rankingListHtml(
           (data.topLocations || []).map((l) => ({
@@ -2659,45 +2884,58 @@
         bindAnalyticsJumps(document.getElementById('analyticsTopCalls'));
         bindAnalyticsJumps(document.getElementById('analyticsTopLocs'));
 
-        const daily = data.daily || [];
-        document.getElementById('analyticsDaily').innerHTML = daily.length
-          ? `<div style="overflow:auto"><table style="width:100%;border-collapse:collapse;font-size:0.85rem">
-              <thead><tr>
-                <th style="text-align:left;padding:6px;border-bottom:1px solid #e5e7eb">День</th>
-                <th style="padding:6px;border-bottom:1px solid #e5e7eb">Унікальні</th>
-                <th style="padding:6px;border-bottom:1px solid #e5e7eb">Стор.</th>
-                <th style="padding:6px;border-bottom:1px solid #e5e7eb">Карта</th>
-                <th style="padding:6px;border-bottom:1px solid #e5e7eb">Пошук</th>
-                <th style="padding:6px;border-bottom:1px solid #e5e7eb">Картки</th>
-                <th style="padding:6px;border-bottom:1px solid #e5e7eb">Зам.</th>
-                <th style="padding:6px;border-bottom:1px solid #e5e7eb">Входи</th>
-              </tr></thead>
-              <tbody>
-                ${daily
-                  .slice()
-                  .reverse()
-                  .map(
-                    (d) => `<tr>
-                      <td style="padding:6px;border-bottom:1px solid #f1f5f9">${esc(d.day)}</td>
-                      <td style="text-align:center;padding:6px;border-bottom:1px solid #f1f5f9;font-weight:800;color:#0f766e">${esc(String(d.uniqueVisits ?? d.uniqueSessions ?? 0))}</td>
-                      <td style="text-align:center;padding:6px;border-bottom:1px solid #f1f5f9">${esc(String(d.pageViews || 0))}</td>
-                      <td style="text-align:center;padding:6px;border-bottom:1px solid #f1f5f9">${esc(String(d.mapLoads || 0))}</td>
-                      <td style="text-align:center;padding:6px;border-bottom:1px solid #f1f5f9">${esc(String(d.searches || 0))}</td>
-                      <td style="text-align:center;padding:6px;border-bottom:1px solid #f1f5f9">${esc(String(d.locationOpens || 0))}</td>
-                      <td style="text-align:center;padding:6px;border-bottom:1px solid #f1f5f9">${esc(String(d.orders || 0))}</td>
-                      <td style="text-align:center;padding:6px;border-bottom:1px solid #f1f5f9">${esc(String(d.logins || 0))}</td>
-                    </tr>`
-                  )
-                  .join('')}
-              </tbody></table></div>`
-          : '<p class="list-item-meta">Дані зʼявляться після трафіку</p>';
+        const kpiSheet = (data.exportSheets || []).find((sheet) => sheet.name === 'KPI');
+        document.getElementById('analyticsDaily').innerHTML = analyticsSheetTable(
+          (kpiSheet?.rows || []).slice().reverse()
+        );
       } catch (err) {
         kpisEl.innerHTML = `<p class="list-item-meta" style="color:#b91c1c">${esc(err.message)}</p>`;
+      } finally {
+        analyticsLoading = false;
       }
     }
 
     document.getElementById('analyticsRefreshBtn')?.addEventListener('click', () => loadAdminAnalytics());
+    document.getElementById('analyticsApplyBtn')?.addEventListener('click', () => loadAdminAnalytics());
     document.getElementById('analyticsRangeSlider')?.addEventListener('input', () => renderAnalyticsChartsWindow());
+    let analyticsLoading = false;
+    function analyticsFiltersChanged() {
+      if (analyticsLoading) return;
+      const custom = document.getElementById('analyticsRange')?.value === 'custom';
+      const dates = document.getElementById('analyticsCustomDates');
+      if (dates) dates.hidden = !custom;
+      if (custom) {
+        const from = document.getElementById('analyticsFrom')?.value;
+        const to = document.getElementById('analyticsTo')?.value;
+        if (!from || !to) return;
+      }
+      loadAdminAnalytics();
+    }
+    ['analyticsRange', 'analyticsDistrict', 'analyticsCategory', 'analyticsSource', 'analyticsDevice'].forEach((id) => {
+      document.getElementById(id)?.addEventListener('change', () => analyticsFiltersChanged());
+    });
+    document.getElementById('analyticsFrom')?.addEventListener('change', () => analyticsFiltersChanged());
+    document.getElementById('analyticsTo')?.addEventListener('change', () => analyticsFiltersChanged());
+    document.getElementById('analyticsExcelBtn')?.addEventListener('click', () => {
+      const sheets = window.adminAnalyticsLast?.exportSheets;
+      if (!sheets || !window.MapfixStatsExport) {
+        alert('Немає даних для файлу. Оновіть статистику.');
+        return;
+      }
+      const filters = window.adminAnalyticsLast.filters || {};
+      const name = `mapfix-stats-${filters.fromDay || 'period'}_${filters.toDay || ''}.xlsx`;
+      window.MapfixStatsExport.downloadXlsx(sheets, name);
+    });
+    document.getElementById('analyticsCsvBtn')?.addEventListener('click', () => {
+      const sheets = window.adminAnalyticsLast?.exportSheets || [];
+      const picked = document.getElementById('analyticsCsvSheet')?.value || 'KPI';
+      const sheet = sheets.find((item) => item.name === picked) || sheets[0];
+      if (!sheet || !window.MapfixStatsExport) {
+        alert('Немає даних для файлу. Оновіть статистику.');
+        return;
+      }
+      window.MapfixStatsExport.downloadCsv(sheet, `mapfix-stats-${sheet.name}.csv`);
+    });
 
     document.getElementById('usersSearch')?.addEventListener('input', () => renderAdminUsersList());
     document.getElementById('usersRoleFilter')?.addEventListener('change', () => renderAdminUsersList());
@@ -7746,6 +7984,7 @@
       }
     })();
   </script>
+  <script src="/admin-stats-export.js"></script>
   <script src="/admin-stats-drill.js"></script>
   <script src="/admin-places-v2.js"></script>
   <script src="/mf-analytics.js" defer></script>
