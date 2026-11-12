@@ -1342,6 +1342,7 @@
                 if (typeof map !== 'undefined' && map && map.invalidateSize) {
                     map.invalidateSize();
                 }
+                if (typeof positionPinLink === 'function' && State.selectedLocation) positionPinLink();
             });
             window.visualViewport?.addEventListener('scroll', syncMobileViewport);
 
@@ -1496,6 +1497,7 @@
                 cardDragMoved = dy > 10;
                 if (e.cancelable) e.preventDefault();
                 sidebarEl.style.transform = 'translateY(' + Math.min(dy, 420) + 'px)';
+                positionPinLink();
             }
             function finishCardDrag(e) {
                 if (!cardDragArmed || (e && e.pointerId !== cardPointerId)) return;
@@ -1507,6 +1509,11 @@
                     sheetDragging = true;
                     sidebarEl.style.transition = 'transform 0.18s ease';
                     sidebarEl.style.transform = 'translateY(110%)';
+                    const followSheet = (frames) => {
+                        positionPinLink();
+                        if (frames > 0) requestAnimationFrame(() => followSheet(frames - 1));
+                    };
+                    followSheet(8);
                     window.setTimeout(() => {
                         sidebarEl.style.transition = '';
                         sidebarEl.style.transform = '';
@@ -1516,6 +1523,7 @@
                 }
                 sidebarEl.style.transition = 'transform 0.18s ease';
                 sidebarEl.style.transform = '';
+                positionPinLink();
             }
             [sheetHandleEl, document.getElementById('detailHeaderContent'), detailViewEl].forEach((el) => {
                 if (!el) return;
@@ -2036,6 +2044,374 @@
                 });
             }
 
+            let posterLayoutGen = 0;
+            let posterAutoPanGen = 0;
+            let suppressMapClose = false;
+            let pinLinkBound = false;
+
+            function reducedMotion() {
+                return window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+            }
+
+            function cardHeadingParts(loc) {
+                const rawTitle = String(loc?.title || '').replace(/\s+/g, ' ').trim();
+                const provider = String(
+                    (typeof getProviderName === 'function' ? getProviderName(loc) : '') || ''
+                ).replace(/\s+/g, ' ').trim();
+                let heading = rawTitle;
+                let subtitle = '';
+                const slash = rawTitle.indexOf(' / ');
+                if (slash > 0) {
+                    const head = rawTitle.slice(0, slash).trim();
+                    const tail = rawTitle.slice(slash + 3).trim();
+                    if (head) {
+                        heading = head;
+                        subtitle = tail;
+                    }
+                }
+                if (provider && provider !== rawTitle && provider !== heading && provider !== subtitle) {
+                    subtitle = subtitle || provider;
+                }
+                return { heading: heading || 'Майстер', subtitle };
+            }
+
+            function markerScreenPoint(loc) {
+                const lat = Number(loc?.lat);
+                const lng = Number(loc?.lng);
+                if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+                return map.latLngToContainerPoint([lat, lng]);
+            }
+
+            function mapHostEl() {
+                return document.getElementById('map-container');
+            }
+
+            const PIN_THREAD_IDS = ['pinThreadHaloL', 'pinThreadL', 'pinThreadHaloR', 'pinThreadR'];
+
+            function clearPinPaths() {
+                PIN_THREAD_IDS.forEach((id) => {
+                    document.getElementById(id)?.setAttribute('d', '');
+                });
+            }
+
+            function hidePinPoster() {
+                document.getElementById('pinLinkSvg')?.classList.remove('is-on');
+                document.getElementById('pinPoster')?.classList.remove('is-in');
+                clearPinPaths();
+            }
+
+            function hangThread(x1, y1, x2, y2) {
+                const dx = x2 - x1;
+                const dy = y2 - y1;
+                const dist = Math.hypot(dx, dy) || 1;
+                const sideways = Math.abs(dx) > Math.abs(dy);
+                const sag = sideways
+                    ? Math.min(12, Math.max(6, dist * 0.04))
+                    : Math.min(28, Math.max(8, dist * 0.08));
+                const outward = (Math.sign(dx) || 1) * Math.min(16, dist * 0.05);
+                const cx = (x1 + x2) / 2 + (sideways ? 0 : outward);
+                const cy = (y1 + y2) / 2 + sag;
+                return `M ${x1.toFixed(1)} ${y1.toFixed(1)} Q ${cx.toFixed(1)} ${cy.toFixed(1)}, ${x2.toFixed(1)} ${y2.toFixed(1)}`;
+            }
+
+            function setThreads(dLeft, dRight) {
+                const svg = document.getElementById('pinLinkSvg');
+                if (!svg || !dLeft || !dRight) {
+                    hidePinPoster();
+                    return;
+                }
+                const paint = (haloId, pathId, d) => {
+                    document.getElementById(haloId)?.setAttribute('d', d);
+                    document.getElementById(pathId)?.setAttribute('d', d);
+                };
+                paint('pinThreadHaloL', 'pinThreadL', dLeft);
+                paint('pinThreadHaloR', 'pinThreadR', dRight);
+                svg.classList.add('is-on');
+            }
+
+            function placePin(x, y) {
+                const pin = document.getElementById('pinPoster');
+                if (!pin) return;
+                pin.style.left = x + 'px';
+                pin.style.top = y + 'px';
+                pin.classList.add('is-in');
+            }
+
+            function markerNeedsPan(loc) {
+                const pt = markerScreenPoint(loc);
+                if (!pt) return false;
+                const mapRect = map.getContainer().getBoundingClientRect();
+                const x = mapRect.left + pt.x;
+                const y = mapRect.top + pt.y;
+                const header = document.querySelector('.top-header')?.getBoundingClientRect();
+                if (isMobileLayout()) {
+                    const geo = document.getElementById('geo-btn')?.getBoundingClientRect();
+                    const kyiv = document.getElementById('kyiv-btn')?.getBoundingClientRect();
+                    const topLimit = (header ? Math.max(header.bottom, mapRect.top) : mapRect.top) + 54;
+                    const buttonTop = Math.min(geo?.top || mapRect.bottom, kyiv?.top || mapRect.bottom);
+                    const bottomLimit = Math.min(mapRect.bottom - 18, buttonTop - 14);
+                    return y < topLimit || y > bottomLimit || x < mapRect.left + 24 || x > mapRect.right - 24;
+                }
+                const topLimit = (header ? header.bottom : mapRect.top) + 56;
+                const cardW = Math.min(360, Math.max(240, mapRect.width - 28));
+                const side = Math.min(cardW + 20, mapRect.width * 0.48);
+                return y < topLimit || y > mapRect.bottom - 36 || x < mapRect.left + 24 || x > mapRect.right - side;
+            }
+
+            function panSelectedIntoView(loc) {
+                if (!loc) return;
+                const animate = !reducedMotion();
+                const pt = markerScreenPoint(loc);
+                if (!pt) return;
+                if (isMobileLayout()) {
+                    const mapRect = map.getContainer().getBoundingClientRect();
+                    const header = document.querySelector('.top-header')?.getBoundingClientRect();
+                    const geo = document.getElementById('geo-btn')?.getBoundingClientRect();
+                    const kyiv = document.getElementById('kyiv-btn')?.getBoundingClientRect();
+                    const topLimit = (header ? Math.max(header.bottom, mapRect.top) : mapRect.top) + 58;
+                    const buttonTop = Math.min(geo?.top || mapRect.bottom, kyiv?.top || mapRect.bottom);
+                    const bottomLimit = Math.min(mapRect.bottom - 20, buttonTop - 16);
+                    const band = bottomLimit - topLimit;
+                    const targetY = band > 56 ? topLimit + band * 0.42 : (mapRect.top + mapRect.bottom) / 2;
+                    const targetX = mapRect.left + mapRect.width / 2;
+                    const dx = mapRect.left + pt.x - targetX;
+                    const dy = mapRect.top + pt.y - targetY;
+                    if (Math.abs(dx) < 8 && Math.abs(dy) < 8) return;
+                    map.panBy([dx, dy], { animate, duration: 0.32 });
+                    return;
+                }
+                const size = map.getSize();
+                const cardW = Math.min(360, Math.max(240, size.x - 28));
+                const preferLeft = pt.x > size.x * 0.5;
+                const header = document.querySelector('.top-header')?.getBoundingClientRect();
+                const topPad = (header ? Math.min(header.height, 88) : 72) + 64;
+                const sidePad = cardW + 88;
+                map.panInside([Number(loc.lat), Number(loc.lng)], {
+                    paddingTopLeft: L.point(preferLeft ? sidePad : 48, topPad),
+                    paddingBottomRight: L.point(preferLeft ? 40 : sidePad, 72),
+                    animate,
+                    duration: 0.32,
+                });
+            }
+
+            function positionDesktopPoster(pinX, pinY) {
+                const detail = document.getElementById('sidebar-detail-view');
+                const hostRect = mapHostEl().getBoundingClientRect();
+                const mapRect = map.getContainer().getBoundingClientRect();
+                const headerRect = document.querySelector('.top-header')?.getBoundingClientRect();
+                const cardW = Math.min(360, Math.max(240, mapRect.width - 28));
+                const maxH = Math.min(window.innerHeight * 0.68, 620);
+                detail.style.width = cardW + 'px';
+                detail.style.maxHeight = maxH + 'px';
+                const pinVx = hostRect.left + pinX;
+                const pinVy = hostRect.top + pinY;
+                const minTop = Math.max(mapRect.top + 8, headerRect ? headerRect.bottom + 8 : mapRect.top + 8);
+                const maxBottom = mapRect.bottom - 10;
+                const minLeft = mapRect.left + 10;
+                const maxRight = mapRect.right - 10;
+                const h = Math.min(detail.scrollHeight || 280, maxH);
+                const sideGap = 72;
+                const drop = 78;
+                const placeLeft = pinVx > (minLeft + maxRight) / 2;
+                let left = placeLeft ? pinVx - sideGap - cardW : pinVx + sideGap;
+                let top = pinVy + drop;
+                left = Math.max(minLeft, Math.min(left, maxRight - cardW));
+                const minVisible = 200;
+                if (top + minVisible > maxBottom) top = Math.max(minTop, maxBottom - Math.min(h, maxH));
+                if (top < minTop) top = minTop;
+                detail.style.left = Math.round(left) + 'px';
+                detail.style.top = Math.round(top) + 'px';
+                detail.classList.toggle('poster-above', top + 8 < pinVy);
+
+                let cardRect = detail.getBoundingClientRect();
+                const coversPin =
+                    pinVx >= cardRect.left - 4 &&
+                    pinVx <= cardRect.right + 4 &&
+                    pinVy >= cardRect.top - 4 &&
+                    pinVy <= cardRect.bottom + 4;
+                if (coversPin) {
+                    left = placeLeft
+                        ? Math.max(minLeft, pinVx - sideGap - cardW)
+                        : Math.min(maxRight - cardW, pinVx + sideGap);
+                    detail.style.left = Math.round(left) + 'px';
+                    cardRect = detail.getBoundingClientRect();
+                }
+
+                const inset = 18;
+                const yTop = cardRect.top - hostRect.top;
+                return {
+                    left: { x: cardRect.left + inset - hostRect.left, y: yTop },
+                    right: { x: cardRect.right - inset - hostRect.left, y: yTop },
+                };
+            }
+
+            function positionPinLink() {
+                const loc = State.selectedLocation;
+                const detail = document.getElementById('sidebar-detail-view');
+                if (!loc || (State.detailMode !== 'preview' && State.detailMode !== 'dive') || detail?.classList.contains('is-folding')) {
+                    return;
+                }
+                const pt = markerScreenPoint(loc);
+                const host = mapHostEl();
+                if (!pt || !host) {
+                    hidePinPoster();
+                    return;
+                }
+                const mapRect = map.getContainer().getBoundingClientRect();
+                const hostRect = host.getBoundingClientRect();
+                const x = mapRect.left - hostRect.left + pt.x;
+                const y = mapRect.top - hostRect.top + pt.y;
+                placePin(x, y);
+                const iconEl = loc.markerInstance && loc.markerInstance._icon;
+                const inner = iconEl && iconEl.querySelector('.mapfix-marker-category, .mapfix-marker-price');
+                if (inner) inner.classList.add('is-selected');
+                if (isMobileLayout()) {
+                    appShell.classList.remove('poster-anchored');
+                    if (detail) {
+                        detail.style.left = '';
+                        detail.style.top = '';
+                        detail.style.width = '';
+                        detail.style.maxHeight = '';
+                    }
+                    const sheet = document.getElementById('sidebar')?.getBoundingClientRect();
+                    if (!sheet) return;
+                    const endY = sheet.top - hostRect.top + 1;
+                    const inset = 18;
+                    const leftX = sheet.left + inset - hostRect.left;
+                    const rightX = sheet.right - inset - hostRect.left;
+                    setThreads(hangThread(x, y, leftX, endY), hangThread(x, y, rightX, endY));
+                    return;
+                }
+                appShell.classList.add('poster-anchored');
+                const corners = positionDesktopPoster(x, y);
+                if (!corners) return;
+                setThreads(
+                    hangThread(x, y, corners.left.x, corners.left.y),
+                    hangThread(x, y, corners.right.x, corners.right.y)
+                );
+            }
+
+            function bindPinLink() {
+                if (pinLinkBound) return;
+                pinLinkBound = true;
+                const refresh = () => {
+                    if (State.selectedLocation) positionPinLink();
+                };
+                map.on('move zoom resize', refresh);
+                map.on('dragstart', () => { posterAutoPanGen++; });
+                map.on('click', (e) => {
+                    if (suppressMapClose || !State.selectedLocation) return;
+                    const target = e.originalEvent && e.originalEvent.target;
+                    if (target && target.closest && target.closest('.leaflet-marker-icon, .leaflet-marker-shadow, .mapfix-cluster')) return;
+                    closeMasterDetail();
+                });
+                window.addEventListener('resize', () => {
+                    if (!State.selectedLocation) return;
+                    appShell.classList.toggle('poster-anchored', !isMobileLayout());
+                    refresh();
+                });
+                if (typeof ResizeObserver === 'undefined') return;
+                const sidebar = document.getElementById('sidebar');
+                const detail = document.getElementById('sidebar-detail-view');
+                if (sidebar) {
+                    new ResizeObserver(() => {
+                        if (State.selectedLocation && isMobileLayout()) positionPinLink();
+                    }).observe(sidebar);
+                }
+                if (detail) {
+                    new ResizeObserver(() => {
+                        if (State.selectedLocation && !isMobileLayout() && !detail.classList.contains('is-folding')) {
+                            positionPinLink();
+                        }
+                    }).observe(detail);
+                }
+            }
+
+            function revealMarkerForPoster(loc, done) {
+                const icon = loc.markerInstance && loc.markerInstance._icon;
+                if ((icon && icon.isConnected) || !loc.markerInstance) {
+                    done();
+                    return;
+                }
+                const targetZoom = Math.max(map.getZoom(), 16);
+                let finished = false;
+                const finish = () => {
+                    if (finished) return;
+                    finished = true;
+                    map.off('moveend', finish);
+                    highlightSelectedMarker(loc.id);
+                    done();
+                };
+                map.on('moveend', finish);
+                map.setView([Number(loc.lat), Number(loc.lng)], targetZoom, {
+                    animate: !reducedMotion(),
+                });
+                setTimeout(finish, reducedMotion() ? 40 : 900);
+            }
+
+            function anchorPosterToMarker(loc, opts = {}) {
+                armPoster(loc, {
+                    animateCard: Boolean(opts.animateCard),
+                    pan: false,
+                    watchMs: 1500,
+                });
+                revealMarkerForPoster(loc, () => {
+                    if (State.selectedLocation?.id !== loc.id) return;
+                    posterAutoPanGen++;
+                    armPoster(loc, { pan: true, watchMs: 800 });
+                });
+            }
+
+            function armPoster(loc, opts = {}) {
+                if (!loc) return;
+                bindPinLink();
+                const layoutGen = posterLayoutGen;
+                const panGen = posterAutoPanGen;
+                const detail = document.getElementById('sidebar-detail-view');
+                appShell.classList.toggle('poster-anchored', !isMobileLayout());
+                if (opts.animateCard && detail && !isMobileLayout()) {
+                    const pt = markerScreenPoint(loc);
+                    const mapRect = map.getContainer().getBoundingClientRect();
+                    const above = Boolean(pt && mapRect.top + pt.y > mapRect.top + mapRect.height * 0.62);
+                    detail.classList.toggle('poster-above', above);
+                    detail.classList.remove('poster-fresh', 'is-folding');
+                    void detail.offsetWidth;
+                    detail.classList.add('poster-fresh');
+                }
+                const watchUntil = performance.now() + (opts.watchMs || 800);
+                const tick = (now) => {
+                    if (layoutGen !== posterLayoutGen || State.selectedLocation?.id !== loc.id) return;
+                    positionPinLink();
+                    if (now < watchUntil) requestAnimationFrame(tick);
+                };
+                requestAnimationFrame(tick);
+                if (!opts.pan) return;
+                const pan = (force) => {
+                    if (layoutGen !== posterLayoutGen || panGen !== posterAutoPanGen) return;
+                    if (State.selectedLocation?.id !== loc.id) return;
+                    if (!force && !markerNeedsPan(loc)) {
+                        positionPinLink();
+                        return;
+                    }
+                    try { map.invalidateSize({ pan: false, animate: false }); } catch (_) {}
+                    panSelectedIntoView(loc);
+                    positionPinLink();
+                };
+                requestAnimationFrame(() => pan(true));
+                setTimeout(() => pan(false), 430);
+            }
+
+            function clearPosterChrome() {
+                const detail = document.getElementById('sidebar-detail-view');
+                appShell.classList.remove('poster-anchored');
+                if (!detail) return;
+                detail.classList.remove('poster-fresh', 'is-folding', 'poster-above');
+                detail.style.left = '';
+                detail.style.top = '';
+                detail.style.width = '';
+                detail.style.maxHeight = '';
+            }
+
             function renderLocationHero(loc) {
                 const heroBox = document.getElementById('detailHeroContent');
                 if (!heroBox) return;
@@ -2056,14 +2432,15 @@
             window.openMasterDetail = function(locId, opts = {}) {
                 const loc = window.mockLocations.find(l => l.id === locId);
                 if (!loc) return;
+                posterLayoutGen++;
 
                 const sameSelected = State.selectedLocation?.id === locId;
                 const mode = opts.mode || 'dive';
                 if (!opts.forceMode && sameSelected && State.detailMode === 'dive' && opts.fromMarker) {
                     window.MapfixAnalytics?.rememberRecent?.({ id: loc.id, title: loc.title });
                     enterDetailDive();
-                    map.panTo([loc.lat, loc.lng]);
                     highlightSelectedMarker(locId);
+                    armPoster(loc, { pan: true, watchMs: 700 });
                     return;
                 }
 
@@ -2092,11 +2469,10 @@
 
                 renderLocationHero(loc);
 
-                const providerName = typeof getProviderName === 'function' ? getProviderName(loc) : '';
-                const displayName =
-                    providerName && providerName !== loc.title
-                        ? `${loc.title} / ${providerName}`
-                        : loc.title;
+                const { heading: cardHeading, subtitle: cardSubtitle } = cardHeadingParts(loc);
+                const cardSubtitleHtml = cardSubtitle
+                    ? `<span class="profile-subtitle">${escapeHtml(cardSubtitle)}</span>`
+                    : '';
                 const tgUser = getTelegramUsername(loc);
                 const chatHref = getChatHref(loc);
                 const specialty = State.service?.name || catName;
@@ -2176,7 +2552,8 @@
                             <div class="profile-avatar map-preview-avatar">${locationAvatarHtml(loc)}</div>
                             <div class="map-preview-copy">
                                 <button type="button" class="map-preview-namebtn" onclick="event.stopPropagation(); diveIntoSelectedDetail()">
-                                    <span class="profile-name">${escapeHtml(displayName)}</span>
+                                    <span class="profile-name">${escapeHtml(cardHeading)}</span>
+                                    ${cardSubtitleHtml}
                                     <span class="map-preview-more">Ще раз на назву — більше <i class="fa-solid fa-chevron-right" aria-hidden="true"></i></span>
                                 </button>
                                 ${specialty ? `<p class="profile-specialty">${escapeHtml(specialty)}</p>` : ''}
@@ -2207,7 +2584,7 @@
                     detailView.classList.remove('mode-dive');
                     enterDetailPreview();
                     highlightSelectedMarker(loc.id);
-                    map.panTo([loc.lat, loc.lng]);
+                    anchorPosterToMarker(loc, { animateCard: true });
                     return;
                 }
                 if (!opts.keepServerSeo) seoListingTouched = true;
@@ -2219,9 +2596,10 @@
                         </div>
                         <div class="profile-copy">
                             <div class="profile-name-row">
-                                <h2 class="profile-name" title="${escapeHtml(displayName)}">${escapeHtml(displayName)}</h2>
+                                <h2 class="profile-name" title="${escapeHtml(cardHeading)}">${escapeHtml(cardHeading)}</h2>
                                 ${ownerPillHtml}
                             </div>
+                            ${cardSubtitle ? `<p class="profile-subtitle">${escapeHtml(cardSubtitle)}</p>` : ''}
                             ${tgUser ? `<p class="profile-handle">@${escapeHtml(tgUser)}</p>` : ''}
                             ${ratingRowHtml}
                             ${trustHtml ? `<div class="profile-rating-row">${trustHtml}</div>` : ''}
@@ -2239,13 +2617,7 @@
                 detailView.classList.remove('mode-preview');
                 enterDetailDive();
                 highlightSelectedMarker(loc.id);
-
-                map.panTo([loc.lat, loc.lng]);
-                if (!opts.fromMarker && loc.markerInstance && typeof markersLayer.zoomToShowLayer === 'function') {
-                    markersLayer.zoomToShowLayer(loc.markerInstance, () => {
-                        highlightSelectedMarker(loc.id);
-                    });
-                }
+                anchorPosterToMarker(loc, { animateCard: true });
                 refreshClaimButton(loc);
                 applyPageSeoFromState();
             };
@@ -2305,6 +2677,7 @@
                 setTimeout(() => {
                     map.invalidateSize();
                     scrollClaimFormIntoView();
+                    positionPinLink();
                 }, 40);
             };
 
@@ -2505,8 +2878,7 @@
 
                 const aboutText = String(loc.text || '').trim();
                 const providerName = typeof getProviderName === 'function' ? getProviderName(loc) : '';
-                const fullTitle =
-                    providerName && providerName !== loc.title ? `${loc.title} / ${providerName}` : String(loc.title || '');
+                const fullTitle = String(loc.title || '');
                 const fullTitleHtml =
                     fullTitle.trim().length > 72 && fullTitle.trim() !== aboutText
                         ? `<div class="info-item" style="font-weight:700">${escapeHtml(fullTitle.trim())}</div>`
@@ -2618,7 +2990,10 @@
                 const acc = btn && btn.closest('.price-accordion');
                 if (acc) acc.classList.toggle('is-collapsed');
                 if (typeof map !== 'undefined' && map && map.invalidateSize) {
-                    setTimeout(() => map.invalidateSize(), 40);
+                    setTimeout(() => {
+                        map.invalidateSize();
+                        positionPinLink();
+                    }, 40);
                 }
             };
 
@@ -2690,7 +3065,34 @@
 
             window.closeMasterDetail = function(opts = {}) {
                 const detailView = document.getElementById('sidebar-detail-view');
+                const canFold =
+                    !opts.folded &&
+                    !reducedMotion() &&
+                    appShell.classList.contains('poster-anchored') &&
+                    detailView &&
+                    detailView.classList.contains('show') &&
+                    !detailView.classList.contains('is-folding');
+                if (canFold) {
+                    const gen = ++posterLayoutGen;
+                    detailView.classList.add('is-folding');
+                    detailView.classList.remove('poster-fresh');
+                    document.getElementById('pinLinkSvg')?.classList.remove('is-on');
+                    document.getElementById('pinPoster')?.classList.remove('is-in');
+                    setTimeout(() => {
+                        if (gen !== posterLayoutGen) return;
+                        window.closeMasterDetail(Object.assign({}, opts, { folded: true }));
+                    }, 260);
+                    return;
+                }
+                const pinGen = ++posterLayoutGen;
                 detailView.classList.remove('show', 'mode-preview', 'mode-dive');
+                clearPosterChrome();
+                document.getElementById('pinLinkSvg')?.classList.remove('is-on');
+                document.getElementById('pinPoster')?.classList.remove('is-in');
+                setTimeout(() => {
+                    if (pinGen !== posterLayoutGen) return;
+                    clearPinPaths();
+                }, reducedMotion() ? 0 : 220);
                 appShell.classList.remove('sheet-dive', 'sheet-peek', 'showing-location');
                 if (opts.fromSwipe) {
                     appShell.classList.remove('sheet-expanded', 'sheet-browse');
@@ -3212,6 +3614,9 @@
                     });
                     loc.markerInstance.on('click', (e) => {
                         L.DomEvent.stopPropagation(e);
+                        suppressMapClose = true;
+                        setTimeout(() => { suppressMapClose = false; }, 0);
+                        try { markersLayer.unspiderfy(); } catch (_) {}
                         openMasterDetail(loc.id, {
                             fromMarker: true,
                             mode: isMobileLayout() ? 'preview' : 'dive',
