@@ -34,6 +34,20 @@ if (!supabaseUrl || !supabaseKey) {
 
 const supabaseClient = createClient(supabaseUrl, supabaseKey);
 
+/**
+ * Server-only client. Never falls back to the anon key: tables such as
+ * import_candidates are not readable or writable by anon/authenticated.
+ * Returns null when SUPABASE_SERVICE_ROLE_KEY is missing.
+ */
+function getServiceRoleClient() {
+  const url = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || '';
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
+  if (!url || !key) return null;
+  return createClient(url, key, {
+    auth: { persistSession: false, autoRefreshToken: false },
+  });
+}
+
 const USERS_TABLE = process.env.SUPABASE_USERS_TABLE || 'users';
 
 function mapUserRow(row) {
@@ -69,6 +83,7 @@ function toUserRow(user) {
 
 module.exports = {
   supabaseClient,
+  getServiceRoleClient,
   USERS_TABLE,
   mapUserRow,
   toUserRow,

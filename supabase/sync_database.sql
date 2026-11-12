@@ -311,23 +311,70 @@ DROP POLICY IF EXISTS "import_candidates_select_all" ON public.import_candidates
 DROP POLICY IF EXISTS "import_candidates_insert_all" ON public.import_candidates;
 DROP POLICY IF EXISTS "import_candidates_update_all" ON public.import_candidates;
 DROP POLICY IF EXISTS "import_candidates_delete_all" ON public.import_candidates;
+DROP POLICY IF EXISTS "import_candidates_service_all" ON public.import_candidates;
 
-CREATE POLICY "import_candidates_select_all"
-  ON public.import_candidates FOR SELECT
-  USING (true);
+REVOKE ALL ON TABLE public.import_candidates FROM PUBLIC, anon, authenticated;
+GRANT ALL ON TABLE public.import_candidates TO service_role;
 
-CREATE POLICY "import_candidates_insert_all"
-  ON public.import_candidates FOR INSERT
-  WITH CHECK (true);
-
-CREATE POLICY "import_candidates_update_all"
-  ON public.import_candidates FOR UPDATE
+CREATE POLICY "import_candidates_service_all"
+  ON public.import_candidates
+  FOR ALL
+  TO service_role
   USING (true)
   WITH CHECK (true);
 
-CREATE POLICY "import_candidates_delete_all"
-  ON public.import_candidates FOR DELETE
-  USING (true);
+-- Chunk cursor, backfill report, and Places response cache. Service role only.
+CREATE TABLE IF NOT EXISTS public.import_runs (
+  id text PRIMARY KEY,
+  kind text NOT NULL,
+  wave text,
+  query text,
+  status text NOT NULL DEFAULT 'running',
+  cursor jsonb NOT NULL DEFAULT '{}'::jsonb,
+  counts jsonb NOT NULL DEFAULT '{}'::jsonb,
+  report jsonb NOT NULL DEFAULT '{}'::jsonb,
+  text_search_used integer NOT NULL DEFAULT 0,
+  details_used integer NOT NULL DEFAULT 0,
+  max_text_search integer NOT NULL DEFAULT 800,
+  max_details integer NOT NULL DEFAULT 800,
+  locked_until timestamptz,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  CONSTRAINT import_runs_kind_chk CHECK (kind IN ('wave', 'backfill')),
+  CONSTRAINT import_runs_status_chk CHECK (status IN ('running', 'done', 'error'))
+);
+
+CREATE TABLE IF NOT EXISTS public.places_response_cache (
+  cache_key text PRIMARY KEY,
+  kind text NOT NULL DEFAULT 'text',
+  payload jsonb NOT NULL,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+
+ALTER TABLE public.import_runs ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.places_response_cache ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "import_runs_service_all" ON public.import_runs;
+DROP POLICY IF EXISTS "places_response_cache_service_all" ON public.places_response_cache;
+
+REVOKE ALL ON TABLE public.import_runs FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON TABLE public.places_response_cache FROM PUBLIC, anon, authenticated;
+GRANT ALL ON TABLE public.import_runs TO service_role;
+GRANT ALL ON TABLE public.places_response_cache TO service_role;
+
+CREATE POLICY "import_runs_service_all"
+  ON public.import_runs
+  FOR ALL
+  TO service_role
+  USING (true)
+  WITH CHECK (true);
+
+CREATE POLICY "places_response_cache_service_all"
+  ON public.places_response_cache
+  FOR ALL
+  TO service_role
+  USING (true)
+  WITH CHECK (true);
 
 COMMIT;
 

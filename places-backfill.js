@@ -43,4 +43,52 @@ function chooseBackfillMatch(location, places) {
   return { confident: true, ...scored[0] };
 }
 
-module.exports = { chooseBackfillMatch };
+const BACKFILL_FIELD_MASK =
+  'places.id,places.displayName,places.formattedAddress,places.location,places.nationalPhoneNumber,places.businessStatus';
+
+async function searchBackfillCandidates(location, apiKey, fetchImpl = fetch) {
+  const body = {
+    textQuery: String(location?.title || '').trim(),
+    languageCode: 'uk',
+    regionCode: 'UA',
+    maxResultCount: 5,
+  };
+  if (Number.isFinite(Number(location?.lat)) && Number.isFinite(Number(location?.lng))) {
+    body.locationBias = {
+      circle: {
+        center: { latitude: Number(location.lat), longitude: Number(location.lng) },
+        radius: 200,
+      },
+    };
+  }
+  const res = await fetchImpl('https://places.googleapis.com/v1/places:searchText', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-Goog-Api-Key': apiKey,
+      'X-Goog-FieldMask': BACKFILL_FIELD_MASK,
+    },
+    body: JSON.stringify(body),
+  });
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    const message = json?.error?.message || `HTTP ${res.status}`;
+    throw new Error(String(message).slice(0, 200));
+  }
+  return (json.places || [])
+    .map((p) => ({
+      placeId: p.id,
+      title: p.displayName?.text || '',
+      phone: normalizePhone(p.nationalPhoneNumber || ''),
+      lat: p.location?.latitude,
+      lng: p.location?.longitude,
+      businessStatus: p.businessStatus || '',
+    }))
+    .filter((p) => p.placeId && p.title);
+}
+
+module.exports = {
+  chooseBackfillMatch,
+  searchBackfillCandidates,
+  BACKFILL_FIELD_MASK,
+};

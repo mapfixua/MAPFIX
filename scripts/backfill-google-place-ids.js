@@ -13,11 +13,10 @@
 
 const fs = require('fs');
 const path = require('path');
-const { supabaseClient } = require('../supabaseClient.js');
 const { fetchLocationsFromSupabase } = require('../locations-store.js');
-const { chooseBackfillMatch } = require('../places-backfill.js');
+const { chooseBackfillMatch, searchBackfillCandidates } = require('../places-backfill.js');
 const { createPlacesBudget } = require('../places-quota.js');
-const { normalizePhone } = require('../phone-normalize.js');
+const { writeGooglePlaceId } = require('../import-runs-store.js');
 
 function hasFlag(flag) {
   return process.argv.includes(flag);
@@ -27,45 +26,6 @@ function maskPhone(phone) {
   const digits = String(phone || '').replace(/\D/g, '');
   if (digits.length < 4) return '';
   return `***${digits.slice(-4)}`;
-}
-
-async function searchNear(location, apiKey) {
-  const body = {
-    textQuery: String(location.title || '').trim(),
-    languageCode: 'uk',
-    regionCode: 'UA',
-    maxResultCount: 5,
-  };
-  if (Number.isFinite(Number(location.lat)) && Number.isFinite(Number(location.lng))) {
-    body.locationBias = {
-      circle: {
-        center: { latitude: Number(location.lat), longitude: Number(location.lng) },
-        radius: 200,
-      },
-    };
-  }
-  const res = await fetch('https://places.googleapis.com/v1/places:searchText', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'X-Goog-Api-Key': apiKey,
-      'X-Goog-FieldMask':
-        'places.id,places.displayName,places.formattedAddress,places.location,places.nationalPhoneNumber,places.businessStatus',
-    },
-    body: JSON.stringify(body),
-  });
-  const json = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error((json?.error?.message || `HTTP ${res.status}`).slice(0, 200));
-  return (json.places || [])
-    .map((p) => ({
-      placeId: p.id,
-      title: p.displayName?.text || '',
-      phone: normalizePhone(p.nationalPhoneNumber || ''),
-      lat: p.location?.latitude,
-      lng: p.location?.longitude,
-      businessStatus: p.businessStatus || '',
-    }))
-    .filter((p) => p.placeId && p.title);
 }
 
 async function main() {
@@ -87,7 +47,9 @@ async function main() {
   for (const loc of active) {
     let places = [];
     try {
-      const spent = await budget.spend('text', `backfill:${loc.id}:${loc.title}`, () => searchNear(loc, apiKey));
+      const spent = await budget.spend('text', `backfill:${loc.id}:${loc.title}`, () =>
+        searchBackfillCandidates(loc, apiKey)
+      );
       places = spent.value || [];
     } catch (err) {
       if (err.code === 'cap' || err.name === 'PlacesQuotaError') {
@@ -112,14 +74,8 @@ async function main() {
     }
     report.confident.push(entry);
     if (write) {
-      const { error } = await supabaseClient
-        .from('locations')
-        .update({ google_place_id: match.placeId })
-        .eq('id', loc.id)
-        .is('google_place_id', null);
-      if (error) {
-        entry.writeError = error.message;
-      }
+      const saved = await writeGooglePlaceId(loc.id, match.placeId);
+      if (!saved.ok) entry.writeError = saved.error?.message || 'Не вдалося записати google_place_id';
     }
   }
 

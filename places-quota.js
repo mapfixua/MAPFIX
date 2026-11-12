@@ -43,8 +43,11 @@ function createPlacesBudget(options = {}) {
   const maxTextSearch = Math.max(0, Number(options.maxTextSearch ?? process.env.PLACES_V2_MAX_TEXT_SEARCH ?? DEFAULT_MAX_TEXT_SEARCH) || 0);
   const maxDetails = Math.max(0, Number(options.maxDetails ?? process.env.PLACES_V2_MAX_DETAILS ?? DEFAULT_MAX_DETAILS) || 0);
   const minIntervalMs = Math.max(0, Number(options.minIntervalMs ?? process.env.PLACES_V2_MIN_INTERVAL_MS ?? 220) || 0);
+  const cacheStore = options.cacheStore || null;
   const cacheEnabled = options.cache !== false && process.env.PLACES_V2_CACHE !== '0';
-  const cacheDir = cacheEnabled ? resolveCacheDir(options.cacheDir) : null;
+  // Serverless disks are ephemeral. A cacheStore (Supabase) is used when
+  // provided; otherwise the CLI keeps a local directory. cache:false skips both.
+  const cacheDir = cacheEnabled && !cacheStore ? resolveCacheDir(options.cacheDir) : null;
   const stats = {
     textSearch: 0,
     details: 0,
@@ -58,7 +61,15 @@ function createPlacesBudget(options = {}) {
     return path.join(cacheDir, `${hash}.json`);
   }
 
-  function readCache(key) {
+  async function readCache(key) {
+    if (!cacheEnabled) return null;
+    if (cacheStore) {
+      try {
+        return await cacheStore.get(key);
+      } catch (_) {
+        return null;
+      }
+    }
     if (!cacheDir) return null;
     try {
       const raw = fs.readFileSync(cacheFile(key), 'utf8');
@@ -68,7 +79,16 @@ function createPlacesBudget(options = {}) {
     }
   }
 
-  function writeCache(key, value) {
+  async function writeCache(key, value) {
+    if (!cacheEnabled) return;
+    if (cacheStore) {
+      try {
+        await cacheStore.set(key, value);
+      } catch (_) {
+        /* cache is best-effort */
+      }
+      return;
+    }
     if (!cacheDir) return;
     try {
       fs.writeFileSync(cacheFile(key), JSON.stringify(value));
@@ -87,7 +107,7 @@ function createPlacesBudget(options = {}) {
     const cap = kind === 'details' ? maxDetails : maxTextSearch;
     const used = kind === 'details' ? stats.details : stats.textSearch;
     if (cacheKey) {
-      const hit = readCache(cacheKey);
+      const hit = await readCache(cacheKey);
       if (hit) {
         stats.cacheHits += 1;
         return { value: hit, cached: true };
@@ -104,7 +124,7 @@ function createPlacesBudget(options = {}) {
       const value = await fn();
       if (kind === 'details') stats.details += 1;
       else stats.textSearch += 1;
-      if (cacheKey && value) writeCache(cacheKey, value);
+      if (cacheKey && value) await writeCache(cacheKey, value);
       return { value, cached: false };
     } catch (err) {
       if (kind === 'details') stats.details += 1;
