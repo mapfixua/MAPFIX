@@ -60,6 +60,8 @@ function emptyWaveCounts(total) {
     details: 0,
     cacheHits: 0,
     stoppedReason: null,
+    lastTextSearchError: null,
+    lastTextSearchHttpStatus: null,
   };
 }
 
@@ -93,6 +95,67 @@ function mergeCounts(prev, chunk, total) {
     details: (base.details || 0) + (chunk.details || 0),
     cacheHits: (base.cacheHits || 0) + (chunk.cacheHits || 0),
     stoppedReason: chunk.stoppedReason || null,
+    lastTextSearchError: base.lastTextSearchError || chunk.lastTextSearchError || null,
+    lastTextSearchHttpStatus: base.lastTextSearchHttpStatus ?? chunk.lastTextSearchHttpStatus ?? null,
+  };
+}
+
+function isTextSearchWaveResettable(run) {
+  const counts = run?.counts;
+  if (!counts || typeof counts !== 'object') return false;
+  if (counts.stoppedReason === 'text_search_error') return true;
+  const errored = Number(counts.skipped?.text_search_error) || 0;
+  const staged = Number(counts.staged) || 0;
+  const processed = Number(counts.pairsProcessed) || 0;
+  const total = Number(counts.pairsTotal) || 0;
+  if (staged !== 0 || errored <= 0 || processed <= 0) return false;
+  if (errored < processed) return false;
+  return run.status === 'done' || (total > 0 && processed >= total);
+}
+
+function resetTextSearchWave(run) {
+  const counts = run?.counts || {};
+  return {
+    ...run,
+    status: 'running',
+    cursor: { pairIndex: 0 },
+    locked_until: null,
+    counts: {
+      ...emptyWaveCounts(counts.pairsTotal || 0),
+      lastTextSearchError: counts.lastTextSearchError || null,
+      lastTextSearchHttpStatus: counts.lastTextSearchHttpStatus ?? null,
+    },
+  };
+}
+
+function describeWaveRun(row, wave) {
+  if (!row) {
+    return {
+      ok: true,
+      wave: wave || null,
+      done: false,
+      busy: false,
+      processed: 0,
+      total: 0,
+      counts: null,
+      requests: null,
+      stoppedReason: null,
+      resettable: false,
+    };
+  }
+  return {
+    ...wavePayload({
+      done: row.status === 'done',
+      processed: row.counts?.pairsProcessed || 0,
+      total: row.counts?.pairsTotal || 0,
+      nextCursor: row.status === 'done' ? null : (row.cursor || null),
+      counts: row.counts || emptyWaveCounts(0),
+      requests: requestsOf(row),
+      stoppedReason: row.counts?.stoppedReason || null,
+      wave,
+    }),
+    status: row.status,
+    resettable: isTextSearchWaveResettable(row),
   };
 }
 
@@ -164,21 +227,26 @@ async function executeWaveChunk(options = {}) {
     });
   }
 
-  if (existing && existing.status === 'done' && !body.restart) {
+  let stored = existing;
+  if (stored && stored.status === 'done' && !body.restart && isTextSearchWaveResettable(stored)) {
+    stored = resetTextSearchWave(stored);
+  }
+
+  if (stored && stored.status === 'done' && !body.restart) {
     return wavePayload({
       done: true,
       alreadyDone: true,
-      processed: existing.counts?.pairsProcessed || 0,
-      total: existing.counts?.pairsTotal || 0,
+      processed: stored.counts?.pairsProcessed || 0,
+      total: stored.counts?.pairsTotal || 0,
       nextCursor: null,
-      counts: existing.counts,
-      requests: requestsOf(existing),
-      stoppedReason: existing.counts?.stoppedReason || null,
+      counts: stored.counts,
+      requests: requestsOf(stored),
+      stoppedReason: stored.counts?.stoppedReason || null,
       wave: waveDef.id,
     });
   }
 
-  const restart = Boolean(body.restart) || !existing;
+  const restart = Boolean(body.restart) || !stored;
   let run = restart
     ? {
         id: runId,
@@ -197,9 +265,9 @@ async function executeWaveChunk(options = {}) {
         created_at: new Date(nowMs).toISOString(),
       }
     : {
-        ...existing,
-        max_text_search: existing.max_text_search ?? maxText,
-        max_details: existing.max_details ?? maxDetails,
+        ...stored,
+        max_text_search: stored.max_text_search ?? maxText,
+        max_details: stored.max_details ?? maxDetails,
       };
 
   run.status = 'running';
@@ -286,11 +354,14 @@ async function executeWaveChunk(options = {}) {
       details: detailsUsedNow,
       cacheHits: cacheHitsNow,
       stoppedReason: result.stoppedReason || null,
+      lastTextSearchError: result.counts?.lastTextSearchError || null,
+      lastTextSearchHttpStatus: result.counts?.lastTextSearchHttpStatus ?? null,
     }, result.total);
     const textUsed = (restart ? 0 : run.text_search_used || 0) + textUsedNow;
     const detailsUsed = (restart ? 0 : run.details_used || 0) + detailsUsedNow;
     const capStop = result.stoppedReason === 'text_search_cap' || result.stoppedReason === 'details_cap';
-    const done = Boolean(result.done) || capStop;
+    const textSearchStop = result.stoppedReason === 'text_search_error';
+    const done = (Boolean(result.done) || capStop) && !textSearchStop;
     run = {
       ...run,
       status: done ? 'done' : 'running',
@@ -318,8 +389,8 @@ async function executeWaveChunk(options = {}) {
       wave: waveDef.id,
     });
   } catch (err) {
-    run.text_search_used = (restart ? 0 : existing?.text_search_used || 0) + (budget.stats?.textSearch || 0);
-    run.details_used = (restart ? 0 : existing?.details_used || 0) + (budget.stats?.details || 0);
+    run.text_search_used = (restart ? 0 : stored?.text_search_used || 0) + (budget.stats?.textSearch || 0);
+    run.details_used = (restart ? 0 : stored?.details_used || 0) + (budget.stats?.details || 0);
     run.locked_until = null;
     run.status = 'running';
     try {
@@ -329,6 +400,57 @@ async function executeWaveChunk(options = {}) {
     }
     throw err;
   }
+}
+
+async function executeWaveReset(options = {}) {
+  const body = options.body || {};
+  const nowFn = typeof options.now === 'function' ? options.now : () => Date.now();
+  const nowMs = nowFn();
+  const waveDef = getWave(body.wave || 'A');
+  const query = body.query ? String(body.query).trim() : '';
+  const hasTile = body.tileStart != null || body.tileCount != null;
+  const tileStart = hasTile ? Number(body.tileStart) || 0 : null;
+  const tileCount = hasTile && body.tileCount != null ? Number(body.tileCount) : null;
+  const runId = waveRunId({ wave: waveDef.id, query, tileStart, tileCount, hasTile });
+  const existing = await options.getRun(runId);
+  if (!existing) {
+    return { ok: false, status: 404, error: 'Немає збереженого запуску цієї хвилі.' };
+  }
+  if (lockActive(existing, nowMs)) {
+    return wavePayload({
+      busy: true,
+      processed: existing.counts?.pairsProcessed || 0,
+      total: existing.counts?.pairsTotal || 0,
+      nextCursor: existing.cursor || null,
+      counts: existing.counts,
+      requests: requestsOf(existing),
+      stoppedReason: existing.counts?.stoppedReason || null,
+      wave: waveDef.id,
+    });
+  }
+  if (!isTextSearchWaveResettable(existing)) {
+    return {
+      ok: false,
+      status: 409,
+      error: 'Скидання доступне, коли хвиля зупинилась через помилку Text Search або всі пари завершились помилкою і в черзі нічого немає.',
+    };
+  }
+  const run = resetTextSearchWave(existing);
+  await options.saveRun(run);
+  return {
+    ...wavePayload({
+      done: false,
+      processed: 0,
+      total: run.counts?.pairsTotal || 0,
+      nextCursor: { pairIndex: 0 },
+      counts: run.counts,
+      requests: requestsOf(run),
+      stoppedReason: null,
+      wave: waveDef.id,
+    }),
+    reset: true,
+    resettable: false,
+  };
 }
 
 function backfillCounts(run) {
@@ -607,6 +729,10 @@ module.exports = {
   backfillRunId,
   summarizeDedup,
   mergeCounts,
+  isTextSearchWaveResettable,
+  resetTextSearchWave,
+  describeWaveRun,
   executeWaveChunk,
+  executeWaveReset,
   executeBackfillChunk,
 };

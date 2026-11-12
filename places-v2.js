@@ -52,6 +52,43 @@ function passesListingFilters(place) {
   return { ok: true, reason: null };
 }
 
+const TEXT_SEARCH_ERROR_BREAKER = 3;
+const TEXT_SEARCH_MESSAGE_LIMIT = 300;
+
+function textSearchHttpStatus(err) {
+  const value = Number(err?.status ?? err?.httpStatus);
+  return Number.isFinite(value) && value > 0 ? value : null;
+}
+
+function sanitizeTextSearchMessage(message, secret) {
+  let text = String(message || '');
+  const key = String(secret || '');
+  if (key.length >= 8) text = text.split(key).join('[redacted]');
+  text = text
+    .replace(/https?:\/\/\S+/gi, '[url]')
+    .replace(/AIza[0-9A-Za-z\-_]{8,}/g, '[redacted]')
+    .replace(/([?&]key=)[^&\s]+/gi, '$1[redacted]');
+  return text.slice(0, TEXT_SEARCH_MESSAGE_LIMIT);
+}
+
+function placesTextSearchFailure(res, json, apiKey) {
+  const httpStatus = Number(res?.status) || 0;
+  const googleStatus = String(json?.error?.status || '').trim();
+  const googleMessage = String(json?.error?.message || '').trim();
+  const parts = [];
+  if (httpStatus) parts.push(`HTTP ${httpStatus}`);
+  if (googleStatus) parts.push(googleStatus);
+  if (googleMessage) parts.push(googleMessage);
+  const message = sanitizeTextSearchMessage(
+    parts.join(' ') || `Places text search HTTP ${httpStatus || 'error'}`,
+    apiKey
+  );
+  const error = new Error(message);
+  error.status = httpStatus || null;
+  error.googleStatus = googleStatus.slice(0, 80);
+  return error;
+}
+
 function textPlaceFromApi(p) {
   const lat = p.location?.latitude;
   const lng = p.location?.longitude;
@@ -93,10 +130,7 @@ async function defaultTextSearch({ query, bounds, apiKey, pageSize = 20 }) {
     }),
   });
   const json = await res.json().catch(() => ({}));
-  if (!res.ok) {
-    const message = json?.error?.message || `Places text search HTTP ${res.status}`;
-    throw new Error(message.slice(0, 240));
-  }
+  if (!res.ok) throw placesTextSearchFailure(res, json, apiKey);
   return (Array.isArray(json.places) ? json.places : []).map(textPlaceFromApi).filter(Boolean);
 }
 
@@ -286,6 +320,8 @@ async function runWave(options = {}) {
     pending: 0,
     pendingReview: 0,
     rejected: 0,
+    lastTextSearchError: null,
+    lastTextSearchHttpStatus: null,
   };
   const bump = (reason) => {
     counts.skipped[reason] = (counts.skipped[reason] || 0) + 1;
@@ -336,6 +372,9 @@ async function runWave(options = {}) {
 
   let pairCursor = startPair;
   let processedPairs = 0;
+  let textErrorStreak = 0;
+  let textErrorSignature = '';
+  let textErrorStart = startPair;
 
   async function consumePlace(place, target, tile) {
     if (!place?.placeId || seen.has(place.placeId) || knownPlaceIds.has(place.placeId)) return 'ok';
@@ -519,12 +558,34 @@ async function runWave(options = {}) {
           textSearch({ query: target.query, bounds: tile, apiKey, target })
         );
         found = Array.isArray(spent.value) ? spent.value : [];
+        textErrorStreak = 0;
+        textErrorSignature = '';
       } catch (err) {
         if (isQuotaError(err)) {
           stoppedReason = 'text_search_cap';
           pairIncomplete = true;
         } else {
+          const status = textSearchHttpStatus(err);
+          const message = sanitizeTextSearchMessage(err?.message, apiKey);
+          console.error('[places-v2] text_search_error', (status == null ? '' : String(status)) + ' ' + message);
+          if (counts.lastTextSearchError == null) {
+            counts.lastTextSearchError = message || (status ? `HTTP ${status}` : 'text_search_error');
+            counts.lastTextSearchHttpStatus = status;
+          }
+          const signature = `${status == null ? '' : status}\n${message}`;
+          if (signature === textErrorSignature) textErrorStreak += 1;
+          else {
+            textErrorSignature = signature;
+            textErrorStreak = 1;
+            textErrorStart = pairIndex;
+          }
           bump('text_search_error');
+          if (textErrorStreak >= TEXT_SEARCH_ERROR_BREAKER) {
+            stoppedReason = 'text_search_error';
+            pairCursor = textErrorStart;
+            processedPairs = Math.max(0, textErrorStart - startPair);
+            break;
+          }
           found = [];
         }
       }

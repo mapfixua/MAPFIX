@@ -2,7 +2,7 @@
 
 const { planWave } = require('../places-v2.js');
 const { getWave } = require('../places-waves.js');
-const { executeWaveChunk, executeBackfillChunk } = require('../places-chunk.js');
+const { executeWaveChunk, executeWaveReset, executeBackfillChunk, waveRunId, describeWaveRun } = require('../places-chunk.js');
 const { searchBackfillCandidates } = require('../places-backfill.js');
 const { createSupabasePlacesCache } = require('../places-cache-store.js');
 const { getImportRun, saveImportRun, writeGooglePlaceId } = require('../import-runs-store.js');
@@ -80,6 +80,43 @@ function mountPlacesV2Admin(app, deps) {
       res.json({ ok: true, candidates: listed.rows });
     } catch (err) {
       res.status(500).json({ error: err.message || 'Не вдалося прочитати чергу' });
+    }
+  });
+
+  app.get('/api/admin/places-v2/run', requireAuth, requireAdmin, async (req, res) => {
+    try {
+      if (!requireServiceRole(res)) return;
+      const waveDef = getWave(req.query.wave || 'A');
+      const row = await readRun(waveRunId({
+        wave: waveDef.id,
+        query: '',
+        tileStart: null,
+        tileCount: null,
+        hasTile: false,
+      }));
+      res.json(describeWaveRun(row, waveDef.id));
+    } catch (err) {
+      console.error('[GET /api/admin/places-v2/run]', err.message);
+      res.status(500).json({ error: migrationHint(err.message) || 'Не вдалося прочитати запуск' });
+    }
+  });
+
+  app.post('/api/admin/places-v2/reset-wave', requireAuth, requireAdmin, async (req, res) => {
+    try {
+      if (!requireServiceRole(res)) return;
+      getWave(req.body?.wave || 'A');
+      const payload = await executeWaveReset({
+        body: req.body || {},
+        getRun: readRun,
+        saveRun: writeRun,
+      });
+      if (payload && payload.ok === false) {
+        return res.status(payload.status || 409).json({ error: payload.error || 'Не вдалося скинути хвилю' });
+      }
+      res.json(payload);
+    } catch (err) {
+      console.error('[POST /api/admin/places-v2/reset-wave]', err.message);
+      res.status(500).json({ error: migrationHint(err.message) || 'Не вдалося скинути хвилю' });
     }
   });
 

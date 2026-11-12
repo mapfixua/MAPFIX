@@ -7,7 +7,7 @@ const fs = require('fs');
 const path = require('path');
 const { runWave, buildWavePairs } = require('../places-v2.js');
 const { createPlacesBudget } = require('../places-quota.js');
-const { executeWaveChunk, executeBackfillChunk } = require('../places-chunk.js');
+const { executeWaveChunk, executeBackfillChunk, executeWaveReset } = require('../places-chunk.js');
 const { getServiceRoleClient } = require('../supabaseClient.js');
 const { listImportCandidates } = require('../import-candidates-store.js');
 
@@ -551,6 +551,329 @@ test('places cache hits do not spend the text search cap', async () => {
   assert.equal(second.cached, true);
   assert.equal(placesBudget.stats.textSearch, 1);
   assert.equal(placesBudget.stats.cacheHits, 1);
+});
+
+test('text search records the HTTP status and Google error without the API key', async () => {
+  const apiKey = 'AIzaSyTestKeyValue1234567890';
+  const secretUrl = `https://places.googleapis.com/v1/places:searchText?key=${apiKey}`;
+  const googleMessage = `Requests are blocked. ${secretUrl} ${'x'.repeat(400)}`;
+  const original = global.fetch;
+  const logs = [];
+  const originalError = console.error;
+  console.error = (...args) => logs.push(args);
+  global.fetch = async (url, opts) => {
+    assert.equal(String(url).includes('key='), false);
+    assert.equal(String(url).includes(apiKey), false);
+    assert.equal(opts.headers['X-Goog-Api-Key'], apiKey);
+    return {
+      ok: false,
+      status: 403,
+      json: async () => ({
+        error: {
+          code: 403,
+          status: 'PERMISSION_DENIED',
+          message: googleMessage,
+        },
+      }),
+    };
+  };
+  try {
+    const result = await runWave({
+      apiKey,
+      wave: 'A',
+      tiles: [tile(0)],
+      targets: [plumber],
+      locations: [],
+      masterCatalog: catalog,
+      budget: budget(5),
+    });
+    assert.equal(result.counts.skipped.text_search_error, 1);
+    assert.equal(result.counts.lastTextSearchHttpStatus, 403);
+    assert.match(result.counts.lastTextSearchError, /HTTP 403/);
+    assert.match(result.counts.lastTextSearchError, /PERMISSION_DENIED/);
+    assert.match(result.counts.lastTextSearchError, /Requests are blocked/);
+    assert.equal(result.counts.lastTextSearchError.length <= 300, true);
+    assert.equal(result.counts.lastTextSearchError.includes(apiKey), false);
+    assert.equal(result.counts.lastTextSearchError.includes('places.googleapis.com'), false);
+    assert.equal(result.counts.lastTextSearchError.includes('key='), false);
+    const line = logs.find((args) => args[0] === '[places-v2] text_search_error');
+    assert.ok(line);
+    assert.equal(line.length, 2);
+    assert.match(line[1], /^403 /);
+    assert.equal(line[1].includes(apiKey), false);
+    assert.equal(line[1].includes('http'), false);
+    assert.equal(line.slice(1).join(' '), result.counts.lastTextSearchError ? `403 ${result.counts.lastTextSearchError}` : line[1]);
+  } finally {
+    global.fetch = original;
+    console.error = originalError;
+  }
+});
+
+test('three identical text search errors stop the wave before the remaining pairs', async () => {
+  const store = memoryRuns();
+  let calls = 0;
+  const logs = [];
+  const originalError = console.error;
+  console.error = (...args) => logs.push(args);
+  try {
+    const result = await executeWaveChunk({
+      body: { wave: 'A', timeBudgetMs: 20000 },
+      cache: false,
+      minIntervalMs: 0,
+      locations: [],
+      masterCatalog: catalog,
+      getRun: store.getRun,
+      saveRun: store.saveRun,
+      listStaged: async () => [],
+      textSearch: async () => {
+        calls += 1;
+        const error = new Error('HTTP 403 PERMISSION_DENIED blocked https://maps.googleapis.com/maps?key=AIzaSyBreakerKey1234567890');
+        error.status = 403;
+        throw error;
+      },
+    });
+    assert.equal(calls, 3);
+    assert.equal(result.done, false);
+    assert.equal(result.stoppedReason, 'text_search_error');
+    assert.equal(result.total > 3, true);
+    assert.deepEqual(result.nextCursor, { pairIndex: 0 });
+    assert.equal(result.counts.skipped.text_search_error, 3);
+    assert.equal(result.counts.lastTextSearchHttpStatus, 403);
+    assert.match(result.counts.lastTextSearchError, /PERMISSION_DENIED/);
+    assert.equal(result.counts.lastTextSearchError.includes('AIzaSyBreakerKey1234567890'), false);
+    assert.equal(result.counts.lastTextSearchError.includes('http'), false);
+    const row = store.rows.get('wave:A');
+    assert.equal(row.status, 'running');
+    assert.notEqual(row.status, 'done');
+    assert.deepEqual(row.cursor, { pairIndex: 0 });
+    assert.equal(row.counts.lastTextSearchError, result.counts.lastTextSearchError);
+    assert.equal(row.counts.lastTextSearchHttpStatus, 403);
+    assert.equal(row.counts.stoppedReason, 'text_search_error');
+    assert.equal(row.text_search_used, 3);
+    assert.equal(logs.length, 3);
+    for (const args of logs) {
+      assert.equal(args[0], '[places-v2] text_search_error');
+      assert.equal(args.join(' ').includes('AIzaSyBreakerKey1234567890'), false);
+      assert.equal(args.join(' ').includes('http'), false);
+    }
+  } finally {
+    console.error = originalError;
+  }
+});
+
+test('the breaker rewinds only the consecutive identical errors', async () => {
+  let calls = 0;
+  const result = await runWave({
+    wave: 'A',
+    tiles: [tile(0), tile(1), tile(2), tile(3), tile(4), tile(5)],
+    targets: [plumber],
+    locations: [],
+    masterCatalog: catalog,
+    budget: budget(10),
+    textSearch: async () => {
+      const index = calls;
+      calls += 1;
+      if (index === 0) return [];
+      const error = new Error(index === 1 ? 'other' : 'same');
+      error.status = 400;
+      throw error;
+    },
+  });
+  assert.equal(calls, 5);
+  assert.equal(result.stoppedReason, 'text_search_error');
+  assert.equal(result.done, false);
+  assert.equal(result.processed, 2);
+  assert.deepEqual(result.nextCursor, { pairIndex: 2 });
+  assert.equal(result.counts.lastTextSearchError, 'other');
+  assert.equal(result.counts.lastTextSearchHttpStatus, 400);
+  assert.equal(result.counts.skipped.text_search_error, 4);
+});
+
+test('different text search errors do not trip the breaker and keep the first one', async () => {
+  let calls = 0;
+  const result = await runWave({
+    wave: 'A',
+    tiles: [tile(0), tile(1), tile(2)],
+    targets: [plumber],
+    locations: [],
+    masterCatalog: catalog,
+    budget: budget(5),
+    textSearch: async () => {
+      calls += 1;
+      const error = new Error(`fail-${calls}`);
+      error.status = 500;
+      throw error;
+    },
+  });
+  assert.equal(calls, 3);
+  assert.equal(result.done, true);
+  assert.equal(result.stoppedReason, null);
+  assert.equal(result.counts.skipped.text_search_error, 3);
+  assert.equal(result.counts.lastTextSearchError, 'fail-1');
+  assert.equal(result.counts.lastTextSearchHttpStatus, 500);
+});
+
+function erroredWaveRow(extra = {}) {
+  return {
+    id: 'wave:A',
+    kind: 'wave',
+    wave: 'A',
+    status: 'done',
+    cursor: { pairIndex: 4 },
+    counts: {
+      pairsProcessed: 4,
+      pairsTotal: 4,
+      staged: 0,
+      byDedup: {},
+      skipped: { text_search_error: 4 },
+      textSearch: 4,
+      details: 0,
+      cacheHits: 0,
+      stoppedReason: null,
+      lastTextSearchError: 'HTTP 403 PERMISSION_DENIED blocked',
+      lastTextSearchHttpStatus: 403,
+    },
+    text_search_used: 4,
+    details_used: 0,
+    max_text_search: 800,
+    max_details: 800,
+    report: {},
+    ...extra,
+  };
+}
+
+test('a finished wave whose pairs all errored resets and retries on the next run', async () => {
+  const store = memoryRuns();
+  await store.saveRun(erroredWaveRow());
+  let cursor = null;
+  const result = await executeWaveChunk({
+    body: { wave: 'A' },
+    cache: false,
+    minIntervalMs: 0,
+    getRun: store.getRun,
+    saveRun: store.saveRun,
+    listStaged: async () => [],
+    runWave: async (opts) => {
+      cursor = opts.cursor;
+      return {
+        processed: 1,
+        total: 4,
+        done: false,
+        stoppedReason: 'time_budget',
+        nextCursor: { pairIndex: 1 },
+        counts: { skipped: {} },
+        cost: { textSearchRequests: 1, detailsRequests: 0, cacheHits: 0 },
+      };
+    },
+  });
+  assert.equal(result.alreadyDone, false);
+  assert.equal(result.done, false);
+  assert.deepEqual(cursor, { pairIndex: 0 });
+  const row = store.rows.get('wave:A');
+  assert.equal(row.status, 'running');
+  assert.equal(row.text_search_used, 5);
+  assert.equal(row.counts.pairsProcessed, 1);
+  assert.equal(row.counts.lastTextSearchError, 'HTTP 403 PERMISSION_DENIED blocked');
+  assert.equal(row.counts.lastTextSearchHttpStatus, 403);
+});
+
+test('reset rewinds a text_search_error run and the next run retries those pairs', async () => {
+  const store = memoryRuns();
+  await store.saveRun(erroredWaveRow({
+    status: 'running',
+    cursor: { pairIndex: 2 },
+    text_search_used: 5,
+    details_used: 1,
+    counts: {
+      pairsProcessed: 2,
+      pairsTotal: 10,
+      staged: 1,
+      byDedup: {},
+      skipped: { text_search_error: 3 },
+      stoppedReason: 'text_search_error',
+      lastTextSearchError: 'HTTP 403 PERMISSION_DENIED blocked',
+      lastTextSearchHttpStatus: 403,
+    },
+  }));
+  const reset = await executeWaveReset({
+    body: { wave: 'A' },
+    getRun: store.getRun,
+    saveRun: store.saveRun,
+  });
+  assert.equal(reset.ok, true);
+  assert.equal(reset.reset, true);
+  assert.equal(reset.done, false);
+  assert.equal(reset.stoppedReason, null);
+  let row = store.rows.get('wave:A');
+  assert.equal(row.status, 'running');
+  assert.deepEqual(row.cursor, { pairIndex: 0 });
+  assert.equal(row.counts.stoppedReason, null);
+  assert.equal(row.counts.pairsProcessed, 0);
+  assert.equal(row.counts.staged, 0);
+  assert.equal(row.text_search_used, 5);
+  assert.equal(row.details_used, 1);
+  assert.equal(row.counts.lastTextSearchHttpStatus, 403);
+
+  let cursor = null;
+  const again = await executeWaveChunk({
+    body: { wave: 'A' },
+    cache: false,
+    minIntervalMs: 0,
+    getRun: store.getRun,
+    saveRun: store.saveRun,
+    listStaged: async () => [],
+    runWave: async (opts) => {
+      cursor = opts.cursor;
+      return {
+        processed: 1,
+        total: 10,
+        done: false,
+        stoppedReason: null,
+        nextCursor: { pairIndex: 1 },
+        counts: { skipped: {} },
+        cost: { textSearchRequests: 1, detailsRequests: 0, cacheHits: 0 },
+      };
+    },
+  });
+  assert.deepEqual(cursor, { pairIndex: 0 });
+  assert.equal(again.done, false);
+  assert.equal(store.rows.get('wave:A').text_search_used, 6);
+  assert.equal(store.rows.get('wave:A').status, 'running');
+});
+
+test('reset refuses a wave that is not a text search failure', async () => {
+  const store = memoryRuns();
+  await store.saveRun(erroredWaveRow({
+    counts: {
+      pairsProcessed: 4,
+      pairsTotal: 4,
+      staged: 2,
+      byDedup: {},
+      skipped: { text_search_error: 1 },
+      stoppedReason: null,
+    },
+  }));
+  const denied = await executeWaveReset({
+    body: { wave: 'A' },
+    getRun: store.getRun,
+    saveRun: store.saveRun,
+  });
+  assert.equal(denied.ok, false);
+  assert.equal(denied.status, 409);
+  assert.equal(store.rows.get('wave:A').cursor.pairIndex, 4);
+  assert.equal(store.rows.get('wave:A').text_search_used, 4);
+});
+
+test('admin import panel shows the text search error and offers a wave A reset', () => {
+  const html = fs.readFileSync(path.join(__dirname, '..', 'public/admin.html'), 'utf8');
+  const js = fs.readFileSync(path.join(__dirname, '..', 'public/admin-places-v2.js'), 'utf8');
+  assert.match(html, /id="placesV2ResetWave"/);
+  assert.match(html, /Скинути хвилю A/);
+  assert.match(html, /id="placesV2RunError"/);
+  assert.match(js, /lastTextSearchError/);
+  assert.match(js, /lastTextSearchHttpStatus/);
+  assert.match(js, /stoppedReason === 'text_search_error'/);
+  assert.match(js, /\/api\/admin\/places-v2\/reset-wave/);
 });
 
 test('import queue refuses the anon key', async () => {
