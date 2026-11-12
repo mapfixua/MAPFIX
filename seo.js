@@ -1540,6 +1540,35 @@ function locationInArea(loc, areaKey) {
   return locationAreaKeys(loc).includes(key);
 }
 
+/**
+ * One district for a card. Address text wins when it names a district.
+ * Otherwise the nearest centre that covers the point. Anything else is Kyiv.
+ * Returns a stable key: sviatoshyn | borshchahivka | akademmistechko | kotsiubynske | kyiv.
+ */
+function primaryDistrict(loc) {
+  if (!loc || typeof loc !== 'object') return 'kyiv';
+  const address = String(loc.address || '');
+  const named = SITEMAP_AREAS.filter((key) => AREA_ADDRESS_RE[key] && AREA_ADDRESS_RE[key].test(address));
+  const lat = Number(loc.lat);
+  const lng = Number(loc.lng);
+  const hasPoint = Number.isFinite(lat) && Number.isFinite(lng);
+  const pool = named.length ? named : SITEMAP_AREAS;
+  if (hasPoint) {
+    let best = null;
+    for (const key of pool) {
+      const area = SEO_AREAS[key];
+      const radius = AREA_RADIUS_KM[key];
+      if (!area || !radius) continue;
+      const distance = haversineKm(area.lat, area.lng, lat, lng);
+      if (!named.length && distance > radius) continue;
+      if (!best || distance < best.distance) best = { key, distance };
+    }
+    if (best) return best.key;
+  }
+  if (named.length) return named[0];
+  return 'kyiv';
+}
+
 function visibleLocations(locations) {
   return (locations || []).filter(
     (loc) => loc && loc.id && !loc.trashed && !loc.deletedAt && !isPublicTestLocation(loc)
@@ -2202,6 +2231,7 @@ module.exports = {
   AREA_RADIUS_KM,
   LISTING_PAGE_SIZE,
   locationInArea,
+  primaryDistrict,
   buildListing,
   resolveSeoRequest,
   kotsyubynskeToKyivPath,

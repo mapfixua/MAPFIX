@@ -9,6 +9,7 @@
  */
 const crypto = require('crypto');
 const { supabaseClient } = require('./supabaseClient.js');
+const dimensions = require('./analytics-dimensions.js');
 
 const TABLE = process.env.SUPABASE_ANALYTICS_EVENTS_TABLE || 'analytics_events';
 
@@ -85,6 +86,8 @@ const META_DROP = new Set([
   'login',
   'email',
   'contact',
+  'district',
+  'category',
 ]);
 
 let pepperWarned = false;
@@ -328,6 +331,50 @@ function isMissingColumn(error, column) {
 }
 
 let resultCountColumn = true;
+let dimensionColumns = true;
+let locationResolver = null;
+
+/** Server lookup for a card when the handler did not pass the location object. */
+function setLocationResolver(fn) {
+  locationResolver = typeof fn === 'function' ? fn : null;
+}
+
+/**
+ * District and category are taken from the card (or, with no card, from the
+ * path the server already stored). Client fields of the same name are ignored.
+ * A missing card does not throw: the columns stay empty ("невідомо" in reports).
+ */
+async function attachDimensions(row, opts = {}) {
+  const next = { ...(row || {}) };
+  delete next.district;
+  delete next.category;
+  let loc = opts.location && typeof opts.location === 'object' ? opts.location : null;
+  const fromPath = dimensions.pathDimensions(next.path);
+  if (!loc) {
+    const id = next.location_id || fromPath.locationId || '';
+    if (id && locationResolver) {
+      try {
+        const found = await Promise.race([
+          Promise.resolve().then(() => locationResolver(id)),
+          new Promise((resolve) => setTimeout(() => resolve(null), 800)),
+        ]);
+        if (found && typeof found === 'object') loc = found;
+      } catch (_) {
+        loc = null;
+      }
+    }
+  }
+  if (loc) {
+    const district = dimensions.cardDistrict(loc);
+    const category = dimensions.cardCategory(loc);
+    if (district) next.district = district;
+    if (category) next.category = category;
+    return next;
+  }
+  if (fromPath.district) next.district = fromPath.district;
+  if (fromPath.category) next.category = fromPath.category;
+  return next;
+}
 
 /**
  * Build the row that would be inserted. Does not write. Session id is hashed.
@@ -362,18 +409,36 @@ function prepareEventRow(req, { type, locationId = null, meta = null, sid, utm, 
   return { ok: true, row };
 }
 
-async function insertEventRow(row) {
+function payloadForInsert(row) {
   const payload = { ...row };
   if (!resultCountColumn || payload.result_count == null) delete payload.result_count;
+  if (!dimensionColumns) {
+    delete payload.district;
+    delete payload.category;
+  }
+  return payload;
+}
+
+async function insertEventRow(row) {
+  let payload = payloadForInsert(row);
   let { error } = await withTimeout(supabaseClient.from(TABLE).insert(payload), 1500);
   if (error && row.result_count != null && resultCountColumn && isMissingColumn(error, 'result_count')) {
     resultCountColumn = false;
     console.warn(
       '[analytics-events] result_count column missing; count stays in meta until migration 023 is applied and the process restarts'
     );
-    const retry = { ...row };
-    delete retry.result_count;
-    ({ error } = await withTimeout(supabaseClient.from(TABLE).insert(retry), 1500));
+    payload = payloadForInsert(row);
+    ({ error } = await withTimeout(supabaseClient.from(TABLE).insert(payload), 1500));
+  }
+  if (
+    error &&
+    dimensionColumns &&
+    (isMissingColumn(error, 'district') || isMissingColumn(error, 'category'))
+  ) {
+    dimensionColumns = false;
+    console.warn('[analytics-events] district/category columns missing; apply migration 024 and restart');
+    payload = payloadForInsert(row);
+    ({ error } = await withTimeout(supabaseClient.from(TABLE).insert(payload), 1500));
   }
   return error;
 }
@@ -386,7 +451,8 @@ async function logEvent(req, opts = {}) {
   try {
     const prepared = prepareEventRow(req, opts);
     if (!prepared.ok) return prepared;
-    const error = await insertEventRow(prepared.row);
+    const row = await attachDimensions(prepared.row, opts);
+    const error = await insertEventRow(row);
     if (error) {
       if (!isMissingTable(error)) console.warn('[analytics-events] insert', error.message);
       return { ok: false, missing: isMissingTable(error) };
@@ -805,4 +871,7 @@ module.exports = {
   maskLogin,
   kyivDayKey,
   kyivDayStart,
+  shiftDay,
+  setLocationResolver,
+  attachDimensions,
 };

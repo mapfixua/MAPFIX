@@ -39,6 +39,7 @@
     ['yesterday', 'Вчора'],
     ['7d', '7 днів'],
     ['30d', '30 днів'],
+    ['90d', '90 днів'],
     ['all', 'Усе'],
     ['custom', 'Період…'],
   ];
@@ -186,7 +187,17 @@
   const cur = () => state.stack[state.stack.length - 1];
 
   /* ---------- navigation (works with the phone Back button) ---------- */
+  function applyScreenRange() {
+    const filters = window.adminAnalyticsFilters;
+    if (!filters || !filters.range) return;
+    if (filters.range === 'custom' && filters.from && filters.to) {
+      state.range = { key: 'custom', from: filters.from, to: filters.to };
+      return;
+    }
+    if (filters.range !== 'custom') state.range = { key: filters.range, from: '', to: '' };
+  }
   function push(view) {
+    if (!state.stack.length) applyScreenRange();
     state.stack.push(view);
     try {
       history.pushState({ mfDrill: state.stack.length }, '');

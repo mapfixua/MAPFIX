@@ -132,6 +132,7 @@ const {
 } = require('./location-photos.js');
 const billing = require('./billing.js');
 const analytics = require('./analytics.js');
+const analyticsRollups = require('./analytics-rollups.js');
 const analyticsEvents = require('./analytics-events.js');
 
 const LOGIN_RE = /^[a-z0-9._-]{3,32}$/;
@@ -1082,6 +1083,15 @@ function attributionArgs(req) {
   return { sid: body.sid, utm: body.utm, ref: body.ref, path: body.path };
 }
 
+analyticsEvents.setLocationResolver(async (id) => {
+  try {
+    const data = await readData();
+    return (data.mockLocations || []).find((loc) => String(loc.id) === String(id)) || null;
+  } catch (_) {
+    return null;
+  }
+});
+
 /** Public KPI counters ignore /admin and the admin role. The event row is still written. */
 function countsPublicKpi(req) {
   const body = req?.body && typeof req.body === 'object' ? req.body : {};
@@ -1711,17 +1721,52 @@ app.get('/api/admin/analytics', requireAuth, requireAdmin, async (req, res) => {
       billing.adminOverview({}).catch(() => ({ stats: {} })),
     ]);
     const locations = (data.mockLocations || []).filter((l) => !isLocationTrashed(l));
-    const report = await analytics.buildAdminReport({
-      catalogClicks: clicksRes.clicks || {},
-      masterCatalog: data.masterCatalog || {},
+    const [report, reports, live] = await Promise.all([
+      analytics.buildAdminReport({
+        catalogClicks: clicksRes.clicks || {},
+        masterCatalog: data.masterCatalog || {},
+        locations,
+        ordersTotal: Array.isArray(orders) ? orders.length : 0,
+        usersTotal: Array.isArray(users) ? users.length : 0,
+        providersCount: Array.isArray(users) ? users.filter((u) => u.role === 'provider').length : 0,
+        clientsCount: Array.isArray(users) ? users.filter((u) => u.role === 'client').length : 0,
+        billingStats: billingOverview.stats || null,
+      }),
+      reportsMod.listReports().catch(() => []),
+      analytics.liveSnapshot(),
+    ]);
+    const traffic = await analyticsRollups.buildAdminTraffic({
+      query: req.query || {},
       locations,
-      ordersTotal: Array.isArray(orders) ? orders.length : 0,
-      usersTotal: Array.isArray(users) ? users.length : 0,
-      providersCount: Array.isArray(users) ? users.filter((u) => u.role === 'provider').length : 0,
-      clientsCount: Array.isArray(users) ? users.filter((u) => u.role === 'client').length : 0,
-      billingStats: billingOverview.stats || null,
+      reports,
+      catalog: data.masterCatalog || {},
     });
-    res.json({ ok: true, ...report, catalogClicksMissing: Boolean(clicksRes.missing) });
+    const period = traffic.period || {};
+    res.json({
+      ok: true,
+      ...report,
+      ...traffic,
+      live,
+      kpis: {
+        ...(report.kpis || {}),
+        callClicks: period.calls || 0,
+        directionsClicks: period.directions || 0,
+        chatClicks: period.chats || 0,
+        shareClicks: period.shares || 0,
+        favoriteClicks: period.favorites || 0,
+        orderClicks: period.orders || 0,
+        diveClicks: period.dives || 0,
+        mapFocusClicks: period.mapFocus || 0,
+        claimClicks: period.claims || 0,
+        reviewClicks: period.reviews || 0,
+        reportClicks: period.reports || 0,
+        callRate: period.callRate || 0,
+        searchesPeriod: period.searches || 0,
+        locationOpensPeriod: period.views || 0,
+      },
+      daily: traffic.daily,
+      catalogClicksMissing: Boolean(clicksRes.missing),
+    });
   } catch (err) {
     console.error('[admin analytics]', err);
     res.status(500).json({ error: 'Не вдалося завантажити аналітику' });
@@ -2415,7 +2460,7 @@ app.post('/api/locations/:id/view', async (req, res) => {
     if (publicKpi) loc.views = (Number(loc.views) || 0) + 1;
     await Promise.all([
       publicKpi ? persistLocationsPatch(data, [loc]) : Promise.resolve(),
-      analyticsEvents.logEvent(req, { type: 'view', locationId: id, ...attributionArgs(req) }),
+      analyticsEvents.logEvent(req, { type: 'view', locationId: id, location: loc, ...attributionArgs(req) }),
     ]);
     if (publicKpi) analytics.bumpTotal('locationOpens').catch(() => {});
     res.json({ ok: true, views: loc.views });
@@ -2460,7 +2505,7 @@ app.post('/api/locations/:id/click', async (req, res) => {
     const reportReason = analyticsEvents.normalizeReportReason(req.body?.reason);
     if (type === 'report' && reportReason) meta.reason = reportReason;
     // The call/chat row is the ads denominator. Record it even if the counter table is down.
-    await analyticsEvents.logEvent(req, { type, locationId: id, meta, ...attributionArgs(req) });
+    await analyticsEvents.logEvent(req, { type, locationId: id, location: loc, meta, ...attributionArgs(req) });
     if (!countsPublicKpi(req)) {
       return res.json({ ok: true, type, locationId: id, skippedKpi: true });
     }
@@ -2670,8 +2715,17 @@ app.get('/api/ops/hourly', async (req, res) => {
     if (!okAuth) {
       return res.status(401).json({ error: 'Unauthorized' });
     }
+    let analyticsRollup = { skipped: true };
+    try {
+      // Yesterday's rollup and a short purge, before the digest, so a slow email
+      // does not skip the tables. One closed day stays inside the 60s function limit.
+      analyticsRollup = await analyticsRollups.runCronStep({ budgetMs: analyticsRollups.ROLLUP_BUDGET_MS });
+    } catch (rollupErr) {
+      console.warn('[ops hourly] analytics rollup', rollupErr.message);
+      analyticsRollup = { ok: false, error: rollupErr.message };
+    }
     const result = await opsMonitor.runHourlyDigest();
-    res.json({ ok: true, ...result });
+    res.json({ ok: true, ...result, analyticsRollup });
   } catch (err) {
     console.error('[ops hourly]', err);
     res.status(500).json({ error: err.message || 'ops failed' });

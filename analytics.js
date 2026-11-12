@@ -13,6 +13,7 @@ const {
 } = require('./analytics-events.js');
 
 const STATE_ID = 'product_analytics';
+const PRESENCE_ID = 'analytics_presence';
 const PRESENCE_TTL_MS = 90 * 1000;
 const MAX_RECENT_SEARCHES = 300;
 const MAX_SEARCH_KEYS = 400;
@@ -165,11 +166,56 @@ function bumpDaily(state, field, n = 1) {
   return day;
 }
 
-function prunePresence(state, now = Date.now()) {
-  for (const [sid, row] of Object.entries(state.presence || {})) {
+function prunePresenceMap(presence, now = Date.now()) {
+  const next = presence && typeof presence === 'object' ? { ...presence } : {};
+  for (const [sid, row] of Object.entries(next)) {
     const at = new Date(row?.at || 0).getTime();
-    if (!at || now - at > PRESENCE_TTL_MS) delete state.presence[sid];
+    if (!at || now - at > PRESENCE_TTL_MS) delete next[sid];
   }
+  return next;
+}
+
+async function readPresenceMap() {
+  const remote = await loadAppState(PRESENCE_ID, null);
+  const raw = remote.ok && remote.value && remote.value.presence ? remote.value.presence : {};
+  const presence = prunePresenceMap(raw);
+  if (Object.keys(raw || {}).length !== Object.keys(presence).length) {
+    saveAppState(PRESENCE_ID, { presence }).catch(() => {});
+  }
+  return presence;
+}
+
+/** Online visitors live in their own short key. This never rewrites product_analytics. */
+async function touchPresence({ sid, path, role }) {
+  const sessionKey = hashSessionId(sid);
+  if (!sessionKey) return { ok: false, skipped: true };
+  const presence = await readPresenceMap();
+  presence[sessionKey] = {
+    at: new Date().toISOString(),
+    path: normalizePath(path),
+    role: role || '',
+  };
+  await saveAppState(PRESENCE_ID, { presence });
+  return { ok: true, online: Object.keys(presence).length };
+}
+
+async function liveSnapshot() {
+  const presence = await readPresenceMap();
+  const online = Object.values(presence);
+  const byPath = {};
+  for (const row of online) {
+    const p = row.path || '/';
+    byPath[p] = (byPath[p] || 0) + 1;
+  }
+  return {
+    onlineNow: online.length,
+    byPath,
+    sessions: online.map((row) => ({
+      path: row.path,
+      role: row.role || 'guest',
+      at: row.at,
+    })),
+  };
 }
 
 function trimCounts(map, maxKeys) {
@@ -230,15 +276,8 @@ async function trackPageView({ path, sid, role, utm }) {
     state.totals.mapLoads = (Number(state.totals.mapLoads) || 0) + 1;
     bumpDaily(state, 'mapLoads');
   }
-  if (sessionKey) {
-    state.presence[sessionKey] = {
-      at: new Date().toISOString(),
-      path: p,
-      role: role || '',
-    };
-  }
-  prunePresence(state);
   await writeState(state);
+  if (sessionKey) touchPresence({ sid, path: p, role }).catch(() => {});
   return { ok: true, path: p };
 }
 
@@ -272,18 +311,7 @@ async function trackSearch({ query, source, matched, resultCount, role, path }) 
 
 async function heartbeat({ sid, path, role }) {
   if (isAdminTraffic({ path, role })) return { ok: true, skipped: 'admin' };
-  const sessionKey = hashSessionId(sid);
-  if (!sessionKey) return { ok: false, skipped: true };
-  const state = await readState();
-  prunePresence(state);
-  state.presence[sessionKey] = {
-    at: new Date().toISOString(),
-    path: normalizePath(path),
-    role: role || '',
-  };
-  state.totals.heartbeats = (Number(state.totals.heartbeats) || 0) + 1;
-  await writeState(state);
-  return { ok: true, online: Object.keys(state.presence).length };
+  return touchPresence({ sid, path, role });
 }
 
 async function bumpTotal(field, n = 1) {
@@ -386,16 +414,7 @@ async function buildAdminReport({
   locationCtaSummary = null,
 }) {
   const state = await readState();
-  prunePresence(state);
-  // persist prune occasionally without blocking response hard — best-effort
-  writeState(state).catch(() => {});
-
-  const online = Object.values(state.presence || {});
-  const onlineByPath = {};
-  for (const row of online) {
-    const p = row.path || '/';
-    onlineByPath[p] = (onlineByPath[p] || 0) + 1;
-  }
+  const live = await liveSnapshot();
 
   const funnel = parseCatalogClicks(catalogClicks, masterCatalog);
   const {
@@ -465,15 +484,7 @@ async function buildAdminReport({
 
   return {
     generatedAt: new Date().toISOString(),
-    live: {
-      onlineNow: online.length,
-      byPath: onlineByPath,
-      sessions: online.map((s) => ({
-        path: s.path,
-        role: s.role || 'guest',
-        at: s.at,
-      })),
-    },
+    live,
     today,
     yesterday,
     kpis: {
@@ -537,10 +548,13 @@ async function buildAdminReport({
 
 module.exports = {
   PRESENCE_TTL_MS,
+  PRESENCE_ID,
   trackPageView,
   trackSearch,
   heartbeat,
   bumpTotal,
   buildAdminReport,
   readState,
+  liveSnapshot,
+  touchPresence,
 };
