@@ -1066,11 +1066,14 @@
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         credentials: 'same-origin',
-                        body: JSON.stringify({ locationId, reason: 'location', message: message.trim() }),
+                        body: JSON.stringify(Object.assign({
+                            locationId,
+                            reason: 'location',
+                            message: message.trim(),
+                        }, analyticsBody())),
                     });
                     const data = await res.json();
                     if (!res.ok) throw new Error(data.error);
-                    trackLocationClick(locationId, 'report');
                     alert('Скаргу надіслано. Дякуємо!');
                 } catch (err) {
                     alert(err.message);
@@ -1128,11 +1131,11 @@
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         credentials: 'same-origin',
-                        body: JSON.stringify({
+                        body: JSON.stringify(Object.assign({
                             locationId,
                             reason: 'stale_phone',
                             page: location.pathname + location.search,
-                        }),
+                        }, analyticsBody())),
                     });
                     const data = await res.json().catch(() => ({}));
                     if (!res.ok) throw new Error(data.error || 'Не вдалося надіслати');
@@ -1589,7 +1592,7 @@
                     method: 'POST',
                     credentials: 'same-origin',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(payload),
+                    body: JSON.stringify(Object.assign({}, payload, analyticsBody())),
                 }).catch(() => {});
             }
 
@@ -1612,6 +1615,28 @@
                 if (ctx.ref) body.ref = ctx.ref;
                 if (ctx.meta && Object.keys(ctx.meta).length) body.meta = ctx.meta;
                 return body;
+            }
+
+            const searchLogKeys = [];
+            function logAnalyticsSearch(query, source, resultCount) {
+                const q = String(query || '').trim();
+                if (q.length < 2 || typeof window.MapfixAnalytics?.search !== 'function') return;
+                const n = Math.max(0, Math.min(32767, Math.round(Number(resultCount) || 0)));
+                const src = String(source || 'catalog');
+                const key = src + '\n' + q.toLocaleLowerCase('uk-UA') + '\n' + n;
+                if (searchLogKeys.includes(key)) return;
+                searchLogKeys.push(key);
+                if (searchLogKeys.length > 300) searchLogKeys.splice(0, 100);
+                window.MapfixAnalytics.search(q, src, n > 0, n);
+            }
+
+            function countCatalogMatches(category, subcategory, service) {
+                return (window.mockLocations || []).filter((loc) => {
+                    if (category && loc.cat !== category) return false;
+                    if (subcategory && !locationInSubcategory(loc, category, subcategory)) return false;
+                    if (service && !locationOffersService(loc, service)) return false;
+                    return true;
+                }).length;
             }
 
             function withTrackingQuery(href) {
@@ -2775,7 +2800,7 @@
                             method: 'POST',
                             credentials: 'same-origin',
                             headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ phone, claimAll: true }),
+                            body: JSON.stringify(Object.assign({}, analyticsBody(), { phone, claimAll: true })),
                         }
                     );
                     const data = await res.json().catch(() => ({}));
@@ -3172,6 +3197,11 @@
                 }
 
                 if (filtered.length === 0) {
+                    const label = State.service?.name
+                        || (State.subcategory && (window.masterCatalog?.[State.category]?.subcats?.[State.subcategory]?.name || State.subcategory))
+                        || (State.category && (window.masterCatalog?.[State.category]?.name || State.category))
+                        || '';
+                    logAnalyticsSearch(label, 'catalog', 0);
                     contentContainer.innerHTML = '<div style="color:#64748b; font-size:12px; text-align:center; padding:20px;">Нічого не знайдено.</div>';
                     return;
                 }
@@ -3239,6 +3269,7 @@
             function renderLocationSearchResults() {
                 sidebarContent.innerHTML = '';
                 const results = getLocationSearchResults();
+                logAnalyticsSearch(State.locationSearchQuery, 'map', results.length);
                 if (!results.length) {
                     sidebarContent.innerHTML = '<div style="color:#64748b;font-size:12px;text-align:center;padding:20px">Салонів, майстрів або адрес не знайдено.</div>';
                     return;
@@ -3617,6 +3648,7 @@
                         suppressMapClose = true;
                         setTimeout(() => { suppressMapClose = false; }, 0);
                         try { markersLayer.unspiderfy(); } catch (_) {}
+                        trackLocationClick(loc.id, 'map_focus');
                         openMasterDetail(loc.id, {
                             fromMarker: true,
                             mode: isMobileLayout() ? 'preview' : 'dive',
@@ -3866,7 +3898,10 @@
                     credentials: 'same-origin',
                     cache: 'no-store',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ text: transcript }),
+                    body: JSON.stringify(Object.assign(
+                        { text: transcript, deferSearchLog: typeof window.MapfixAnalytics?.search === 'function' },
+                        analyticsBody()
+                    )),
                 });
                 const data = await res.json();
                 if (!res.ok) throw new Error(data.error || 'Помилка AI-пошуку');
@@ -3875,6 +3910,11 @@
 
                 if (data.category) {
                     applyCatalogSearchFilter(data, { keepSuggestions: true });
+                    logAnalyticsSearch(
+                        transcript,
+                        'ai',
+                        countCatalogMatches(data.category, data.subcategory, data.service)
+                    );
                     const top = State.aiSuggestions[0];
                     const label = top?.label || data.service || data.subcategory || data.category;
                     const src = data.source === 'gemini' ? 'Gemini' : 'каталог';
@@ -4041,6 +4081,7 @@
                 hideSearchSuggest();
                 if (!item) return;
                 if (item.kind === 'map') {
+                    logAnalyticsSearch(item.query, 'map', getLocationSearchResults(item.query).length);
                     State.locationSearchQuery = item.query;
                     State.category = null;
                     State.subcategory = null;
@@ -4053,10 +4094,12 @@
                     return;
                 }
                 if (item.kind === 'location') {
+                    logAnalyticsSearch(item.label, 'suggest', 1);
                     searchInput.value = item.label;
                     openMasterDetail(item.id, { mode: 'dive', forceMode: true });
                     return;
                 }
+                logAnalyticsSearch(item.label, 'suggest', countCatalogMatches(item.cat, item.sub || null, null));
                 searchInput.value = item.label;
                 applyCatalogSearchFilter(
                     { category: item.cat, subcategory: item.sub || null },

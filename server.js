@@ -1082,6 +1082,35 @@ function attributionArgs(req) {
   return { sid: body.sid, utm: body.utm, ref: body.ref, path: body.path };
 }
 
+/** Public KPI counters ignore /admin and the admin role. The event row is still written. */
+function countsPublicKpi(req) {
+  const body = req?.body && typeof req.body === 'object' ? req.body : {};
+  return !analyticsEvents.isAdminTraffic({ path: body.path, role: getSessionUser(req)?.role });
+}
+
+async function recordAccountEvent(req, { type, user, method }) {
+  const field = type === 'register' ? 'registers' : type === 'login' ? 'logins' : null;
+  if (field && !analyticsEvents.isAdminTraffic({ path: req.body?.path, role: user?.role })) {
+    analytics.bumpTotal(field).catch(() => {});
+  }
+  await analyticsEvents.logEvent(req, {
+    type,
+    user,
+    meta: method ? { method: String(method).slice(0, 24) } : null,
+    ...attributionArgs(req),
+  });
+}
+
+async function logClaimStage(req, locationId, stage) {
+  if (stage !== 'success' && stage !== 'mismatch') return;
+  await analyticsEvents.logEvent(req, {
+    type: 'claim',
+    locationId,
+    meta: { stage },
+    ...attributionArgs(req),
+  });
+}
+
 app.post('/api/register', async (req, res) => {
   try {
     const login = req.body.login?.trim().toLowerCase();
@@ -1203,22 +1232,25 @@ app.post('/api/register', async (req, res) => {
     }
 
     setSessionUser(res, newUser);
-    analytics.bumpTotal('registers').catch(() => {});
-    await analyticsEvents.logEvent(req, {
-      type: 'register',
-      user: newUser,
-      meta: { method: 'password' },
-      ...attributionArgs(req),
-    });
+    await recordAccountEvent(req, { type: 'register', user: newUser, method: 'password' });
 
     let claimedOnRegister = [];
     if (role === 'provider' && normalizedPhone) {
       try {
         const claimed = await claimMatchingLocations(newUser.id, normalizedPhone, { claimAll: true });
-        if (claimed.ok) claimedOnRegister = claimed.claimed || [];
+        if (claimed.ok && !claimed.alreadyOwned) claimedOnRegister = claimed.claimed || [];
       } catch (claimErr) {
         console.warn('[register] auto-claim skip:', claimErr.message);
       }
+    }
+    for (const loc of claimedOnRegister) {
+      await analyticsEvents.logEvent(req, {
+        type: 'claim',
+        locationId: loc.id,
+        user: newUser,
+        meta: { stage: 'success' },
+        ...attributionArgs(req),
+      });
     }
 
     let telegramLink = null;
@@ -1305,11 +1337,10 @@ async function finishOauthSignIn(req, res, result) {
   }
 
   setSessionUser(res, result.user);
-  await analyticsEvents.logEvent(req, {
+  await recordAccountEvent(req, {
     type: result.created ? 'register' : 'login',
     user: result.user,
-    meta: { method: String(result.provider || 'oauth') },
-    ...attributionArgs(req),
+    method: String(result.provider || 'oauth'),
   });
   const data = await readData();
   return res.json({
@@ -1370,13 +1401,7 @@ app.post('/api/login', authRateLimit, async (req, res) => {
 
     setSessionUser(res, user);
     const data = await readData();
-    analytics.bumpTotal('logins').catch(() => {});
-    await analyticsEvents.logEvent(req, {
-      type: 'login',
-      user,
-      meta: { method: 'password' },
-      ...attributionArgs(req),
-    });
+    await recordAccountEvent(req, { type: 'login', user, method: 'password' });
     res.json({ ok: true, user: await toPublicUserWithProfile(user, data) });
   } catch (err) {
     console.error(err);
@@ -1527,6 +1552,20 @@ app.post('/api/catalog/click', async (req, res) => {
       return res.status(400).json({ error: 'type must be category | subcategory | service' });
     }
 
+    const meta = { kind: type };
+    if (categoryKey) meta.cat = categoryKey.slice(0, 48);
+    if (subcategoryKey) meta.sub = subcategoryKey.slice(0, 48);
+    if (serviceName) meta.service = serviceName.slice(0, 80);
+    await analyticsEvents.logEvent(req, {
+      type: 'catalog_click',
+      meta,
+      ...attributionArgs(req),
+    });
+
+    if (!countsPublicKpi(req)) {
+      return res.json({ ok: true, clickKey, skippedKpi: true });
+    }
+
     const result = await incrementCatalogClick(clickKey);
     if (!result.ok) {
       // Table may be absent until 011/015 is applied — don't break map UX.
@@ -1551,15 +1590,18 @@ app.post('/api/catalog/click', async (req, res) => {
 app.post('/api/analytics/page', async (req, res) => {
   try {
     const user = getSessionUser(req);
-    await Promise.all([
-      analytics.trackPageView({
-        path: req.body?.path,
-        sid: req.body?.sid,
-        role: user?.role || 'guest',
-        utm: req.body?.utm,
-      }),
-      analyticsEvents.logEvent(req, { type: 'page_view' }),
-    ]);
+    const tasks = [analyticsEvents.logEvent(req, { type: 'page_view' })];
+    if (countsPublicKpi(req)) {
+      tasks.push(
+        analytics.trackPageView({
+          path: req.body?.path,
+          sid: req.body?.sid,
+          role: user?.role || 'guest',
+          utm: req.body?.utm,
+        })
+      );
+    }
+    await Promise.all(tasks);
     res.json({ ok: true });
   } catch (err) {
     console.warn('[analytics page]', err.message);
@@ -1569,25 +1611,36 @@ app.post('/api/analytics/page', async (req, res) => {
 
 app.post('/api/analytics/search', async (req, res) => {
   try {
-    const query = String(req.body?.query || '').trim().slice(0, 120);
-    await Promise.all([
-      analytics.trackSearch({
-        query: req.body?.query,
-        source: req.body?.source,
-        sid: req.body?.sid,
-        matched: req.body?.matched,
+    const built = analyticsEvents.buildSearchMeta({
+      query: req.body?.query,
+      source: req.body?.source,
+      resultCount: req.body?.result_count ?? req.body?.resultCount,
+      matched: req.body?.matched,
+    });
+    if (!built.meta.q || built.meta.q.length < 2) {
+      return res.json({ ok: true, skipped: true });
+    }
+    const tasks = [
+      analyticsEvents.logEvent(req, {
+        type: 'search',
+        meta: built.meta,
+        resultCount: built.resultCount,
+        ...attributionArgs(req),
       }),
-      query.length >= 2
-        ? analyticsEvents.logEvent(req, {
-            type: 'search',
-            meta: {
-              q: query,
-              source: String(req.body?.source || 'search').slice(0, 24),
-              matched: Boolean(req.body?.matched),
-            },
-          })
-        : null,
-    ]);
+    ];
+    if (countsPublicKpi(req)) {
+      tasks.push(
+        analytics.trackSearch({
+          query: built.meta.q,
+          source: built.source,
+          matched: built.meta.matched,
+          resultCount: built.resultCount,
+          path: req.body?.path,
+          role: getSessionUser(req)?.role,
+        })
+      );
+    }
+    await Promise.all(tasks);
     res.json({ ok: true });
   } catch (err) {
     console.warn('[analytics search]', err.message);
@@ -1598,6 +1651,9 @@ app.post('/api/analytics/search', async (req, res) => {
 app.post('/api/analytics/heartbeat', async (req, res) => {
   try {
     const user = getSessionUser(req);
+    if (!countsPublicKpi(req)) {
+      return res.json({ ok: true, skipped: 'admin' });
+    }
     const result = await analytics.heartbeat({
       sid: req.body?.sid,
       path: req.body?.path,
@@ -1631,7 +1687,7 @@ app.post('/api/analytics/event', async (req, res) => {
       dive: 'diveClicks',
       map_focus: 'mapFocusClicks',
     };
-    if (map[name]) await analytics.bumpTotal(map[name]);
+    if (map[name] && countsPublicKpi(req)) await analytics.bumpTotal(map[name]);
     if (name === 'pwa_banner' || name === 'pwa_install') {
       await analyticsEvents.logEvent(req, {
         type: 'pwa',
@@ -1703,7 +1759,7 @@ app.get('/api/admin/analytics/events', requireAuth, requireAdmin, async (req, re
       throw fetched.error || new Error('events read failed');
     }
     const allRows = fetched.rows;
-    const rows = includeAdmin ? allRows : allRows.filter((r) => r.user_role !== 'admin');
+    const rows = includeAdmin ? allRows : allRows.filter((r) => !analyticsEvents.isAdminEventRow(r));
     const sessionSources = await analyticsEvents
       .sessionSourcesFor(
         rows.filter((r) => !r.utm_source && !r.referrer_host).map((r) => r.session_id),
@@ -1859,21 +1915,33 @@ app.post('/api/search-ai', searchRateLimit, async (req, res) => {
       geminiApiKey: GEMINI_API_KEY || undefined,
     });
 
-    analytics
-      .trackSearch({
+    if (req.body?.deferSearchLog !== true) {
+      const built = analyticsEvents.buildSearchMeta({
         query: text,
-        source: result.source === 'gemini' ? 'ai_gemini' : 'ai_catalog',
+        source: 'ai',
+        resultCount: req.body?.result_count ?? req.body?.resultCount,
         matched: Boolean(result.category),
-      })
-      .catch(() => {});
-    await analyticsEvents.logEvent(req, {
-      type: 'search',
-      meta: {
-        q: text.slice(0, 120),
-        source: result.source === 'gemini' ? 'ai_gemini' : 'ai_catalog',
-        matched: Boolean(result.category),
-      },
-    });
+        engine: result.source === 'gemini' ? 'gemini' : 'catalog',
+      });
+      if (countsPublicKpi(req)) {
+        analytics
+          .trackSearch({
+            query: built.meta.q,
+            source: 'ai',
+            matched: built.meta.matched,
+            resultCount: built.resultCount,
+            path: req.body?.path,
+            role: getSessionUser(req)?.role,
+          })
+          .catch(() => {});
+      }
+      await analyticsEvents.logEvent(req, {
+        type: 'search',
+        meta: built.meta,
+        resultCount: built.resultCount,
+        ...attributionArgs(req),
+      });
+    }
 
     if (!result.category) {
       return res.status(404).json({
@@ -2343,12 +2411,13 @@ app.post('/api/locations/:id/view', async (req, res) => {
     const data = await readData();
     const loc = data.mockLocations.find((l) => l.id === id);
     if (!loc) return res.status(404).json({ error: 'not_found' });
-    loc.views = (Number(loc.views) || 0) + 1;
+    const publicKpi = countsPublicKpi(req);
+    if (publicKpi) loc.views = (Number(loc.views) || 0) + 1;
     await Promise.all([
-      persistLocationsPatch(data, [loc]),
+      publicKpi ? persistLocationsPatch(data, [loc]) : Promise.resolve(),
       analyticsEvents.logEvent(req, { type: 'view', locationId: id, ...attributionArgs(req) }),
     ]);
-    analytics.bumpTotal('locationOpens').catch(() => {});
+    if (publicKpi) analytics.bumpTotal('locationOpens').catch(() => {});
     res.json({ ok: true, views: loc.views });
   } catch (err) {
     console.error('[POST /api/locations/:id/view]', err);
@@ -2385,9 +2454,17 @@ app.post('/api/locations/:id/click', async (req, res) => {
     if (!loc) return res.status(404).json({ error: 'Локацію не знайдено' });
 
     const clickKey = locationClickKey(id, type);
-    const result = await incrementCatalogClick(clickKey);
+    const meta = {};
+    if (type === 'claim') meta.stage = 'click';
+    if (type === 'chat') meta.channel = 'telegram';
+    const reportReason = analyticsEvents.normalizeReportReason(req.body?.reason);
+    if (type === 'report' && reportReason) meta.reason = reportReason;
     // The call/chat row is the ads denominator. Record it even if the counter table is down.
-    await analyticsEvents.logEvent(req, { type, locationId: id, ...attributionArgs(req) });
+    await analyticsEvents.logEvent(req, { type, locationId: id, meta, ...attributionArgs(req) });
+    if (!countsPublicKpi(req)) {
+      return res.json({ ok: true, type, locationId: id, skippedKpi: true });
+    }
+    const result = await incrementCatalogClick(clickKey);
     if (!result.ok) {
       if (result.missing) {
         return res.status(503).json({
@@ -2465,10 +2542,21 @@ const STALE_PHONE_REASON = 'stale_phone';
 const STALE_PHONE_DEDUPE_MS = 15 * 60 * 1000;
 const stalePhoneRecent = new Map();
 
-function clientIp(req) {
-  return String(req.ip || req.headers['x-forwarded-for'] || req.socket?.remoteAddress || 'unknown')
-    .split(',')[0]
-    .trim();
+function rememberStalePhone(key) {
+  if (!key) return;
+  const now = Date.now();
+  stalePhoneRecent.set(key, now);
+  if (stalePhoneRecent.size > 5000) {
+    for (const [stored, at] of stalePhoneRecent) {
+      if (now - at >= STALE_PHONE_DEDUPE_MS) stalePhoneRecent.delete(stored);
+    }
+  }
+}
+
+function stalePhoneSeen(key) {
+  if (!key) return false;
+  const prev = stalePhoneRecent.get(key);
+  return Boolean(prev && Date.now() - prev < STALE_PHONE_DEDUPE_MS);
 }
 
 function requireAuthUnlessStalePhone(req, res, next) {
@@ -2499,19 +2587,14 @@ app.post('/api/reports', requireAuthUnlessStalePhone, supportRateLimit, async (r
       locationTitle = loc?.title || '';
     }
     if (stalePhone) {
-      const now = Date.now();
-      staleKey = `${clientIp(req)}|${locationId}`;
-      const prev = stalePhoneRecent.get(staleKey);
-      if (prev && now - prev < STALE_PHONE_DEDUPE_MS) {
+      const sessionHash = analyticsEvents.hashSessionId(req.body?.sid);
+      staleKey = analyticsEvents.stalePhoneDedupeKey(sessionHash, locationId);
+      if (stalePhoneSeen(staleKey) || (await analyticsEvents.hasRecentStalePhone(sessionHash, locationId))) {
+        if (staleKey) rememberStalePhone(staleKey);
         staleKey = '';
         return res.json({ ok: true, duplicate: true });
       }
-      stalePhoneRecent.set(staleKey, now);
-      if (stalePhoneRecent.size > 5000) {
-        for (const [key, at] of stalePhoneRecent) {
-          if (now - at >= STALE_PHONE_DEDUPE_MS) stalePhoneRecent.delete(key);
-        }
-      }
+      rememberStalePhone(staleKey);
     }
     let message = req.body?.message;
     if (stalePhone && String(message || '').trim().length < 5) {
@@ -2525,6 +2608,17 @@ app.post('/api/reports', requireAuthUnlessStalePhone, supportRateLimit, async (r
       message,
       contact: req.body?.contact,
       page: req.body?.page,
+    });
+    const analyticsReason = analyticsEvents.normalizeReportReason(reason);
+    if (countsPublicKpi(req)) {
+      analytics.bumpTotal('reports').catch(() => {});
+      if (locationId) incrementCatalogClick(locationClickKey(locationId, 'report')).catch(() => {});
+    }
+    await analyticsEvents.logEvent(req, {
+      type: 'report',
+      locationId: locationId || null,
+      meta: analyticsReason ? { reason: analyticsReason } : null,
+      ...attributionArgs(req),
     });
     opsMonitor.notifyAdminNewReport(report).catch((err) => console.warn('[ops] report email', err.message));
     res.status(201).json({ ok: true, report });
@@ -4294,7 +4388,6 @@ app.post('/api/orders', requireAuth, requireClient, async (req, res) => {
     const orders = await readOrders();
     orders.push(order);
     await writeOrders(orders);
-    analytics.bumpTotal('orders').catch(() => {});
 
     const users = await readUsers();
     const enriched = enrichOrder(order, data, users);
@@ -4384,7 +4477,6 @@ app.post('/api/client/favorites', requireAuth, requireClient, async (req, res) =
         addedAt: new Date().toISOString(),
       });
       await writeFavorites(favorites);
-      analytics.bumpTotal('favorites').catch(() => {});
     }
     res.json({ ok: true });
   } catch (err) {
@@ -4542,6 +4634,7 @@ app.post('/api/locations/:id/claim-by-phone', claimRateLimit, async (req, res) =
       return res.status(400).json({ error: 'Вкажіть коректний номер телефону' });
     }
     if (!phonesMatch(submittedPhone, loc.phone)) {
+      await logClaimStage(req, locationId, 'mismatch');
       return res.status(403).json({ error: 'Номер не збігається з телефоном на картці' });
     }
 
@@ -4582,7 +4675,13 @@ app.post('/api/locations/:id/claim-by-phone', claimRateLimit, async (req, res) =
       claimAll,
     });
     if (!result.ok) {
+      if (result.status === 403) await logClaimStage(req, locationId, 'mismatch');
       return res.status(result.status || 400).json({ error: result.error });
+    }
+    if (!result.alreadyOwned) {
+      for (const claimedLoc of result.claimed || []) {
+        await logClaimStage(req, claimedLoc.id, 'success');
+      }
     }
 
     res.json({
@@ -4642,6 +4741,7 @@ app.post('/api/provider/locations/:id/claim/request', requireAuth, requireProvid
     }
 
     if (!phonesMatch(accountPhone, locPhone)) {
+      await logClaimStage(req, req.params.id, 'mismatch');
       return res.status(403).json({
         error: `Телефон акаунта (${accountPhone}) не збігається з телефоном закладу (${locPhone}). Оновіть телефон у профілі або зверніться в підтримку.`,
       });
@@ -4716,6 +4816,7 @@ app.post('/api/provider/locations/:id/claim/confirm', requireAuth, requireProvid
       return res.status(404).json({ error: 'Локацію не знайдено' });
     }
     if (!phonesMatch(accountPhone, primary.phone)) {
+      await logClaimStage(req, req.params.id, 'mismatch');
       return res.status(403).json({ error: 'Телефон не збігається з точкою' });
     }
 
@@ -4731,13 +4832,19 @@ app.post('/api/provider/locations/:id/claim/confirm', requireAuth, requireProvid
 
     const now = new Date().toISOString();
     const claimed = [];
+    const newlyClaimed = [];
     for (const loc of targets) {
       if (loc.providerId && loc.providerId !== user.id) continue;
+      const wasMine = loc.providerId === user.id;
       loc.providerId = user.id;
       loc.claimedAt = now;
       claimed.push(loc);
+      if (!wasMine) newlyClaimed.push(loc);
     }
     await persistLocationsPatch(data, claimed);
+    for (const loc of newlyClaimed) {
+      await logClaimStage(req, loc.id, 'success');
+    }
     res.json({
       ok: true,
       claimedCount: claimed.length,

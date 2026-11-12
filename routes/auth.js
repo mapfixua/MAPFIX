@@ -3,7 +3,24 @@ const otpAuth = require('../otp-auth.js');
 const passwordReset = require('../password-reset.js');
 const { sendOtpToTelegram } = require('../telegram-bot.js');
 const { setAuthCookie } = require('../auth-jwt.js');
+const analytics = require('../analytics.js');
 const analyticsEvents = require('../analytics-events.js');
+
+async function recordAuthEvent(req, { type, user, method }) {
+  const field = type === 'register' ? 'registers' : 'logins';
+  if (!analyticsEvents.isAdminTraffic({ path: req.body?.path, role: user?.role })) {
+    analytics.bumpTotal(field).catch(() => {});
+  }
+  await analyticsEvents.logEvent(req, {
+    type,
+    user,
+    meta: { method },
+    sid: req.body?.sid,
+    utm: req.body?.utm,
+    ref: req.body?.ref,
+    path: req.body?.path,
+  });
+}
 
 const OTP_ERROR_MESSAGES = {
   invalid_phone: 'Вкажіть коректний номер телефону',
@@ -132,14 +149,10 @@ function createAuthRouter({ jwtSecret, toPublicUserWithProfile, readData }) {
       }
 
       setAuthCookie(res, verifyResult.user, secret);
-      await analyticsEvents.logEvent(req, {
+      await recordAuthEvent(req, {
         type: 'login',
         user: verifyResult.user,
-        meta: { method: 'telegram_otp' },
-        sid: req.body?.sid,
-        utm: req.body?.utm,
-        ref: req.body?.ref,
-        path: req.body?.path,
+        method: 'telegram_otp',
       });
 
       const data = await readData();

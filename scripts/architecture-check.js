@@ -836,8 +836,11 @@ function checkAttribution() {
       callFields.columns.utm_campaign === 'koc_beauty' &&
       callFields.meta.content === 'ad1' &&
       callFields.meta.term === 'manicure' &&
-      callFields.meta.fbclid === 'testfb' &&
-      callFields.meta.gclid === 'g1' &&
+      callFields.meta.click_net === 'meta' &&
+      callFields.meta.fbclid == null &&
+      callFields.meta.gclid == null &&
+      !JSON.stringify(callFields).includes('testfb') &&
+      !JSON.stringify(callFields).includes('"g1"') &&
       callFields.meta.password == null &&
       callFields.meta.kind == null &&
       !('utm_content' in callFields.columns),

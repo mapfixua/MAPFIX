@@ -5,6 +5,12 @@
  * Stored in catalog_snapshots via app-state-store — no new SQL required.
  */
 const { loadAppState, saveAppState } = require('./app-state-store.js');
+const {
+  hashSessionId,
+  isAdminTraffic,
+  parseResultCount,
+  normalizeSearchSource,
+} = require('./analytics-events.js');
 
 const STATE_ID = 'product_analytics';
 const PRESENCE_TTL_MS = 90 * 1000;
@@ -206,6 +212,7 @@ function normalizePath(path) {
 }
 
 async function trackPageView({ path, sid, role, utm }) {
+  if (isAdminTraffic({ path, role })) return { ok: true, skipped: 'admin' };
   const state = await readState();
   const p = normalizePath(path);
   state.pageViews[p] = (Number(state.pageViews[p]) || 0) + 1;
@@ -217,13 +224,14 @@ async function trackPageView({ path, sid, role, utm }) {
     state.utmSources = trimCounts(state.utmSources, MAX_UTM_KEYS);
   }
   const day = bumpDaily(state, 'pageViews');
-  if (sid) day.uniqueSessions[String(sid).slice(0, 64)] = true;
+  const sessionKey = hashSessionId(sid);
+  if (sessionKey) day.uniqueSessions[sessionKey] = true;
   if (p === '/' || p === '/index.html') {
     state.totals.mapLoads = (Number(state.totals.mapLoads) || 0) + 1;
     bumpDaily(state, 'mapLoads');
   }
-  if (sid) {
-    state.presence[String(sid).slice(0, 64)] = {
+  if (sessionKey) {
+    state.presence[sessionKey] = {
       at: new Date().toISOString(),
       path: p,
       role: role || '',
@@ -234,20 +242,27 @@ async function trackPageView({ path, sid, role, utm }) {
   return { ok: true, path: p };
 }
 
-async function trackSearch({ query, source, sid, matched }) {
-  const q = String(query || '').trim().slice(0, 120);
+async function trackSearch({ query, source, matched, resultCount, role, path }) {
+  if (isAdminTraffic({ path, role })) return { ok: true, skipped: 'admin' };
+  const q = String(query || '').trim().slice(0, 80);
   if (q.length < 2) return { ok: false, skipped: true };
+  const count = parseResultCount(resultCount);
+  const didMatch = count == null ? Boolean(matched) : count > 0;
   const state = await readState();
   const key = q.toLowerCase();
   state.searchCounts[key] = (Number(state.searchCounts[key]) || 0) + 1;
   state.searchCounts = trimCounts(state.searchCounts, MAX_SEARCH_KEYS);
-  state.recentSearches.unshift({
+  const recent = {
     q,
-    source: source || 'search',
-    matched: Boolean(matched),
-    sid: sid ? String(sid).slice(0, 64) : null,
+    source: normalizeSearchSource(source),
+    matched: didMatch,
     at: new Date().toISOString(),
-  });
+  };
+  if (count != null) {
+    recent.resultCount = count;
+    recent.zero = count === 0 ? 1 : 0;
+  }
+  state.recentSearches.unshift(recent);
   state.recentSearches = state.recentSearches.slice(0, MAX_RECENT_SEARCHES);
   state.totals.searches = (Number(state.totals.searches) || 0) + 1;
   bumpDaily(state, 'searches');
@@ -256,10 +271,12 @@ async function trackSearch({ query, source, sid, matched }) {
 }
 
 async function heartbeat({ sid, path, role }) {
-  if (!sid) return { ok: false, skipped: true };
+  if (isAdminTraffic({ path, role })) return { ok: true, skipped: 'admin' };
+  const sessionKey = hashSessionId(sid);
+  if (!sessionKey) return { ok: false, skipped: true };
   const state = await readState();
   prunePresence(state);
-  state.presence[String(sid).slice(0, 64)] = {
+  state.presence[sessionKey] = {
     at: new Date().toISOString(),
     path: normalizePath(path),
     role: role || '',
