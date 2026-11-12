@@ -2,10 +2,12 @@
 
 /**
  * Per-event analytics log (table analytics_events, migration 020).
- * Every row = one action: who (user id / anonymous session), when, which card,
- * from which device and traffic source. Never stores phones, IPs or full UA.
+ * Every row = one action: who (user id / hashed visit), when, which card,
+ * from which device and traffic source. Never stores phones, IPs, full UA,
+ * raw browser session ids, or raw ad click ids (fbclid, gclid, ttclid, yclid).
  * Writes go through the service-role client; the table is not readable by anon.
  */
+const crypto = require('crypto');
 const { supabaseClient } = require('./supabaseClient.js');
 
 const TABLE = process.env.SUPABASE_ANALYTICS_EVENTS_TABLE || 'analytics_events';
@@ -24,7 +26,18 @@ const CTA_TYPES = [
   'dive',
 ];
 
-const OTHER_TYPES = ['view', 'page_view', 'search', 'login', 'register', 'donate', 'subscribe', 'support', 'pwa'];
+const OTHER_TYPES = [
+  'view',
+  'page_view',
+  'search',
+  'login',
+  'register',
+  'donate',
+  'subscribe',
+  'support',
+  'pwa',
+  'catalog_click',
+];
 
 const EVENT_TYPES = new Set([...CTA_TYPES, ...OTHER_TYPES]);
 
@@ -47,6 +60,130 @@ function cleanToken(value, max = 64) {
     .replace(/[^\w.\-/:@ ]/g, '')
     .slice(0, max);
   return s || null;
+}
+
+const CLICK_NET_BY_KEY = [
+  ['fbclid', 'meta'],
+  ['gclid', 'google'],
+  ['ttclid', 'tiktok'],
+  ['yclid', 'yandex'],
+];
+const CLICK_NETS = new Set(CLICK_NET_BY_KEY.map(([, net]) => net));
+const CLICK_ID_KEYS = new Set(CLICK_NET_BY_KEY.map(([key]) => key));
+const SEARCH_SOURCES = new Set(['ai', 'suggest', 'map', 'catalog']);
+const META_DROP = new Set([
+  ...CLICK_ID_KEYS,
+  'sid',
+  'session',
+  'session_id',
+  'ip',
+  'phone',
+  'ua',
+  'user_agent',
+  'useragent',
+  'password',
+  'login',
+  'email',
+  'contact',
+]);
+
+let pepperWarned = false;
+
+function sessionPepper() {
+  const pepper = String(process.env.ANALYTICS_SESSION_PEPPER || '');
+  if (!pepper && !pepperWarned && process.env.NODE_ENV === 'production') {
+    pepperWarned = true;
+    console.warn(
+      '[analytics] ANALYTICS_SESSION_PEPPER is empty; session ids are still hashed, set a pepper so the hash cannot be replayed from the browser id'
+    );
+  }
+  return pepper;
+}
+
+/** sha256(pepper || browser sid), 32 hex chars. Raw visit ids are never stored. */
+function hashSessionId(raw) {
+  const sid = String(raw == null ? '' : raw).trim();
+  if (!sid || sid.length > 200) return null;
+  return crypto.createHash('sha256').update(sessionPepper() + sid, 'utf8').digest('hex').slice(0, 32);
+}
+
+function hasClickValue(value) {
+  return String(value == null ? '' : value).trim().length > 0;
+}
+
+/** One network label. First present id wins: Meta, Google, TikTok, Yandex. */
+function clickNetFromUtm(utm) {
+  if (!utm || typeof utm !== 'object') return null;
+  for (const [key, net] of CLICK_NET_BY_KEY) {
+    if (hasClickValue(utm[key])) return net;
+  }
+  const named = String(utm.click_net || utm.clickNet || '')
+    .trim()
+    .toLowerCase();
+  return CLICK_NETS.has(named) ? named : null;
+}
+
+function isAdminTraffic({ path, role } = {}) {
+  if (String(role || '').trim().toLowerCase() === 'admin') return true;
+  const pathOnly = String(path || '').trim().split('?')[0].split('#')[0];
+  if (!pathOnly) return false;
+  return pathOnly === '/admin' || pathOnly === '/admin.html' || pathOnly.startsWith('/admin/');
+}
+
+function isAdminEventRow(row) {
+  return isAdminTraffic({ path: row?.path, role: row?.user_role });
+}
+
+function parseResultCount(value) {
+  if (value == null || value === '') return null;
+  const n = Number(value);
+  if (!Number.isFinite(n) || n < 0) return null;
+  return Math.min(32767, Math.round(n));
+}
+
+function normalizeSearchSource(raw) {
+  const s = String(raw || '').trim().toLowerCase();
+  if (s === 'ai' || s === 'ai_gemini' || s === 'ai_catalog' || s === 'gemini' || s === 'voice') return 'ai';
+  if (s === 'suggest' || s === 'suggestion' || s === 'suggestions') return 'suggest';
+  if (s === 'map') return 'map';
+  if (SEARCH_SOURCES.has(s)) return s;
+  return 'catalog';
+}
+
+function normalizeReportReason(raw) {
+  const s = String(raw || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z_]/g, '')
+    .slice(0, 24);
+  if (s === 'stale_phone' || s === 'location') return s;
+  return null;
+}
+
+/** Memory/DB dedupe key. Only a session hash plus a card id — never an IP. */
+function stalePhoneDedupeKey(sessionHash, locationId) {
+  const sid = String(sessionHash || '').trim();
+  const loc = String(locationId || '').trim();
+  if (!/^[0-9a-f]{32}$/.test(sid) || !loc) return '';
+  return `${sid}|${loc.slice(0, 80)}`;
+}
+
+function buildSearchMeta({ query, source, resultCount, matched, engine } = {}) {
+  const q = clip(query, 80);
+  const src = normalizeSearchSource(source);
+  const count = parseResultCount(resultCount);
+  const didMatch = count == null ? Boolean(matched) : count > 0;
+  const meta = { source: src, matched: didMatch };
+  if (q) meta.q = q;
+  if (count != null) {
+    meta.result_count = count;
+    if (count === 0) meta.zero = 1;
+  }
+  if (src === 'ai') {
+    const kind = String(engine || '').trim().toLowerCase();
+    if (kind === 'gemini' || kind === 'catalog') meta.engine = kind;
+  }
+  return { meta, resultCount: count, source: src };
 }
 
 function isMissingTable(error) {
@@ -114,18 +251,16 @@ function normalizeUtm(utm) {
   };
 }
 
-/** Click ids and extra UTM fields have no columns; they live in meta. */
+/** Extra UTM fields have no columns. Ad click ids become a network label only. */
 function attributionMeta(utm) {
   if (!utm || typeof utm !== 'object') return {};
   const out = {};
   const content = cleanToken(utm.content || utm.utm_content, 48);
   const term = cleanToken(utm.term || utm.utm_term, 48);
-  const fbclid = cleanToken(utm.fbclid, 140);
-  const gclid = cleanToken(utm.gclid, 140);
+  const clickNet = clickNetFromUtm(utm);
   if (content) out.content = content;
   if (term) out.term = term;
-  if (fbclid) out.fbclid = fbclid;
-  if (gclid) out.gclid = gclid;
+  if (clickNet) out.click_net = clickNet;
   return out;
 }
 
@@ -154,12 +289,26 @@ function buildEventFields({ utm, meta, body } = {}) {
 function safeMeta(meta) {
   if (!meta || typeof meta !== 'object') return {};
   const out = {};
+  // Search rows need q/source/matched/zero/result_count plus click_net.
   for (const [k, v] of Object.entries(meta)) {
-    if (Object.keys(out).length >= 8) break;
+    if (Object.keys(out).length >= 12) break;
     const key = String(k).slice(0, 32);
+    if (!key || META_DROP.has(key)) continue;
     if (v == null) continue;
-    if (typeof v === 'boolean' || typeof v === 'number') out[key] = v;
-    else out[key] = String(v).slice(0, 140);
+    if (typeof v === 'boolean' || typeof v === 'number') {
+      if (key === 'result_count') {
+        const count = parseResultCount(v);
+        if (count == null) continue;
+        out[key] = count;
+      } else {
+        out[key] = v;
+      }
+    } else if (key === 'click_net') {
+      const net = String(v).trim().toLowerCase();
+      if (CLICK_NETS.has(net)) out[key] = net;
+    } else {
+      out[key] = String(v).slice(0, 140);
+    }
   }
   return out;
 }
@@ -171,35 +320,73 @@ function withTimeout(promise, ms) {
   ]);
 }
 
+function isMissingColumn(error, column) {
+  if (!error) return false;
+  const msg = String(error.message || '');
+  if (!msg.includes(column)) return false;
+  return error.code === '42703' || error.code === 'PGRST204' || /schema cache|could not find/i.test(msg);
+}
+
+let resultCountColumn = true;
+
+/**
+ * Build the row that would be inserted. Does not write. Session id is hashed.
+ * @returns {{ ok: true, row: object } | { ok: false, skipped: string }}
+ */
+function prepareEventRow(req, { type, locationId = null, meta = null, sid, utm, ref, path, user, resultCount } = {}) {
+  const t = String(type || '').trim().toLowerCase();
+  if (!EVENT_TYPES.has(t)) return { ok: false, skipped: 'type' };
+  const ua = req?.headers?.['user-agent'] || '';
+  if (BOT_RE.test(ua)) return { ok: false, skipped: 'bot' };
+  const body = req?.body && typeof req.body === 'object' ? req.body : {};
+  const who = user || req?.authUser || null;
+  const device = parseDevice(ua);
+  const fields = buildEventFields({ utm, meta, body });
+  const rawSid = sid !== undefined ? sid : body.sid;
+  const row = {
+    event_type: t,
+    location_id: locationId ? clip(locationId, 80) : null,
+    user_id: who?.id ? String(who.id).slice(0, 64) : null,
+    user_role: who?.role ? String(who.role).slice(0, 16) : null,
+    session_id: hashSessionId(rawSid),
+    path: clip(path !== undefined ? path : body.path, 160),
+    referrer_host: referrerHost(ref !== undefined ? ref : body.ref),
+    ...fields.columns,
+    device_type: device.deviceType,
+    os: device.os,
+    browser: device.browser,
+    meta: fields.meta,
+  };
+  const count = parseResultCount(resultCount != null ? resultCount : fields.meta.result_count);
+  if (t === 'search' && count != null) row.result_count = count;
+  return { ok: true, row };
+}
+
+async function insertEventRow(row) {
+  const payload = { ...row };
+  if (!resultCountColumn || payload.result_count == null) delete payload.result_count;
+  let { error } = await withTimeout(supabaseClient.from(TABLE).insert(payload), 1500);
+  if (error && row.result_count != null && resultCountColumn && isMissingColumn(error, 'result_count')) {
+    resultCountColumn = false;
+    console.warn(
+      '[analytics-events] result_count column missing; count stays in meta until migration 023 is applied and the process restarts'
+    );
+    const retry = { ...row };
+    delete retry.result_count;
+    ({ error } = await withTimeout(supabaseClient.from(TABLE).insert(retry), 1500));
+  }
+  return error;
+}
+
 /**
  * Record one event. Never throws; resolves quickly (timeout 1.5 s) so it can be
  * awaited inside request handlers (serverless functions may freeze after reply).
  */
-async function logEvent(req, { type, locationId = null, meta = null, sid, utm, ref, path, user } = {}) {
+async function logEvent(req, opts = {}) {
   try {
-    const t = String(type || '').trim().toLowerCase();
-    if (!EVENT_TYPES.has(t)) return { ok: false, skipped: 'type' };
-    const ua = req?.headers?.['user-agent'] || '';
-    if (BOT_RE.test(ua)) return { ok: false, skipped: 'bot' };
-    const body = req?.body && typeof req.body === 'object' ? req.body : {};
-    const who = user || req?.authUser || null;
-    const device = parseDevice(ua);
-    const fields = buildEventFields({ utm, meta, body });
-    const row = {
-      event_type: t,
-      location_id: locationId ? clip(locationId, 80) : null,
-      user_id: who?.id ? String(who.id).slice(0, 64) : null,
-      user_role: who?.role ? String(who.role).slice(0, 16) : null,
-      session_id: cleanToken(sid !== undefined ? sid : body.sid, 64),
-      path: clip(path !== undefined ? path : body.path, 160),
-      referrer_host: referrerHost(ref !== undefined ? ref : body.ref),
-      ...fields.columns,
-      device_type: device.deviceType,
-      os: device.os,
-      browser: device.browser,
-      meta: fields.meta,
-    };
-    const { error } = await withTimeout(supabaseClient.from(TABLE).insert(row), 1500);
+    const prepared = prepareEventRow(req, opts);
+    if (!prepared.ok) return prepared;
+    const error = await insertEventRow(prepared.row);
     if (error) {
       if (!isMissingTable(error)) console.warn('[analytics-events] insert', error.message);
       return { ok: false, missing: isMissingTable(error) };
@@ -208,6 +395,29 @@ async function logEvent(req, { type, locationId = null, meta = null, sid, utm, r
   } catch (err) {
     console.warn('[analytics-events] log', err.message);
     return { ok: false };
+  }
+}
+
+/** True when this session already reported a stale number for the card within the window. */
+async function hasRecentStalePhone(sessionHash, locationId, withinMs = 15 * 60 * 1000) {
+  if (!stalePhoneDedupeKey(sessionHash, locationId)) return false;
+  try {
+    const since = new Date(Date.now() - withinMs).toISOString();
+    const { data, error } = await withTimeout(
+      supabaseClient
+        .from(TABLE)
+        .select('id, meta')
+        .eq('event_type', 'report')
+        .eq('session_id', sessionHash)
+        .eq('location_id', String(locationId).slice(0, 80))
+        .gte('created_at', since)
+        .limit(8),
+      1200
+    );
+    if (error || !Array.isArray(data)) return false;
+    return data.some((row) => row?.meta?.reason === 'stale_phone');
+  } catch {
+    return false;
   }
 }
 
@@ -566,9 +776,21 @@ module.exports = {
   OTHER_TYPES,
   EVENT_TYPES,
   LOCATION_TYPES,
+  CLICK_NETS,
   parseDevice,
   referrerHost,
   logEvent,
+  prepareEventRow,
+  hashSessionId,
+  clickNetFromUtm,
+  isAdminTraffic,
+  isAdminEventRow,
+  parseResultCount,
+  normalizeSearchSource,
+  normalizeReportReason,
+  stalePhoneDedupeKey,
+  hasRecentStalePhone,
+  buildSearchMeta,
   normalizeUtm,
   attributionMeta,
   clientEventMeta,

@@ -336,9 +336,9 @@
         if (Object.keys(meta).length) body.meta = meta;
         post('/api/analytics/page', body);
       },
-      search: function (query, source, matched) {
+      search: function (query, source, matched, resultCount) {
         var ctx = context();
-        post('/api/analytics/search', {
+        var body = {
           query: query,
           source: source || 'search',
           matched: !!matched,
@@ -346,7 +346,15 @@
           utm: ctx.utm,
           ref: ctx.ref,
           path: ctx.path,
-        });
+        };
+        if (resultCount != null && resultCount !== '') {
+          var n = Number(resultCount);
+          if (isFinite(n) && n >= 0) {
+            body.result_count = Math.min(32767, Math.round(n));
+            body.matched = body.result_count > 0;
+          }
+        }
+        post('/api/analytics/search', body);
       },
       event: function (name) {
         var ctx = context();

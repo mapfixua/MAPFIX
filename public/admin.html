@@ -2632,7 +2632,7 @@
                 (s) =>
                   `<div class="list-item analytics-jump" style="margin-bottom:6px;cursor:pointer" data-jump-catalog-filter="${esc(s.q || '')}" title="Подвійний клік — шукати в каталозі">
                     <div class="list-item-title">«${esc(s.q)}»</div>
-                    <div class="list-item-meta">${esc(formatBillingDate(s.at))} · ${esc(s.source || '')}${s.matched ? ' · matched' : ''}</div>
+                    <div class="list-item-meta">${esc(formatBillingDate(s.at))} · ${esc(s.source || '')}${s.zero === 1 || s.resultCount === 0 ? ' · без результату' : (s.matched ? ' · matched' : '')}${Number.isFinite(Number(s.resultCount)) && Number(s.resultCount) > 0 ? ' · ' + Number(s.resultCount) : ''}</div>
                   </div>`
               )
               .join('')

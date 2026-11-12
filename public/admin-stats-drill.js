@@ -24,6 +24,7 @@
     view: ['👁', 'Перегляд картки', 'Перегляди карток'],
     page_view: ['📄', 'Перегляд сторінки', 'Перегляди сторінок'],
     search: ['🔍', 'Пошук', 'Пошукові запити'],
+    catalog_click: ['☰', 'Клік каталогу', 'Кліки каталогу'],
     login: ['🔐', 'Вхід', 'Входи'],
     register: ['🆕', 'Реєстрація', 'Реєстрації'],
     donate: ['💛', 'Клік «Донат»', 'Кліки «Донат»'],
@@ -330,7 +331,27 @@
       ? `<div><button type="button" class="dr-link" data-dr-loc="${h(loc.id)}">${h(loc.title)}</button>${loc.exists ? '' : ' <span class="dr-badge warn">картку видалено</span>'}</div><div class="m">${h([loc.catName, loc.address].filter(Boolean).join(' · '))}</div>`
       : '';
     const extra = [];
-    if (e.type === 'search' && e.meta?.q) extra.push(`«${h(e.meta.q)}»${e.meta.matched ? ' <span class="dr-badge ok">знайдено</span>' : ''}`);
+    if (e.type === 'search' && e.meta?.q) {
+      const count = Number(e.meta.result_count);
+      const zero = e.meta.zero === 1 || count === 0;
+      const badge = zero
+        ? ' <span class="dr-badge warn">без результату</span>'
+        : e.meta.matched
+          ? ' <span class="dr-badge ok">знайдено</span>'
+          : '';
+      const n = Number.isFinite(count) ? ` · ${count}` : '';
+      extra.push(`«${h(e.meta.q)}»${badge}${n}`);
+    }
+    if (e.type === 'claim' && e.meta?.stage === 'click') extra.push('клік');
+    if (e.type === 'claim' && e.meta?.stage === 'success') extra.push('успіх');
+    if (e.type === 'claim' && e.meta?.stage === 'mismatch') extra.push('номер не збігся');
+    if (e.type === 'report' && e.meta?.reason === 'stale_phone') extra.push('номер неактуальний');
+    if (e.type === 'report' && e.meta?.reason === 'location') extra.push('скарга на заклад');
+    if (e.type === 'catalog_click') {
+      const bits = [e.meta?.kind, e.meta?.cat, e.meta?.sub, e.meta?.service].filter(Boolean);
+      if (bits.length) extra.push(h(bits.join(' · ')));
+    }
+    if (e.meta?.click_net) extra.push(`мережа: ${h(e.meta.click_net)}`);
     if (e.type === 'page_view' && e.path) extra.push(`<code>${h(e.path)}</code>`);
     if ((e.type === 'login' || e.type === 'register') && e.meta?.method) extra.push(`спосіб: ${h(e.meta.method)}`);
     if (e.type === 'pwa') extra.push(e.meta?.kind === 'install' ? 'встановлення' : 'клік банера');
