@@ -1,5 +1,10 @@
 'use strict';
 
+const {
+  buildSearchResponseSchema,
+  buildImportBatchResponseSchema,
+} = require('./catalog-taxonomy.js');
+
 function normalizeText(text) {
   return String(text)
     .toLowerCase()
@@ -46,6 +51,104 @@ const GEMINI_MODELS = [
   'gemini-3.5-flash-lite',
   'gemini-3.1-flash-lite',
 ];
+
+/** Model-provided confidence in 0..1. Never invents a perfect score. */
+function modelConfidence(raw) {
+  if (typeof raw === 'number') {
+    if (raw >= 0 && raw <= 1) return raw;
+    if (raw > 1 && raw <= 10) return Math.round((raw / 10) * 1000) / 1000;
+    return null;
+  }
+  if (!raw || typeof raw !== 'object') return null;
+  const direct = Number(raw.confidence);
+  if (Number.isFinite(direct)) {
+    if (direct >= 0 && direct <= 1) return direct;
+    if (direct > 1 && direct <= 10) return Math.round((direct / 10) * 1000) / 1000;
+  }
+  const score = Number(raw.score);
+  if (Number.isFinite(score) && score > 0 && score <= 10) {
+    return score <= 1 ? score : Math.round((score / 10) * 1000) / 1000;
+  }
+  return null;
+}
+
+function parseGeminiJson(text) {
+  const cleaned = String(text || '')
+    .trim()
+    .replace(/^```(?:json)?/i, '')
+    .replace(/```$/, '')
+    .trim();
+  return JSON.parse(cleaned || '{}');
+}
+
+/**
+ * Shared Gemini JSON call. Tries the free-tier model list.
+ * When a responseSchema is rejected by the API, retries the same model without it.
+ */
+async function geminiGenerateJson(
+  apiKey,
+  { prompt, schema, timeoutMs = 12000, maxOutputTokens = 800, temperature = 0.15, models = GEMINI_MODELS } = {}
+) {
+  if (!apiKey) throw new Error('GEMINI_API_KEY is not set');
+  let lastError = null;
+  for (const model of models) {
+    const modes = schema ? ['schema', 'plain'] : ['plain'];
+    let skipModel = false;
+    for (const mode of modes) {
+      if (skipModel) break;
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), timeoutMs);
+      try {
+        const generationConfig = {
+          temperature,
+          maxOutputTokens,
+          responseMimeType: 'application/json',
+        };
+        if (mode === 'schema') generationConfig.responseSchema = schema;
+        const res = await fetch(
+          `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(apiKey)}`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            signal: controller.signal,
+            body: JSON.stringify({
+              contents: [{ parts: [{ text: prompt }] }],
+              generationConfig,
+            }),
+          }
+        );
+        if (!res.ok) {
+          const errText = await res.text();
+          const err = new Error(`Gemini ${res.status} (${model}): ${errText.slice(0, 180)}`);
+          err.status = res.status;
+          lastError = err;
+          if (mode === 'schema' && (res.status === 400 || /schema|enum|INVALID_ARGUMENT/i.test(errText))) {
+            continue;
+          }
+          if (res.status === 429 || res.status === 404) {
+            skipModel = true;
+            break;
+          }
+          throw err;
+        }
+        const data = await res.json();
+        const raw = (data?.candidates?.[0]?.content?.parts || []).map((part) => part.text || '').join('').trim();
+        return parseGeminiJson(raw);
+      } catch (err) {
+        lastError = err;
+        if (err.name === 'AbortError') {
+          skipModel = true;
+          break;
+        }
+        if (mode === 'schema') continue;
+        break;
+      } finally {
+        clearTimeout(timer);
+      }
+    }
+  }
+  throw lastError || new Error('Gemini unavailable');
+}
 
 function tokenize(text) {
   return normalizeText(text)
@@ -284,94 +387,62 @@ ${JSON.stringify(catalog)}
 
 Запит користувача: "${text}"
 
-Поверни ТІЛЬКИ валідний JSON без markdown:
-{"matches":[{"type":"service|subcategory|category","category":"ключ","subcategory":"ключ_або_null","service":"точна_назва_або_null","score":1-10}]}
+Поверни JSON за схемою. category, subcategory і service — лише значення з enums схеми (це ключі каталогу і точні назви послуг).
 
 Правила:
 - до 8 найбільш релевантних matches, від найкращого до гіршого
-- category/subcategory — ТІЛЬКИ існуючі ключі з каталогу
-- service — ТІЛЬКИ точна назва з services у відповідній підкатегорії, або null
-- type=service лише якщо є і subcategory, і service
-- type=subcategory якщо є subcategory без конкретної послуги
+- type=service лише якщо є і subcategory, і service саме цієї підкатегорії
+- type=subcategory якщо є subcategory без конкретної послуги (service тоді будь-який id з тієї підкатегорії — його відкинемо)
 - type=category якщо підходить лише категорія
+- score — релевантність 1–10
+- confidence — впевненість від 0 до 1 саме для цього match; не став 1 без сильного збігу
 - враховуй синоніми й розмовні формулювання українською (напр. "постригтись" → перукарня/стрижка)
 - якщо нічого не підходить — {"matches":[]}`;
 
-  let lastError = null;
+  const parsed = await geminiGenerateJson(apiKey, {
+    prompt,
+    schema: buildSearchResponseSchema(masterCatalog),
+    timeoutMs: 7000,
+    maxOutputTokens: 900,
+    temperature: 0.15,
+  });
+  const matches = Array.isArray(parsed.matches) ? parsed.matches : [];
+  const suggestions = [];
 
-  for (const model of GEMINI_MODELS) {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 7000);
-    try {
-      const res = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(apiKey)}`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          signal: controller.signal,
-          body: JSON.stringify({
-            contents: [{ parts: [{ text: prompt }] }],
-            generationConfig: {
-              temperature: 0.15,
-              maxOutputTokens: 700,
-              responseMimeType: 'application/json',
-            },
-          }),
-        }
-      );
+  for (const m of matches) {
+    const confidence = modelConfidence(m);
+    if (confidence == null) continue;
+    const validated = validateResult(
+      {
+        category: m.category,
+        subcategory: m.type === 'category' ? null : m.subcategory,
+        service: m.type === 'service' ? m.service : null,
+      },
+      masterCatalog
+    );
+    if (!validated.category) continue;
 
-      if (!res.ok) {
-        const errText = await res.text();
-        lastError = new Error(`Gemini ${res.status} (${model}): ${errText.slice(0, 200)}`);
-        if (res.status === 429 || res.status === 404) continue;
-        throw lastError;
-      }
+    let type = String(m.type || '').toLowerCase();
+    if (validated.service && validated.subcategory) type = 'service';
+    else if (validated.subcategory) type = 'subcategory';
+    else type = 'category';
 
-      const data = await res.json();
-      const raw = data?.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || '{}';
-      const parsed = JSON.parse(raw);
-      const matches = Array.isArray(parsed.matches) ? parsed.matches : [];
-      const suggestions = [];
-
-      for (const m of matches) {
-        const validated = validateResult(
-          {
-            category: m.category,
-            subcategory: m.subcategory,
-            service: m.service,
-          },
-          masterCatalog
-        );
-        if (!validated.category) continue;
-
-        let type = String(m.type || '').toLowerCase();
-        if (validated.service && validated.subcategory) type = 'service';
-        else if (validated.subcategory) type = 'subcategory';
-        else type = 'category';
-
-        const item = toSuggestion(
-          {
-            category: validated.category,
-            subcategory: validated.subcategory,
-            service: validated.service,
-          },
-          Number(m.score) || 8,
-          'gemini'
-        );
-        item.type = type;
-        suggestions.push(item);
-      }
-
-      return enrichSuggestions(dedupeSuggestions(suggestions), masterCatalog);
-    } catch (err) {
-      lastError = err;
-      if (err.name === 'AbortError') continue;
-    } finally {
-      clearTimeout(timer);
-    }
+    const rankScore = Number(m.score);
+    const item = toSuggestion(
+      {
+        category: validated.category,
+        subcategory: validated.subcategory,
+        service: validated.service,
+      },
+      Number.isFinite(rankScore) && rankScore > 0 ? rankScore : confidence,
+      'gemini'
+    );
+    item.type = type;
+    item.confidence = confidence;
+    suggestions.push(item);
   }
 
-  throw lastError || new Error('Gemini unavailable');
+  return enrichSuggestions(dedupeSuggestions(suggestions), masterCatalog);
 }
 
 async function geminiParseSearch(text, masterCatalog, apiKey) {
@@ -384,7 +455,7 @@ async function geminiParseSearch(text, masterCatalog, apiKey) {
     category: best.category,
     subcategory: best.subcategory,
     service: best.service,
-    confidence: best.score || 10,
+    confidence: Number.isFinite(best.confidence) ? best.confidence : modelConfidence(best),
     source: 'gemini',
     query: text,
     suggestions: ranked,
@@ -441,7 +512,7 @@ async function parseVoiceSearch(text, masterCatalog, options = {}) {
           category: best.category,
           subcategory: best.subcategory,
           service: best.service,
-          confidence: best.score || gemini.confidence || 10,
+          confidence: Number.isFinite(gemini.confidence) ? gemini.confidence : modelConfidence(best),
           source: 'gemini',
           query: trimmed,
           suggestions: merged.slice(0, 8),
@@ -537,53 +608,27 @@ ${JSON.stringify(catalog)}
 Заклади:
 ${lines}
 
-Поверни ТІЛЬКИ JSON:
-{"matches":[{"i":0,"category":"ключ_або_null","subcategory":"ключ_або_null","services":["точна_назва"]}]}
+Поверни JSON за схемою. category, subcategory і services — лише enums схеми.
 
 Правила:
 - i — індекс рядка в списку вище (0..${chunk.length - 1})
-- category/subcategory — ТІЛЬКИ ключі з каталогу
-- services — масив ТОЧНИХ назв послуг з цієї підкатегорії (0–6 найрелевантніших для закладу)
-- якщо не впевнений у конкретних послугах — порожній масив (точку все одно приймаємо за category+subcategory)
-- якщо заклад НЕ надає послуг з каталогу (магазин продуктів, аптека, банк, АЗС без СТО, кафе/ресторан, школа загальна без курсів тощо) — category: null
-- якщо впевнений у категорії, але не в підкатегорії — subcategory: null (такі відсіємо)
-- потрібна і category, і subcategory для прийняття
+- accepted=false якщо заклад НЕ надає послуг з каталогу (магазин продуктів, аптека, банк, АЗС без СТО, кафе/ресторан, школа загальна без курсів)
+- accepted=true лише коли є і category, і subcategory
+- services — точні назви послуг цієї підкатегорії (0–6). Порожній масив, якщо конкретні послуги неясні
+- confidence — число від 0 до 1, наскільки впевнений саме в цій відповіді
 - hint: можна врахувати як підказку пошуку, але не копіюй сліпо, якщо тип закладу інший`;
 
       try {
-        const controller = new AbortController();
-        const timer = setTimeout(() => controller.abort(), 25000);
-        let data;
-        try {
-          const res = await fetch(
-            `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent?key=${encodeURIComponent(apiKey)}`,
-            {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              signal: controller.signal,
-              body: JSON.stringify({
-                contents: [{ parts: [{ text: prompt }] }],
-                generationConfig: {
-                  temperature: 0.1,
-                  maxOutputTokens: 2000,
-                  responseMimeType: 'application/json',
-                },
-              }),
-            }
-          );
-          if (!res.ok) {
-            const errText = await res.text();
-            throw new Error(`Gemini ${res.status}: ${errText.slice(0, 200)}`);
-          }
-          data = await res.json();
-        } finally {
-          clearTimeout(timer);
-        }
-
-        const raw = data?.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || '{}';
-        const parsed = JSON.parse(raw);
+        const parsed = await geminiGenerateJson(apiKey, {
+          prompt,
+          schema: buildImportBatchResponseSchema(masterCatalog),
+          timeoutMs: 25000,
+          maxOutputTokens: 2000,
+          temperature: 0.1,
+        });
         const matches = Array.isArray(parsed.matches) ? parsed.matches : [];
         for (const m of matches) {
+          if (m.accepted === false) continue;
           const idxInChunk = Number(m.i);
           if (!Number.isInteger(idxInChunk) || idxInChunk < 0 || idxInChunk >= chunk.length) continue;
           const validated = validateResult(
@@ -597,7 +642,13 @@ ${lines}
             validated.subcategory,
             m.services || m.service
           );
-          out[globalIdx] = classificationFromMatch(validated, services, 'gemini', 10);
+          const confidence = modelConfidence(m);
+          out[globalIdx] = classificationFromMatch(
+            validated,
+            services,
+            'gemini',
+            confidence == null ? 0 : confidence
+          );
         }
       } catch (err) {
         console.warn('[search-ai] classifyPlacesForImport chunk:', err.message);
@@ -657,4 +708,10 @@ module.exports = {
   localParseSearch,
   localRankSearch,
   buildSearchIndex,
+  matchCatalogServices,
+  GEMINI_MODELS,
+  modelConfidence,
+  geminiGenerateJson,
+  buildSearchResponseSchema,
+  buildImportBatchResponseSchema,
 };

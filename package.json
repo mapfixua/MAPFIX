@@ -11,7 +11,11 @@
     "db:sync": "node scripts/sync-database.js",
     "db:verify": "node scripts/verify-database-schema.js",
     "db:harden": "node scripts/apply-security-hardening.js",
+    "test": "node --test test/*.test.js",
     "import:places": "node scripts/import-places.js",
+    "import:wave-a": "node scripts/import-places-v2.js --wave A",
+    "import:wave-a:plan": "node scripts/import-places-v2.js --wave A --plan",
+    "import:backfill-place-ids": "node scripts/backfill-google-place-ids.js",
     "import:kotsyubynske": "node scripts/import-places.js --source osm --city kotsyubynske --category beauty --write"
   },
   "dependencies": {

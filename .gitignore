@@ -1,4 +1,6 @@
 node_modules/
+data/places-cache/
+reports/
 .env
 .env.local
 .env.vercel.tmp

@@ -973,6 +973,7 @@
           <button type="button" data-admin-nav="trash">Кошик <span class="nav-count" id="navCountTrash">0</span></button>
           <button type="button" data-admin-nav="catalog">Каталог <span class="nav-count" id="navCountCatalog">0</span></button>
           <button type="button" data-admin-nav="import">Імпорт</button>
+          <button type="button" data-admin-nav="staging">Імпорт v2</button>
         </aside>
 
         <div class="admin-main">
@@ -1252,6 +1253,40 @@
             </div>
             <div id="adminTrashList"><p class="list-item-meta">Порожньо</p></div>
             <div id="trashActionResult" class="msg" style="display:none;margin-top:10px"></div>
+          </div>
+
+          <div id="adminPaneStaging" class="admin-pane card">
+            <h2>Імпорт v2 — черга перевірки</h2>
+            <p class="field-hint">
+              Хвиля заповнює лише таблицю <b>import_candidates</b>. На карту нічого не потрапляє, поки ви не натиснете «Опублікувати схвалені».
+              Нові картки отримують <b>import_source=places_v2</b> і <b>google_place_id</b>.
+              Видалені картки не відновлюються, зайняті майстром не перезаписуються.
+            </p>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:end;margin-bottom:12px">
+              <div class="field-block" style="margin:0;min-width:120px">
+                <label for="placesV2Wave">Хвиля</label>
+                <select id="placesV2Wave">
+                  <option value="A">A — сантехнік, кондиціонери, стоматологія, телефони, компʼютери, вет, пекарня</option>
+                </select>
+              </div>
+              <div class="field-block" style="margin:0;min-width:160px">
+                <label for="placesV2Status">Статус</label>
+                <select id="placesV2Status">
+                  <option value="pending">pending</option>
+                  <option value="">усі</option>
+                  <option value="approved">approved</option>
+                  <option value="rejected">rejected</option>
+                  <option value="published">published</option>
+                </select>
+              </div>
+              <button type="button" id="placesV2Reload" class="btn-secondary" style="width:auto">Оновити</button>
+              <button type="button" id="placesV2Bulk" style="width:auto">Схвалити впевнені нові</button>
+              <button type="button" id="placesV2Publish" class="btn-secondary" style="width:auto">Опублікувати схвалені</button>
+            </div>
+            <p class="field-hint" id="placesV2Summary" style="margin-top:0"></p>
+            <div id="placesV2Map" style="height:240px;border-radius:12px;border:1px solid #e4e6eb;margin-bottom:12px;background:#eef2f6"></div>
+            <div id="placesV2List"><p class="list-item-meta">Відкрийте розділ, щоб завантажити чергу.</p></div>
+            <div id="placesV2Msg" class="msg" style="display:none"></div>
           </div>
 
           <div id="adminPaneImport" class="admin-pane card">
@@ -2166,6 +2201,7 @@
       if (name === 'import') {
         setTimeout(() => initRegionImportMap(), 50);
       }
+      if (name === 'staging' && window.loadPlacesV2) window.loadPlacesV2();
     }
 
     function locEngagementStripHtml(loc) {
@@ -7703,6 +7739,7 @@
     })();
   </script>
   <script src="/admin-stats-drill.js"></script>
+  <script src="/admin-places-v2.js"></script>
   <script src="/mf-analytics.js" defer></script>
 </body>
 </html>

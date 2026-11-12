@@ -95,6 +95,7 @@ const {
   locationNeedsGoogleReviews,
   enrichLocationGoogleReviews,
 } = require('./places-import.js');
+const { mountPlacesV2Admin } = require('./routes/places-v2-admin.js');
 const {
   fetchLocationsFromSupabase,
   syncAllLocationsToSupabase,
@@ -1460,7 +1461,7 @@ app.get('/api/ping', (req, res) => {
 });
 
 // Fields the public map never reads; dropped from /api/data to shrink it.
-const PUBLIC_LOC_OMIT = ['createdAt', 'updatedAt', 'importSource', 'claimedAt', 'deletedAt', 'deletedReason', 'customSubcats'];
+const PUBLIC_LOC_OMIT = ['createdAt', 'updatedAt', 'importSource', 'claimedAt', 'deletedAt', 'deletedReason', 'customSubcats', 'googlePlaceId', 'businessStatus', 'lastReviewAt', 'reviewDates'];
 
 app.get('/api/data', async (req, res) => {
   try {
@@ -2954,6 +2955,13 @@ app.post('/api/admin/import-city-gemini', requireAuth, requireAdmin, async (req,
     console.error('[POST /api/admin/import-city-gemini]', err);
     res.status(500).json({ error: err.message || 'Помилка імпорту області' });
   }
+});
+
+mountPlacesV2Admin(app, {
+  requireAuth,
+  requireAdmin,
+  readData,
+  persistLocationsPatch,
 });
 
 app.post('/api/admin/locations/refresh-google-reviews', requireAuth, requireAdmin, async (req, res) => {

@@ -35,6 +35,10 @@ function toDbRow(loc) {
     claimed_at: loc.claimedAt || null,
     deleted_at: loc.deletedAt || null,
     deleted_reason: loc.deletedReason || null,
+    google_place_id: loc.googlePlaceId ? String(loc.googlePlaceId).replace(/^places\//, '') : null,
+    business_status: loc.businessStatus || null,
+    last_review_at: loc.lastReviewAt || null,
+    review_dates: Array.isArray(loc.reviewDates) ? loc.reviewDates : [],
     updated_at: new Date().toISOString(),
   };
 }
@@ -66,6 +70,10 @@ function fromDbRow(row) {
     claimedAt: row.claimed_at || null,
     deletedAt: row.deleted_at || null,
     deletedReason: row.deleted_reason || null,
+    googlePlaceId: row.google_place_id || null,
+    businessStatus: row.business_status || null,
+    lastReviewAt: row.last_review_at || null,
+    reviewDates: Array.isArray(row.review_dates) ? row.review_dates : [],
     updatedAt: row.updated_at || null,
     createdAt: row.created_at || null,
   };
@@ -119,6 +127,10 @@ async function upsertLocationsToSupabase(locations) {
 
   // Drop optional columns gradually if migration not applied yet
   const stripMatchers = [
+    [/google_place_id|business_status|last_review_at|review_dates/i, (r) => {
+      const { google_place_id, business_status, last_review_at, review_dates, ...rest } = r;
+      return rest;
+    }],
     [/claimed_at/i, (r) => {
       const { claimed_at, ...rest } = r;
       return rest;
