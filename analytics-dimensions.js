@@ -319,6 +319,11 @@ function dayRow(row) {
   return {
     day: row.day,
     sessions: metrics.sessions,
+    // The daily charts read uniqueVisits, pageViews and mapLoads. Sessions are
+    // the unique-session grain from analytics_dashboard.
+    uniqueVisits: metrics.sessions,
+    pageViews: metrics.pageViews,
+    mapLoads: metrics.mapLoads,
     searches: metrics.searches,
     zeroSearches: metrics.zeroSearches,
     impressions: metrics.impressions,
@@ -340,6 +345,8 @@ function buildExportSheets({ days, districts, categories, sources, searches, mas
   const kpi = (days || []).map((row) => ({
     День: row.day,
     Сесії: num(row.sessions),
+    'Перегляди сторінок': num(row.pageViews),
+    'Відкриття карти': num(row.mapLoads),
     Пошуки: num(row.searches),
     'Пошуки без результату': num(row.zeroSearches),
     Покази: num(row.impressions),

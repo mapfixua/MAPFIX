@@ -204,6 +204,15 @@ function emptySpan() {
   };
 }
 
+function describeRpcError(err) {
+  const code = err && err.code ? String(err.code) : '';
+  const message = String((err && err.message) || err || 'невідома помилка')
+    .replace(/\s+/g, ' ')
+    .trim();
+  const text = code && !message.includes(code) ? `${code}: ${message}` : message;
+  return text.slice(0, 500);
+}
+
 /**
  * Turn one dashboard payload plus the card list into the screen and the workbook.
  * Call rate is calls / card opens inside this same payload, never lifetime views.
@@ -217,6 +226,7 @@ function assembleStatistics({
   reports,
   catalog,
   missing = false,
+  rpcError = '',
   now = new Date(),
 } = {}) {
   const cur = current || emptySpan();
@@ -224,7 +234,12 @@ function assembleStatistics({
   const period = dims.withRates(cur.totals);
   const previousPeriod = dims.withRates(prev.totals);
   const delta = dims.deltaMap(period, previousPeriod);
-  const daily = dims.fillDays(range.fromDay, range.toDay, asArray(cur.days)).map((row) => dims.dayRow(row));
+  const failed = Boolean(rpcError);
+  // A failed RPC has no measured days. Filling the range with zeros draws the
+  // same flat charts as a week without traffic.
+  const daily = failed
+    ? []
+    : dims.fillDays(range.fromDay, range.toDay, asArray(cur.days)).map((row) => dims.dayRow(row));
   const districts = placeList(cur.districts, 'district', catalog);
   const categories = placeList(cur.categories, 'category', catalog);
   const sources = sourceList(cur.sources);
@@ -254,7 +269,12 @@ function assembleStatistics({
     'Стрілка — зміна проти попереднього вікна тієї ж довжини (' +
     compare +
     '). Call rate = дзвінки / відкриття карток за обраний період. Сьогодні читається з журналу, попередні дні — зі зведень.';
-  if (missing) {
+  if (failed) {
+    hint =
+      'Не вдалося порахувати ключові метрики. Запит analytics_dashboard завершився помилкою: ' +
+      String(rpcError) +
+      '. Графіки за період не показано.';
+  } else if (missing) {
     hint =
       'Таблиці зведень ще немає. Застосуйте міграцію 024_analytics_district_category_rollups.sql, потім npm run analytics:backfill. Онлайн працює як раніше.';
   } else if (cur.partial) {
@@ -277,7 +297,8 @@ function assembleStatistics({
     compareLabel: compare,
     hint,
     rollupsMissing: Boolean(missing),
-    historyPartial: Boolean(cur.partial),
+    rollupError: failed ? String(rpcError) : null,
+    historyPartial: Boolean(cur.partial) && !failed,
     period,
     previous: previousPeriod,
     delta,
@@ -343,7 +364,8 @@ async function buildAdminTraffic({ query, locations, reports, catalog, rpc, now 
         now,
       });
     }
-    console.warn('[analytics rollup]', err.message);
+    const rpcError = describeRpcError(err);
+    console.warn('[analytics rollup]', rpcError);
     return assembleStatistics({
       current: emptySpan(),
       previous: emptySpan(),
@@ -352,7 +374,7 @@ async function buildAdminTraffic({ query, locations, reports, catalog, rpc, now 
       locations,
       reports,
       catalog,
-      missing: true,
+      rpcError,
       now,
     });
   }
@@ -403,6 +425,7 @@ module.exports = {
   PURGE_LIMIT,
   ROLLUP_BUDGET_MS,
   isMissingRpc,
+  describeRpcError,
   sanitizeFilters,
   resolveRange,
   assembleStatistics,
