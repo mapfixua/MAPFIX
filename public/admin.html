@@ -2539,6 +2539,7 @@
     const ANALYTICS_WINDOW = 10;
     let analyticsDailySeries = [];
     let analyticsTodayIso = null;
+    let analyticsRollupError = '';
 
     function analyticsWindowRangeText(windowRows, todayIso) {
       if (!windowRows.length) return 'Немає даних';
@@ -2552,6 +2553,11 @@
       const slider = document.getElementById('analyticsRangeSlider');
       const label = document.getElementById('analyticsRangeLabel');
       if (!kpisEl) return;
+      if (analyticsRollupError) {
+        kpisEl.innerHTML = `<p class="list-item-meta">${esc(analyticsRollupError)}</p>`;
+        if (label) label.textContent = 'Помилка зведення';
+        return;
+      }
       const series = analyticsDailySeries;
       if (!series.length) {
         kpisEl.innerHTML = '<p class="list-item-meta">Дані зʼявляться після трафіку</p>';
@@ -2654,6 +2660,7 @@
         `<div class="stat-card${highlight ? ' stat-highlight' : ''}"${drillAttrs(drill)}><div class="stat-label">${esc(label)}</div><div class="stat-value">${esc(String(value ?? 0))}${analyticsDeltaHtml(deltaKey ? dataDelta[deltaKey] : null)}</div></div>`;
       let dataDelta = {};
       analyticsLoading = true;
+      analyticsRollupError = '';
       try {
         const data = await apiFetch('/api/admin/analytics?' + analyticsFilterQuery());
         window.adminAnalyticsLast = data;
@@ -2699,12 +2706,13 @@
             : 'Ніхто не на звʼязку (відкрийте карту в іншій вкладці для перевірки).';
         }
 
-        const series = padAnalyticsDaily(data.daily || []);
+        analyticsRollupError = data.rollupError ? String(data.hint || data.rollupError) : '';
+        const series = analyticsRollupError ? [] : padAnalyticsDaily(data.daily || []);
         analyticsDailySeries = series;
         analyticsTodayIso = todayIso || (series.length ? series[series.length - 1].day : null);
         const slider = document.getElementById('analyticsRangeSlider');
         if (slider) {
-          const maxStart = Math.max(0, series.length - ANALYTICS_WINDOW);
+          const maxStart = analyticsRollupError ? 0 : Math.max(0, series.length - ANALYTICS_WINDOW);
           slider.min = '0';
           slider.max = String(maxStart);
           slider.value = String(maxStart);
@@ -2714,7 +2722,9 @@
         const demandEl = document.getElementById('analyticsDemandStats');
         if (demandEl) {
           const zeroShare = period.zeroShare != null ? period.zeroShare : 0;
-          demandEl.innerHTML = [
+          demandEl.innerHTML = analyticsRollupError
+            ? `<p class="list-item-meta">${esc(analyticsRollupError)}</p>`
+            : [
             ['Унікальні сесії', period.sessions || 0, false, 'events:page_view', 'sessions'],
             ['Відкриття карти', period.mapLoads || 0, false, 'events:page_view', 'mapLoads'],
             ['Пошуки', period.searches || 0, false, 'events:search', 'searches'],
@@ -2726,7 +2736,8 @@
             .join('');
         }
         const funnelEl = document.getElementById('analyticsFunnel');
-        if (funnelEl) {
+        if (funnelEl && analyticsRollupError) funnelEl.innerHTML = '';
+        else if (funnelEl) {
           const contacts = period.contacts || (period.calls || 0) + (period.chats || 0) + (period.directions || 0);
           funnelEl.innerHTML = [
             ['Пошук', period.searches || 0],
@@ -2759,7 +2770,9 @@
         }
 
         const ctaEl = document.getElementById('analyticsCtaStats');
-        if (ctaEl) {
+        if (ctaEl && analyticsRollupError) {
+          ctaEl.innerHTML = `<p class="list-item-meta">${esc(analyticsRollupError)}</p>`;
+        } else if (ctaEl) {
           const contacts = period.contacts || (period.calls || 0) + (period.chats || 0) + (period.directions || 0);
           ctaEl.innerHTML = [
             ['📞 Дзвінки', period.calls || 0, true, 'events:call', 'calls'],
@@ -2888,9 +2901,12 @@
         bindAnalyticsJumps(document.getElementById('analyticsTopLocs'));
 
         const kpiSheet = (data.exportSheets || []).find((sheet) => sheet.name === 'KPI');
-        document.getElementById('analyticsDaily').innerHTML = analyticsSheetTable(
-          (kpiSheet?.rows || []).slice().reverse()
-        );
+        const dailyHistory = document.getElementById('analyticsDaily');
+        if (dailyHistory) {
+          dailyHistory.innerHTML = analyticsRollupError
+            ? `<p class="list-item-meta">${esc(analyticsRollupError)}</p>`
+            : analyticsSheetTable((kpiSheet?.rows || []).slice().reverse());
+        }
       } catch (err) {
         kpisEl.innerHTML = `<p class="list-item-meta" style="color:#b91c1c">${esc(err.message)}</p>`;
       } finally {
