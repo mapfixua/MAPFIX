@@ -140,6 +140,11 @@ const PRIORITY_SUBS = [
   { cat: 'repair', sub: 'appliances' },
   { cat: 'repair', sub: 'phones' },
   { cat: 'pets', sub: 'grooming' },
+  { cat: 'medical', sub: 'dentistry' },
+  { cat: 'home', sub: 'ac_climate' },
+  { cat: 'repair', sub: 'computers' },
+  { cat: 'beauty', sub: 'brows' },
+  { cat: 'beauty', sub: 'depilation' },
 ];
 
 /** A district listing needs at least this many cards to be indexed and listed in the sitemap. */
@@ -272,31 +277,89 @@ Object.assign(SUB_COPY, {
   'repair/appliances': simpleSubCopy('Ремонт побутової техніки', 'пральна машина, холодильник, плита', 'ремонт пральної машини, ремонт холодильника'),
   'repair/phones': simpleSubCopy('Ремонт телефонів', 'екран, батарея, роз\'єм', 'ремонт телефонів, заміна екрана'),
   'pets/grooming': simpleSubCopy('Грумінг', 'стрижка й догляд за тваринами', 'грумінг, стрижка собак'),
+  'medical/dentistry': {
+    h1: (p) => `Стоматологія${p}`,
+    title: (p) => `Стоматологія${p} — стоматолог поруч | Mapfix`,
+    description: (p) =>
+      `Стоматологія${p}: консультація, чистка зубів, пломба, відбілювання. Оберіть стоматолога на карті Mapfix і зателефонуйте напряму, без комісії.`,
+    keywords: 'стоматолог Київ, стоматологія Коцюбинське, чистка зубів, пломба, стоматолог поруч',
+  },
+  'home/ac_climate': {
+    h1: (p) => `Ремонт і встановлення кондиціонерів${p}`,
+    title: (p) => `Ремонт і встановлення кондиціонерів${p} | Mapfix`,
+    description: (p) =>
+      `Ремонт і встановлення кондиціонерів${p}: монтаж спліт-системи, чистка і заправка фреону. Дивіться майстрів на карті Mapfix і телефонуйте без комісії.`,
+    keywords: 'ремонт кондиціонерів Київ, встановлення кондиціонера, заправка фреону, кондиціонер поруч',
+  },
+  'repair/computers': {
+    h1: (p) => `Ремонт комп'ютерів і ноутбуків${p}`,
+    title: (p) => `Ремонт комп'ютерів і ноутбуків${p} | Mapfix`,
+    description: (p) =>
+      `Ремонт комп'ютерів і ноутбуків${p}: діагностика, чистка, встановлення Windows, заміна диска. Оберіть майстра на карті Mapfix і зателефонуйте напряму.`,
+    keywords: 'ремонт комп\'ютерів Київ, ремонт ноутбуків, чистка ноутбука, ремонт комп\'ютера',
+  },
+  'beauty/brows': {
+    h1: (p) => `Брови: корекція, ламінування${p}`,
+    title: (p) => `Брови${p}: корекція, ламінування | Mapfix`,
+    description: (p) =>
+      `Корекція, ламінування і фарбування брів${p}. Нарощування вій — на карті Mapfix, телефонуйте майстру напряму, без комісії.`,
+    keywords: 'брови Київ, корекція брів, ламінування брів, нарощування вій',
+  },
+  'beauty/depilation': {
+    h1: (p) => `Депіляція та епіляція${p}`,
+    title: (p) => `Депіляція та епіляція${p} | Mapfix`,
+    description: (p) =>
+      `Депіляція та епіляція${p}: шугаринг, віск і лазер. Запишіться до майстра на карті Mapfix без комісії посередника.`,
+    keywords: 'депіляція Київ, епіляція, шугаринг, лазерна епіляція',
+  },
 });
 
-/** Unique intro and FAQ for "service + district" pages, so they are not thin copies of the city page. */
+/** Unique intro and FAQ. District pages stay local; a plain city category page reuses the same questions with «у Києві». */
 function areaServiceContent(seo, landing, listing) {
-  if (!landing.area || !landing.cat) return null;
-  const area = SEO_AREAS[resolveAreaKey(landing.area)];
-  if (!area) return null;
-  const name = seo.h1.replace(placeBit(landing.area), '').trim() || seo.h1;
+  if (!landing.cat) return null;
+  const cityOnly = !landing.area;
+  if (cityOnly && landing.sub) return null;
+  const area = cityOnly ? null : SEO_AREAS[resolveAreaKey(landing.area)];
+  if (!cityOnly && !area) return null;
+  const name = seo.h1.replace(placeBit(cityOnly ? '' : landing.area), '').trim() || seo.h1;
   const lower = name.charAt(0).toLowerCase() + name.slice(1);
   const count = listing.filtered.length;
   const sample = listing.filtered.slice(0, 3).map((l) => stripHeadingDecor(l.title || '')).filter(Boolean);
-  const radius = AREA_RADIUS_KM[area.key];
-  const intro = `${name} на ${area.on}: ${count} ${placesWord(count)} у радіусі близько ${radius} км від центру району ${area.name}${sample.length ? `, зокрема ${sample.join(', ')}` : ''}. Номери телефонів, адреси й маршрут — на картці кожного майстра. Ви домовляєтесь напряму, Mapfix не бере комісії.`;
+  const sampleBit = sample.length ? `, зокрема ${sample.join(', ')}` : '';
+  const tail =
+    'Номери телефонів, адреси й маршрут — на картці кожного майстра. Ви домовляєтесь напряму, Mapfix не бере комісії.';
+  const priceAnswer =
+    'Ціни встановлює сам майстер. Якщо прайс є, він видно на картці; якщо ні — уточнюйте телефоном. Mapfix не додає націнки.';
+  const joinAnswer =
+    'Зареєструйтесь безкоштовно на mapfix.com.ua/register.html і додайте картку з адресою, телефоном і прайсом. Якщо ваш заклад уже є на карті — відкрийте картку й підтвердіть її своїм номером.';
+  let intro;
+  let whereFind;
+  let countSentence;
+  let offerWhere;
+  if (cityOnly) {
+    intro = `${name} у Києві: ${count} ${placesWord(count)}${sampleBit}. ${tail}`;
+    whereFind = 'у Києві';
+    countSentence = `Тут зібрано ${count} ${placesWord(count)} у Києві.`;
+    offerWhere = 'у Києві';
+  } else {
+    const radius = AREA_RADIUS_KM[area.key];
+    intro = `${name} на ${area.on}: ${count} ${placesWord(count)} у радіусі близько ${radius} км від центру району ${area.name}${sampleBit}. ${tail}`;
+    whereFind = `на ${area.on}`;
+    countSentence = `Тут зібрано ${count} ${placesWord(count)} саме на ${area.on}.`;
+    offerWhere = `на ${area.on}`;
+  }
   const faq = [
     {
-      q: `Як швидко знайти: ${lower} на ${area.on}?`,
-      a: `Відкрийте цю сторінку або карту Mapfix з фільтром «${name}», оберіть найближчого майстра й зателефонуйте з картки. Тут зібрано ${count} ${placesWord(count)} саме на ${area.on}.`,
+      q: `Як швидко знайти: ${lower} ${whereFind}?`,
+      a: `Відкрийте цю сторінку або карту Mapfix з фільтром «${name}», оберіть найближчого майстра й зателефонуйте з картки. ${countSentence}`,
     },
     {
       q: 'Скільки коштують послуги?',
-      a: 'Ціни встановлює сам майстер. Якщо прайс є, він видно на картці; якщо ні — уточнюйте телефоном. Mapfix не додає націнки.',
+      a: priceAnswer,
     },
     {
-      q: `Я надаю послугу «${lower}» на ${area.on}. Як потрапити на карту?`,
-      a: 'Зареєструйтесь безкоштовно на mapfix.com.ua/register.html і додайте картку з адресою, телефоном і прайсом. Якщо ваш заклад уже є на карті — відкрийте картку й підтвердіть її своїм номером.',
+      q: `Я надаю послугу «${lower}» ${offerWhere}. Як потрапити на карту?`,
+      a: joinAnswer,
     },
   ];
   return { intro, faq };
@@ -1658,6 +1721,24 @@ function similarLocations(loc, locations, limit) {
     .map((entry) => entry.row);
 }
 
+/**
+ * District subcategory URL when that listing is indexable, otherwise the city
+ * URL /kyiv/<cat>/<sub>. Empty when the route would be noindex or is not a catalog sub.
+ */
+function indexableServicePath(loc, subKey, catalog, locations) {
+  if (!loc || !loc.cat || !subKey) return '';
+  if (!catalog?.[loc.cat]?.subcats?.[subKey]) return '';
+  for (const area of preferredAreaKeys(loc)) {
+    if (isIndexableListing({ loc: '', cat: loc.cat, area, sub: subKey, page: 1 }, locations)) {
+      return canonicalPath({ cat: loc.cat, area, sub: subKey });
+    }
+  }
+  if (isIndexableListing({ loc: '', cat: loc.cat, area: '', sub: subKey, page: 1 }, locations)) {
+    return canonicalPath({ cat: loc.cat, sub: subKey });
+  }
+  return '';
+}
+
 function cardCrawlerHtml(seo, loc, catalog, locations) {
   const catName = categoryLabelOf(catalog, loc.cat);
   const districtKey = indexableDistrictCategory(loc, locations);
@@ -1674,9 +1755,18 @@ function cardCrawlerHtml(seo, loc, catalog, locations) {
       `<a href="${escapeHtmlAttr(canonicalPath({ cat: loc.cat }))}">${escapeHtml(`${catName} у Києві`)}</a>`
     );
   }
-  const services = (Array.isArray(loc.subcats) ? loc.subcats : [])
-    .map((key) => subcatLabel(catalog, loc.cat, key))
-    .filter(Boolean);
+  const seenSubs = new Set();
+  const serviceItems = [];
+  for (const rawKey of Array.isArray(loc.subcats) ? loc.subcats : []) {
+    const subKey = String(rawKey || '').trim();
+    if (!subKey || seenSubs.has(subKey)) continue;
+    seenSubs.add(subKey);
+    const name = subcatLabel(catalog, loc.cat, subKey);
+    if (!name) continue;
+    const href = indexableServicePath(loc, subKey, catalog, locations);
+    const label = escapeHtml(name);
+    serviceItems.push(href ? `<li><a href="${escapeHtmlAttr(href)}">${label}</a></li>` : `<li>${label}</li>`);
+  }
   const prices = Object.entries(loc.prices || {}).filter(([name, value]) => String(name || '').trim() && String(value || '').trim());
   const schedule = Object.entries(loc.schedule || {}).filter(([day, hours]) => String(day || '').trim() && String(hours || '').trim());
   const description = String(loc.text || '').replace(/\s+/g, ' ').trim();
@@ -1688,9 +1778,7 @@ function cardCrawlerHtml(seo, loc, catalog, locations) {
   const similar = similarLocations(loc, locations, 6);
   // MapFix reviews only. Google Maps bodies stay out of #seo-static.
   const reviews = mapfixReviews(loc);
-  const serviceHtml = services.length
-    ? `<h2>Послуги</h2><ul>${services.map((name) => `<li>${escapeHtml(name)}</li>`).join('')}</ul>`
-    : '';
+  const serviceHtml = serviceItems.length ? `<h2>Послуги</h2><ul>${serviceItems.join('')}</ul>` : '';
   const priceHtml = prices.length
     ? `<h2>Ціни</h2><ul>${prices
         .map(([name, value]) => `<li>${escapeHtml(name)} — ${escapeHtml(value)}</li>`)
