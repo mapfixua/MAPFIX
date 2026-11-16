@@ -145,9 +145,10 @@
                 kotsiubinske: { key: 'kotsiubynske', name: 'Коцюбинське', on: 'Коцюбинському', lat: 50.4906, lng: 30.3347, zoom: 14, radiusKm: 3 },
             };
             // Keep in sync with AREA_RADIUS_KM / AREA_ADDRESS_RE in seo.js.
+            // борщагівк/борщагівц is the locality (Борщагівка, на Борщагівці), not вул. Борщагівська.
             const AREA_ADDRESS_RE = {
                 sviatoshyn: /святошин/i,
-                borshchahivka: /борщаг/i,
+                borshchahivka: /борщагів(?:к|ц)/i,
                 akademmistechko: /академмістеч/i,
                 kotsiubynske: /коцюбин/i,
             };
@@ -2453,11 +2454,79 @@
                 return `<i class="fa-solid ${iconClass}" aria-hidden="true"></i>`;
             }
 
+            const locationDetailLoads = new Map();
+
+            function applyLocationDetail(loc, detail) {
+                if (!detail || String(detail.id) !== String(loc.id)) return false;
+                loc.reviews = Array.isArray(detail.reviews) ? detail.reviews : [];
+                if (typeof detail.workingHours === 'string') loc.workingHours = detail.workingHours;
+                if (detail.schedule && typeof detail.schedule === 'object') loc.schedule = detail.schedule;
+                if (Array.isArray(detail.photos)) loc.photos = detail.photos;
+                if (typeof detail.text === 'string') loc.text = detail.text;
+                if (detail.reviewsCount != null) loc.reviewsCount = Number(detail.reviewsCount) || 0;
+                if (detail.rating != null && Number.isFinite(Number(detail.rating))) loc.rating = Number(detail.rating);
+                if (detail.telegramUsername) loc.telegramUsername = detail.telegramUsername;
+                if (detail.importMeta && typeof detail.importMeta === 'object') loc.importMeta = detail.importMeta;
+                loc.detailLoaded = true;
+                return true;
+            }
+
+            function queueLocationDetail(loc, opts) {
+                if (!loc || loc.detailLoaded || opts.detailRefresh) return;
+                const locId = loc.id;
+                const seq = loc.detailSeq || 0;
+                const gen = posterLayoutGen;
+                let task = locationDetailLoads.get(locId);
+                if (!task) {
+                    task = fetch('/api/locations/' + encodeURIComponent(locId), { credentials: 'same-origin' })
+                        .then(async (res) => {
+                            if (!res.ok) return null;
+                            const data = await res.json().catch(() => null);
+                            return data && data.location ? data.location : null;
+                        })
+                        .catch(() => null)
+                        .finally(() => locationDetailLoads.delete(locId));
+                    locationDetailLoads.set(locId, task);
+                }
+                task.then((detail) => {
+                    if (!detail || (loc.detailSeq || 0) !== seq) return;
+                    if (!applyLocationDetail(loc, detail)) return;
+                    if (gen !== posterLayoutGen) return;
+                    if (State.selectedLocation?.id !== locId) return;
+                    window.openMasterDetail(locId, Object.assign({}, opts, {
+                        detailRefresh: true,
+                        forceMode: true,
+                        keepServerSeo: true,
+                    }));
+                });
+            }
+
+            function restoreDetailDraft(draft) {
+                if (!draft) return;
+                const review = document.getElementById('reviewTextarea');
+                if (review && draft.review) review.value = draft.review;
+                const claim = document.getElementById('claimPhoneInput');
+                if (claim && draft.claim) claim.value = draft.claim;
+                if (!draft.stars) return;
+                State.formRatingScore = draft.stars;
+                document.querySelectorAll('#formStarsContainer span').forEach((star) => {
+                    const score = parseInt(star.getAttribute('data-score'), 10);
+                    star.classList.toggle('active', score <= draft.stars);
+                });
+            }
+
             // Тап по маркеру / картці одразу відкриває профіль локації
             window.openMasterDetail = function(locId, opts = {}) {
                 const loc = window.mockLocations.find(l => l.id === locId);
                 if (!loc) return;
-                posterLayoutGen++;
+                const detailDraft = opts.detailRefresh
+                    ? {
+                        review: document.getElementById('reviewTextarea')?.value || '',
+                        claim: document.getElementById('claimPhoneInput')?.value || '',
+                        stars: State.formRatingScore,
+                    }
+                    : null;
+                if (!opts.detailRefresh) posterLayoutGen++;
 
                 const sameSelected = State.selectedLocation?.id === locId;
                 const mode = opts.mode || 'dive';
@@ -2466,25 +2535,30 @@
                     enterDetailDive();
                     highlightSelectedMarker(locId);
                     armPoster(loc, { pan: true, watchMs: 700 });
+                    queueLocationDetail(loc, opts);
                     return;
                 }
 
-                fetch('/api/locations/' + encodeURIComponent(locId) + '/view', {
-                    method: 'POST',
-                    credentials: 'same-origin',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(analyticsBody()),
-                }).then(async (r) => {
-                    if (!r.ok) return;
-                    const j = await r.json().catch(() => ({}));
-                    if (typeof j.views === 'number') loc.views = j.views;
-                }).catch(() => {});
+                if (!opts.detailRefresh) {
+                    fetch('/api/locations/' + encodeURIComponent(locId) + '/view', {
+                        method: 'POST',
+                        credentials: 'same-origin',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(analyticsBody()),
+                    }).then(async (r) => {
+                        if (!r.ok) return;
+                        const j = await r.json().catch(() => ({}));
+                        if (typeof j.views === 'number') loc.views = j.views;
+                    }).catch(() => {});
+                }
 
                 State.selectedLocation = loc;
                 State.detailMode = mode;
-                window.MapfixAnalytics?.rememberRecent?.({ id: loc.id, title: loc.title });
-                renderRecentViewed();
-                State.formRatingScore = 5;
+                if (!opts.detailRefresh) {
+                    window.MapfixAnalytics?.rememberRecent?.({ id: loc.id, title: loc.title });
+                    renderRecentViewed();
+                    State.formRatingScore = 5;
+                }
 
                 const catName = categoryLabel(
                     window.masterCatalog?.[loc.cat]?.name || loc.cat || ''
@@ -2607,9 +2681,15 @@
                     const detailView = document.getElementById('sidebar-detail-view');
                     detailView.classList.add('show', 'mode-preview');
                     detailView.classList.remove('mode-dive');
-                    enterDetailPreview();
                     highlightSelectedMarker(loc.id);
-                    anchorPosterToMarker(loc, { animateCard: true });
+                    if (opts.detailRefresh) {
+                        restoreDetailDraft(detailDraft);
+                        positionPinLink();
+                    } else {
+                        enterDetailPreview();
+                        anchorPosterToMarker(loc, { animateCard: true });
+                        queueLocationDetail(loc, opts);
+                    }
                     return;
                 }
                 if (!opts.keepServerSeo) seoListingTouched = true;
@@ -2640,11 +2720,17 @@
                 const detailView = document.getElementById('sidebar-detail-view');
                 detailView.classList.add('show', 'mode-dive');
                 detailView.classList.remove('mode-preview');
-                enterDetailDive();
                 highlightSelectedMarker(loc.id);
-                anchorPosterToMarker(loc, { animateCard: true });
-                refreshClaimButton(loc);
-                applyPageSeoFromState();
+                if (opts.detailRefresh) {
+                    restoreDetailDraft(detailDraft);
+                    positionPinLink();
+                } else {
+                    enterDetailDive();
+                    anchorPosterToMarker(loc, { animateCard: true });
+                    refreshClaimButton(loc);
+                    applyPageSeoFromState();
+                    queueLocationDetail(loc, opts);
+                }
             };
 
             function claimBannerHtmlFor(loc, opts = {}) {
@@ -2875,7 +2961,9 @@
                     scheduleRowsHtml = `<div class="schedule-row"><span>Графік</span><b>${escapeHtml(loc.workingHours)}</b></div>`;
                 }
                 if (!scheduleRowsHtml) {
-                    scheduleRowsHtml = '<div style="font-size:12px;color:#94a3b8;">Графік не вказано</div>';
+                    scheduleRowsHtml = loc.detailLoaded
+                        ? '<div style="font-size:12px;color:#94a3b8;">Графік не вказано</div>'
+                        : '<div style="font-size:12px;color:#94a3b8;">Завантаження графіка…</div>';
                 }
 
                 const reviewSplit = splitCardReviews(loc);
@@ -2895,6 +2983,8 @@
                                 ${fromGoogle ? '<div class="review-source">Google Maps</div>' : ''}
                             </div>`;
                     });
+                } else if (!loc.detailLoaded) {
+                    reviewsHtml = '<div style="font-size:12px; color:#64748b; padding:5px 0;">Завантаження відгуків…</div>';
                 } else if (Number(loc.reviewsCount) > 0) {
                     reviewsHtml = `<div style="font-size:12px; color:#64748b; padding:5px 0;">У Google ${Number(loc.reviewsCount)} відгуків, тексти ще не підтягнуті на карту.</div>`;
                 } else {
@@ -3078,6 +3168,8 @@
                     trackLocationClick(locId, 'review');
                     const loc = window.mockLocations.find((l) => l.id === locId);
                     if (loc) {
+                        loc.detailSeq = (loc.detailSeq || 0) + 1;
+                        loc.detailLoaded = true;
                         loc.reviews = data.reviews || loc.reviews;
                         loc.rating = data.rating;
                         loc.reviewsCount = data.reviewsCount;
