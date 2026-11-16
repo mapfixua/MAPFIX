@@ -380,42 +380,99 @@ async function buildAdminTraffic({ query, locations, reports, catalog, rpc, now 
   }
 }
 
+/** Yesterday plus the two closed Kyiv days before it. Today is never included. */
+const ROLLUP_HEAL_DAYS = 3;
+
+function cronRollDays(today) {
+  const days = [];
+  for (let ago = ROLLUP_HEAL_DAYS; ago >= 1; ago -= 1) days.push(dims.shiftDay(today, -ago));
+  return days;
+}
+
+function rollupFailure(day, detail) {
+  const text = String(detail || 'rollup failed').replace(/\s+/g, ' ').trim().slice(0, 500);
+  return { day, error: text };
+}
+
 /**
- * Cron step: roll up yesterday (replace, so a repeat is safe) and delete old raw
- * rows in batches of 5000 until the time budget or a short batch. Today is not rolled.
+ * Cron step: replace yesterday in Europe/Kyiv, and the two closed days before it,
+ * so one missed run is filled by the next one. analytics_rollup_day deletes and
+ * inserts that day, so a repeat writes the same rows. Today is not rolled.
+ * Raw rows are purged only after every requested day succeeds.
  */
 async function runCronStep({ rpc, today, budgetMs = ROLLUP_BUDGET_MS, maxBatches = MAX_PURGE_BATCHES } = {}) {
   const call = rpc || defaultRpc;
   const day = today || analyticsEvents.kyivDayKey();
-  const yesterday = dims.shiftDay(day, -1);
+  const days = cronRollDays(day);
+  const yesterday = days[days.length - 1];
   const started = Date.now();
-  let rolled;
-  try {
-    rolled = await call('analytics_rollup_day', { p_day: yesterday });
-  } catch (err) {
-    if (err.missing || isMissingRpc(err)) return { ok: false, missing: true, day: yesterday };
-    return { ok: false, day: yesterday, error: err.message || String(err) };
-  }
-  const purged = { impressions: 0, events: 0, batches: 0 };
-  while (Date.now() - started < budgetMs && purged.batches < maxBatches) {
-    let batch;
+  const rolled = [];
+  const errors = [];
+  let missing = false;
+
+  for (const target of days) {
+    let result;
     try {
-      batch = await call('analytics_purge_raw', { p_limit: PURGE_LIMIT });
+      result = await call('analytics_rollup_day', { p_day: target });
     } catch (err) {
-      if (err.missing || isMissingRpc(err)) break;
-      return { ok: false, day: yesterday, rolled, purged, error: err.message || String(err) };
+      if (err.missing || isMissingRpc(err)) {
+        missing = true;
+        errors.push(rollupFailure(target, 'missing function analytics_rollup_day'));
+        console.error(`[analytics rollup] ${target} missing function`);
+        break;
+      }
+      const failure = rollupFailure(target, err.message || err);
+      errors.push(failure);
+      console.error(`[analytics rollup] ${target} ${failure.error}`);
+      continue;
     }
-    const impressions = dims.num(batch?.impressions);
-    const events = dims.num(batch?.events);
-    purged.impressions += impressions;
-    purged.events += events;
-    purged.batches += 1;
-    if (impressions + events < PURGE_LIMIT) break;
+    if (result && result.ok === false) {
+      const failure = rollupFailure(target, result.skipped ? `skipped:${result.skipped}` : 'ok:false');
+      errors.push(failure);
+      console.error(`[analytics rollup] ${target} ${failure.error}`);
+      continue;
+    }
+    rolled.push({
+      day: target,
+      grains: dims.num(result?.grains),
+      searches: dims.num(result?.searches),
+      locations: dims.num(result?.locations),
+    });
+    console.log(
+      `[analytics rollup] ${target} grains=${dims.num(result?.grains)} searches=${dims.num(result?.searches)} locations=${dims.num(result?.locations)}`
+    );
   }
+
+  const purged = { impressions: 0, events: 0, batches: 0 };
+  const ok = !missing && errors.length === 0;
+  if (ok) {
+    while (Date.now() - started < budgetMs && purged.batches < maxBatches) {
+      let batch;
+      try {
+        batch = await call('analytics_purge_raw', { p_limit: PURGE_LIMIT });
+      } catch (err) {
+        if (err.missing || isMissingRpc(err)) break;
+        const failure = rollupFailure(yesterday, `purge ${err.message || err}`);
+        errors.push(failure);
+        console.error(`[analytics rollup] purge ${failure.error}`);
+        break;
+      }
+      const impressions = dims.num(batch?.impressions);
+      const events = dims.num(batch?.events);
+      purged.impressions += impressions;
+      purged.events += events;
+      purged.batches += 1;
+      if (impressions + events < PURGE_LIMIT) break;
+    }
+  }
+
   return {
-    ok: true,
+    ok: errors.length === 0 && !missing,
     day: yesterday,
+    days,
     rolled,
+    errors,
+    missing,
     purged,
     elapsedMs: Date.now() - started,
   };
@@ -424,6 +481,7 @@ async function runCronStep({ rpc, today, budgetMs = ROLLUP_BUDGET_MS, maxBatches
 module.exports = {
   PURGE_LIMIT,
   ROLLUP_BUDGET_MS,
+  ROLLUP_HEAL_DAYS,
   isMissingRpc,
   describeRpcError,
   sanitizeFilters,
@@ -431,6 +489,7 @@ module.exports = {
   assembleStatistics,
   buildAdminTraffic,
   buildMasters,
+  cronRollDays,
   runCronStep,
   emptySpan,
 };

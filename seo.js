@@ -2624,7 +2624,10 @@ function sitemapXml({ categories = [], locations = [], areas = [], extraPaths = 
   function pushListing(landing, priority) {
     if (!isIndexableListing(landing, publicLocs)) return;
     const list = sortByTitle(publicLocs.filter((loc) => locationMatchesListing(loc, landing)));
-    pushUrl(listingPath({ ...landing, page: 1 }), 'weekly', priority, listingLastmod(list));
+    const canonical = listingPath({ ...landing, page: 1 });
+    pushUrl(canonical, 'weekly', priority, listingLastmod(list));
+    // Home is one canonical URL. /?page=2 and the rest are the same map, not extra pages.
+    if (canonical === '/') return;
     const pages = Math.ceil(list.length / LISTING_PAGE_SIZE);
     for (let page = 2; page <= pages; page += 1) {
       const slice = list.slice((page - 1) * LISTING_PAGE_SIZE, page * LISTING_PAGE_SIZE);
