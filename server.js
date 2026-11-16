@@ -2721,11 +2721,17 @@ function secretEquals(provided, secret) {
 }
 
 function opsCronAuthorized(req) {
-  const secret = String(process.env.CRON_SECRET || process.env.OPS_CRON_SECRET || '').trim();
+  const cronSecret = String(process.env.CRON_SECRET || '').trim();
+  const secret = cronSecret || String(process.env.OPS_CRON_SECRET || '').trim();
   const bearer = bearerFromAuthorization(headerValue(req, 'authorization'));
   const querySecret = String(req.query?.secret || '').trim();
   if (secret && (secretEquals(bearer, secret) || secretEquals(querySecret, secret))) return true;
-  // Local runs have no Vercel header. Production must present the bearer secret.
+  // No CRON_SECRET in this deployment: keep the previous Vercel cron header so the
+  // morning job is not a daily 401. When the secret is set, only the bearer matches.
+  if (!cronSecret && headerValue(req, 'x-vercel-cron') === '1') {
+    console.warn('CRON_SECRET not set, falling back to x-vercel-cron header');
+    return true;
+  }
   if (!IS_VERCEL && process.env.NODE_ENV !== 'production') return true;
   return false;
 }

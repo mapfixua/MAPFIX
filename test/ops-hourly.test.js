@@ -58,18 +58,26 @@ function request(method, path, headers) {
   });
 }
 
-test('hourly cron accepts GET and POST with Bearer CRON_SECRET and rejects the old header', async () => {
+test('hourly cron requires Bearer when CRON_SECRET is set, and falls back to x-vercel-cron when it is empty', async () => {
   const previousEnv = process.env.NODE_ENV;
   const previousSecret = process.env.CRON_SECRET;
+  const warnings = [];
+  const originalWarn = console.warn;
+  console.warn = (...args) => {
+    warnings.push(args.map(String).join(' '));
+    originalWarn(...args);
+  };
   process.env.NODE_ENV = 'production';
-  process.env.CRON_SECRET = 'test-cron-secret';
+  const fallback = 'CRON_SECRET not set, falling back to x-vercel-cron header';
   try {
+    process.env.CRON_SECRET = 'test-cron-secret';
     const open = await request('GET', '/api/ops/hourly');
     assert.equal(open.status, 401);
     assert.equal(open.body.error, 'Unauthorized');
 
     const spoofed = await request('GET', '/api/ops/hourly', { 'x-vercel-cron': '1' });
     assert.equal(spoofed.status, 401);
+    assert.equal(warnings.includes(fallback), false);
 
     const posted = await request('POST', '/api/ops/hourly', {
       authorization: 'Bearer test-cron-secret',
@@ -84,7 +92,24 @@ test('hourly cron accepts GET and POST with Bearer CRON_SECRET and rejects the o
     });
     assert.equal(got.status, 200);
     assert.equal(got.body.analyticsRollup.day, '2026-11-15');
+
+    delete process.env.CRON_SECRET;
+    warnings.length = 0;
+    const missingHeader = await request('GET', '/api/ops/hourly');
+    assert.equal(missingHeader.status, 401);
+
+    const legacy = await request('POST', '/api/ops/hourly', { 'x-vercel-cron': '1' });
+    assert.equal(legacy.status, 200);
+    assert.equal(legacy.body.analyticsRollup.day, '2026-11-15');
+    assert.equal(warnings.includes(fallback), true);
+
+    process.env.CRON_SECRET = '   ';
+    warnings.length = 0;
+    const blank = await request('GET', '/api/ops/hourly', { 'x-vercel-cron': '1' });
+    assert.equal(blank.status, 200);
+    assert.equal(warnings.includes(fallback), true);
   } finally {
+    console.warn = originalWarn;
     process.env.NODE_ENV = previousEnv;
     if (previousSecret === undefined) delete process.env.CRON_SECRET;
     else process.env.CRON_SECRET = previousSecret;

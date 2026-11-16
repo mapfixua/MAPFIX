@@ -375,7 +375,7 @@ test('the statistics route does not scan the event journal, and heartbeat does n
   assert.equal(cron.includes("app.post('/api/ops/hourly'"), true);
   assert.equal(cron.includes('runCronStep'), true);
   assert.equal(cron.includes('CRON_SECRET'), true);
-  assert.equal(cron.includes('x-vercel-cron'), false);
+  assert.equal(cron.includes('CRON_SECRET not set, falling back to x-vercel-cron header'), true);
   const analyticsJs = read('analytics.js');
   const heartbeat = between(analyticsJs, 'async function heartbeat', 'async function bumpTotal');
   assert.equal(heartbeat.includes('product_analytics'), false);
