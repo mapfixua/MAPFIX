@@ -78,10 +78,14 @@ const AREA_RADIUS_KM = {
   kotsiubynske: 3,
 };
 
-/** Address text that places a card in a district even when another centre is closer. */
+/**
+ * Address text that places a card in a district even when another centre is closer.
+ * Борщагівка is the locality word (Борщагівка, Микільська Борщагівка, на Борщагівці).
+ * The stem борщаг also matches вул. Борщагівська in central Kyiv, so it is not used.
+ */
 const AREA_ADDRESS_RE = {
   sviatoshyn: /святошин/i,
-  borshchahivka: /борщаг/i,
+  borshchahivka: /борщагів(?:к|ц)/i,
   akademmistechko: /академмістеч/i,
   kotsiubynske: /коцюбин/i,
 };

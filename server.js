@@ -1497,8 +1497,58 @@ app.get('/api/ping', (req, res) => {
   res.json({ ok: true, t: Date.now() });
 });
 
-// Fields the public map never reads; dropped from /api/data to shrink it.
-const PUBLIC_LOC_OMIT = ['createdAt', 'updatedAt', 'importSource', 'claimedAt', 'deletedAt', 'deletedReason', 'customSubcats', 'googlePlaceId', 'businessStatus', 'lastReviewAt', 'reviewDates'];
+// Dropped from /api/data. Reviews, hours, schedule and photos load with the card.
+const PUBLIC_LOC_OMIT = [
+  'createdAt',
+  'updatedAt',
+  'importSource',
+  'claimedAt',
+  'deletedAt',
+  'deletedReason',
+  'customSubcats',
+  'googlePlaceId',
+  'businessStatus',
+  'lastReviewAt',
+  'reviewDates',
+  'importMeta',
+  'reviews',
+  'workingHours',
+  'schedule',
+  'photos',
+];
+
+function toPublicMapLocation(loc) {
+  const out = { ...loc };
+  for (const key of PUBLIC_LOC_OMIT) delete out[key];
+  return out;
+}
+
+function toPublicLocationDetail(loc, catalog) {
+  const reviews = Array.isArray(loc.reviews) ? loc.reviews.slice(0, 40) : [];
+  const schedule =
+    loc.schedule && typeof loc.schedule === 'object' && !Array.isArray(loc.schedule) ? loc.schedule : {};
+  const detail = {
+    id: loc.id,
+    reviews,
+    reviewsCount: Number(loc.reviewsCount) || 0,
+    rating: Number(loc.rating) || 0,
+    workingHours: loc.workingHours || '',
+    schedule,
+    photos: Array.isArray(loc.photos) ? loc.photos : [],
+    text: publicCardText(loc, catalog || {}),
+  };
+  const meta = loc.importMeta && typeof loc.importMeta === 'object' ? loc.importMeta : null;
+  const telegramUsername = String(loc.telegramUsername || loc.telegram || meta?.telegramUsername || '')
+    .replace(/^@/, '')
+    .trim();
+  if (telegramUsername) detail.telegramUsername = telegramUsername;
+  const placeId = meta?.placeId || loc.googlePlaceId || '';
+  const mapsUrl = meta?.mapsUrl || '';
+  if (placeId || mapsUrl) {
+    detail.importMeta = { placeId: String(placeId), mapsUrl: String(mapsUrl) };
+  }
+  return detail;
+}
 
 app.get('/api/data', async (req, res) => {
   try {
@@ -1513,11 +1563,10 @@ app.get('/api/data', async (req, res) => {
     ]);
     const catalogClicks = clicksRes.ok ? clicksRes.clicks || {} : {};
     const locations = publicLocations(data.mockLocations).map((loc) => {
-      const reviews = Array.isArray(loc.reviews) ? loc.reviews : [];
-      const out = { ...loc, reviews: reviews.slice(0, 2) };
-      // Render-time only. Master-written descriptions stay in the database.
+      const out = toPublicMapLocation(loc);
+      // Render-time only. The sentence is built from the full card, including
+      // hours, before those fields are dropped from the map payload.
       if (isImportTemplateText(loc.text)) out.text = publicCardText(loc, data.masterCatalog);
-      for (const k of PUBLIC_LOC_OMIT) delete out[k];
       return out;
     });
     // Public endpoint: never expose account/profile phones. The map only needs
@@ -1538,6 +1587,21 @@ app.get('/api/data', async (req, res) => {
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Не вдалося прочитати data.json' });
+  }
+});
+
+app.get('/api/locations/:id', async (req, res) => {
+  try {
+    const id = String(req.params.id || '').trim();
+    if (!id || id.length > 80) return res.status(400).json({ error: 'location id required' });
+    res.set('Cache-Control', 'public, s-maxage=30, stale-while-revalidate=120, max-age=0');
+    const data = await readData();
+    const loc = publicLocations(data.mockLocations).find((row) => row.id === id);
+    if (!loc) return res.status(404).json({ error: 'Локацію не знайдено' });
+    res.json({ location: toPublicLocationDetail(loc, data.masterCatalog) });
+  } catch (err) {
+    console.error('[GET /api/locations/:id]', err);
+    res.status(500).json({ error: 'Не вдалося прочитати локацію' });
   }
 });
 
