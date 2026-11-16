@@ -27,6 +27,8 @@ const {
   keepTrackingQuery,
   buildSeo,
   jsonLdGraph,
+  isImportTemplateText,
+  publicCardText,
   crawlerHtml,
   landingBootScript,
   isPublicTestLocation,
@@ -1513,6 +1515,8 @@ app.get('/api/data', async (req, res) => {
     const locations = publicLocations(data.mockLocations).map((loc) => {
       const reviews = Array.isArray(loc.reviews) ? loc.reviews : [];
       const out = { ...loc, reviews: reviews.slice(0, 2) };
+      // Render-time only. Master-written descriptions stay in the database.
+      if (isImportTemplateText(loc.text)) out.text = publicCardText(loc, data.masterCatalog);
       for (const k of PUBLIC_LOC_OMIT) delete out[k];
       return out;
     });

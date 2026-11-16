@@ -3357,9 +3357,9 @@
                     description: 'Оренда інструменту та техніки{p}. Дивіться на карті Mapfix і телефонуйте без комісії.',
                 },
                 medical: {
-                    h1: 'Медичні послуги{p}',
-                    title: 'Масаж, медпослуги{p} | Mapfix',
-                    description: 'Масаж і медичні послуги{p}. Оберіть фахівця на карті Mapfix.',
+                    h1: 'Стоматологія та медичні послуги{p}',
+                    title: 'Стоматологія та медичні послуги{p} | Mapfix',
+                    description: 'Стоматологія та медичні послуги{p}. Оберіть клініку на карті Mapfix і телефонуйте напряму, без комісії.',
                 },
                 food: {
                     h1: 'Їжа поруч{p}',
@@ -3520,10 +3520,21 @@
                     const catName = categoryLabel(window.masterCatalog?.[loc.cat]?.name || loc.cat || 'майстер');
                     const rawTitle = String(loc.title || 'Майстер').replace(/\s+/g, ' ').trim() || 'Майстер';
                     const shortTitle = rawTitle.slice(0, 58);
+                    const about = String(loc.text || '').replace(/\s+/g, ' ').trim();
+                    const importStub =
+                        !about ||
+                        /^(?:імпортовано з google (?:maps|places)|імпортовано з openstreetmap|знайдено в openstreetmap|імпортовано з csv)\b/i.test(about) ||
+                        /^знайдено на google maps[.!?]?$/i.test(about) ||
+                        /^тип:\s*[a-z0-9_]+(?:\s*,\s*[a-z0-9_]+){0,12}[.!?]?$/i.test(about);
+                    const description = importStub
+                        ? `${shortTitle}: ${loc.address || 'Київ'}. Телефон і маршрут на карті Mapfix. Без комісії, напряму до майстра.`
+                        : about.length <= 160
+                          ? about
+                          : about.slice(0, 159).replace(/\s+\S*$/, '').trim() + '…';
                     return {
                         h1: rawTitle,
                         title: `${shortTitle} — ${catName} | Mapfix`,
-                        description: `${shortTitle}: ${loc.address || 'Київ'}. Телефон, маршрут і відгуки на карті Mapfix.`,
+                        description,
                         keywords: `${shortTitle}, ${catName}, майстер додому, Київ, Mapfix`,
                     };
                 }
@@ -3564,7 +3575,7 @@
                 return {
                     h1: 'Майстри та ремонт у Києві',
                     title: 'Mapfix — майстер додому, сантехнік Київ, ремонт поруч',
-                    description: 'Карта майстрів у Києві: сантехнік, ремонт квартири, майстер додому. Знайдіть виконавця поруч, порівняйте ціни й замовте послугу на Mapfix.',
+                    description: 'Карта майстрів у Києві: сантехнік, ремонт квартири, майстер додому. Знайдіть виконавця поруч — безкоштовно, без комісії, напряму до майстра.',
                     keywords: 'майстер додому, сантехнік Київ, ремонт, майстер Київ, карта послуг, сантехнік, електрик, ремонт квартири, Mapfix',
                 };
             }
