@@ -2701,36 +2701,89 @@ app.post('/api/feedback', supportRateLimit, async (req, res) => {
   }
 });
 
-/** Vercel Cron / manual: hourly health + open tickets digest */
-app.get('/api/ops/hourly', async (req, res) => {
+function headerValue(req, name) {
+  const raw = req.headers?.[name];
+  if (Array.isArray(raw)) return String(raw[0] || '');
+  return String(raw || '');
+}
+
+/** Vercel sends `Authorization: Bearer <CRON_SECRET>` on the cron request. */
+function bearerFromAuthorization(header) {
+  const match = /^\s*Bearer\s+(\S+)\s*$/i.exec(String(header || ''));
+  return match ? match[1] : '';
+}
+
+function secretEquals(provided, secret) {
+  const a = Buffer.from(String(provided || ''));
+  const b = Buffer.from(String(secret || ''));
+  if (!secret || a.length === 0 || a.length !== b.length) return false;
+  return crypto.timingSafeEqual(a, b);
+}
+
+function opsCronAuthorized(req) {
+  const secret = String(process.env.CRON_SECRET || process.env.OPS_CRON_SECRET || '').trim();
+  const bearer = bearerFromAuthorization(headerValue(req, 'authorization'));
+  const querySecret = String(req.query?.secret || '').trim();
+  if (secret && (secretEquals(bearer, secret) || secretEquals(querySecret, secret))) return true;
+  // Local runs have no Vercel header. Production must present the bearer secret.
+  if (!IS_VERCEL && process.env.NODE_ENV !== 'production') return true;
+  return false;
+}
+
+/** Vercel Cron (GET) and Schedules (POST by default): health digest + daily rollup. */
+async function handleOpsHourly(req, res) {
   try {
-    const secret = String(process.env.CRON_SECRET || process.env.OPS_CRON_SECRET || '').trim();
-    const auth = String(req.headers.authorization || '');
-    const q = String(req.query?.secret || '');
-    const isVercelCron = String(req.headers['x-vercel-cron'] || '') === '1';
-    const okAuth =
-      isVercelCron ||
-      (secret && (auth === `Bearer ${secret}` || q === secret)) ||
-      (!IS_VERCEL && process.env.NODE_ENV !== 'production');
-    if (!okAuth) {
+    if (!opsCronAuthorized(req)) {
+      const hasAuthorization = Boolean(headerValue(req, 'authorization'));
+      console.warn(`[ops hourly] unauthorized method=${req.method} hasAuthorization=${hasAuthorization}`);
       return res.status(401).json({ error: 'Unauthorized' });
     }
     let analyticsRollup = { skipped: true };
     try {
-      // Yesterday's rollup and a short purge, before the digest, so a slow email
-      // does not skip the tables. One closed day stays inside the 60s function limit.
+      // Yesterday (Europe/Kyiv) plus the two previous closed days, before the digest,
+      // so a slow email does not skip the tables. Each day is a replace, so a repeat is safe.
       analyticsRollup = await analyticsRollups.runCronStep({ budgetMs: analyticsRollups.ROLLUP_BUDGET_MS });
     } catch (rollupErr) {
-      console.warn('[ops hourly] analytics rollup', rollupErr.message);
-      analyticsRollup = { ok: false, error: rollupErr.message };
+      console.error('[ops hourly] analytics rollup', rollupErr && rollupErr.message ? rollupErr.message : rollupErr);
+      analyticsRollup = { ok: false, error: rollupErr && rollupErr.message ? rollupErr.message : 'rollup failed' };
+    }
+    if (!analyticsRollup || analyticsRollup.ok === false) {
+      console.error(
+        '[ops hourly] analytics rollup failed',
+        JSON.stringify({
+          day: analyticsRollup && analyticsRollup.day,
+          days: analyticsRollup && analyticsRollup.days,
+          errors: analyticsRollup && analyticsRollup.errors,
+          missing: Boolean(analyticsRollup && analyticsRollup.missing),
+        })
+      );
+    } else {
+      console.log(
+        '[ops hourly] analytics rollup',
+        JSON.stringify({
+          day: analyticsRollup.day,
+          days: analyticsRollup.days,
+          rolled: (analyticsRollup.rolled || []).map((row) => row.day),
+          elapsedMs: analyticsRollup.elapsedMs,
+        })
+      );
     }
     const result = await opsMonitor.runHourlyDigest();
-    res.json({ ok: true, ...result, analyticsRollup });
+    const rollupFailed = !analyticsRollup || analyticsRollup.ok === false;
+    const status = rollupFailed ? 500 : 200;
+    res.status(status).json({
+      ...result,
+      analyticsRollup,
+      ok: !rollupFailed && result?.ok !== false,
+    });
   } catch (err) {
-    console.error('[ops hourly]', err);
+    console.error('[ops hourly]', err && err.message ? err.message : err);
     res.status(500).json({ error: err.message || 'ops failed' });
   }
-});
+}
+
+app.get('/api/ops/hourly', handleOpsHourly);
+app.post('/api/ops/hourly', handleOpsHourly);
 
 app.get('/api/ops/health', async (req, res) => {
   try {

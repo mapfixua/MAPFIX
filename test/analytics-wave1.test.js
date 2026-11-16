@@ -287,7 +287,7 @@ test('screen assembly keeps every master and the period call rate', () => {
   assert.equal(filtered.exportSheets.find((sheet) => sheet.name === 'Картки').rows.length, 0);
 });
 
-test('cron rolls yesterday only, in batches of 5000, and stops on a short batch', async () => {
+test('cron rolls yesterday in Kyiv and the two previous days, then purges in batches of 5000', async () => {
   const calls = [];
   const result = await rollups.runCronStep({
     today: '2026-11-12',
@@ -295,15 +295,21 @@ test('cron rolls yesterday only, in batches of 5000, and stops on a short batch'
     rpc: async (name, args) => {
       calls.push([name, args]);
       if (name === 'analytics_purge_raw') return { impressions: 0, events: 10 };
-      return { ok: true, day: args.p_day };
+      return { ok: true, day: args.p_day, grains: 3, searches: 1, locations: 2 };
     },
   });
   assert.equal(result.ok, true);
   assert.equal(result.day, '2026-11-11');
-  assert.deepEqual(calls[0], ['analytics_rollup_day', { p_day: '2026-11-11' }]);
-  assert.equal(calls.filter((row) => row[0] === 'analytics_rollup_day').length, 1);
-  assert.equal(calls[1][1].p_limit, 5000);
+  assert.deepEqual(result.days, ['2026-11-09', '2026-11-10', '2026-11-11']);
+  assert.deepEqual(
+    calls.filter((row) => row[0] === 'analytics_rollup_day').map((row) => row[1].p_day),
+    ['2026-11-09', '2026-11-10', '2026-11-11']
+  );
+  assert.equal(calls[3][0], 'analytics_purge_raw');
+  assert.equal(calls[3][1].p_limit, 5000);
   assert.equal(result.purged.batches, 1);
+  assert.equal(events.kyivDayKey(new Date('2026-11-16T22:30:00.000Z')), '2026-11-17');
+  assert.equal(events.kyivDayKey(new Date('2026-11-16T04:00:00.000Z')), '2026-11-16');
   const missing = await rollups.runCronStep({
     today: '2026-11-12',
     rpc: async () => {
@@ -313,6 +319,24 @@ test('cron rolls yesterday only, in batches of 5000, and stops on a short batch'
     },
   });
   assert.equal(missing.missing, true);
+  assert.equal(missing.purged.batches, 0);
+  const callsAfterGap = [];
+  const healed = await rollups.runCronStep({
+    today: '2026-11-16',
+    rpc: async (name, args) => {
+      callsAfterGap.push([name, args]);
+      if (name === 'analytics_rollup_day' && args.p_day === '2026-11-14') throw new Error('statement timeout');
+      if (name === 'analytics_purge_raw') return { impressions: 0, events: 0 };
+      return { ok: true, day: args.p_day, grains: 1, searches: 0, locations: 0 };
+    },
+  });
+  assert.equal(healed.ok, false);
+  assert.deepEqual(
+    callsAfterGap.filter((row) => row[0] === 'analytics_rollup_day').map((row) => row[1].p_day),
+    ['2026-11-13', '2026-11-14', '2026-11-15']
+  );
+  assert.equal(callsAfterGap.some((row) => row[0] === 'analytics_purge_raw'), false);
+  assert.deepEqual(healed.rolled.map((row) => row.day), ['2026-11-13', '2026-11-15']);
 });
 
 test('backfill lists closed days and skips today', () => {
@@ -346,8 +370,12 @@ test('the statistics route does not scan the event journal, and heartbeat does n
   assert.equal(route.includes('fetchEvents'), false);
   assert.equal(route.includes('buildAdminTraffic'), true);
   assert.equal(route.includes('runCronStep') || server.includes('runCronStep'), true);
-  const cron = between(server, "app.get('/api/ops/hourly'", "app.get('/api/ops/health'");
+  const cron = between(server, 'function opsCronAuthorized', "app.get('/api/ops/health'");
+  assert.equal(cron.includes("app.get('/api/ops/hourly'"), true);
+  assert.equal(cron.includes("app.post('/api/ops/hourly'"), true);
   assert.equal(cron.includes('runCronStep'), true);
+  assert.equal(cron.includes('CRON_SECRET'), true);
+  assert.equal(cron.includes('x-vercel-cron'), false);
   const analyticsJs = read('analytics.js');
   const heartbeat = between(analyticsJs, 'async function heartbeat', 'async function bumpTotal');
   assert.equal(heartbeat.includes('product_analytics'), false);
