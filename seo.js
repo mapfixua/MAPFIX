@@ -214,10 +214,11 @@ const CAT_COPY = {
     keywords: 'оренда інструменту Київ, прокат, Mapfix',
   },
   medical: {
-    h1: (p) => `Медичні послуги${p}`,
-    title: (p) => `Масаж, медпослуги${p} | Mapfix`,
-    description: (p) => `Масаж і медичні послуги${p}. Оберіть фахівця на карті Mapfix.`,
-    keywords: 'масаж Київ, медичні послуги, Mapfix',
+    h1: (p) => `Стоматологія та медичні послуги${p}`,
+    title: (p) => `Стоматологія та медичні послуги${p} | Mapfix`,
+    description: (p) =>
+      `Стоматологія та медичні послуги${p}. Оберіть клініку на карті Mapfix і телефонуйте напряму, без комісії.`,
+    keywords: 'стоматологія Київ, стоматолог, медичні послуги, стоматологічна клініка, Mapfix',
   },
   food: {
     h1: (p) => `Їжа поруч${p}`,
@@ -369,7 +370,7 @@ const DEFAULT_SEO = {
   h1: 'Майстри та ремонт у Києві',
   title: 'Mapfix — майстер додому, сантехнік Київ, ремонт поруч',
   description:
-    'Карта майстрів у Києві: сантехнік, ремонт квартири, майстер додому. Знайдіть виконавця поруч, порівняйте ціни й замовте послугу на Mapfix.',
+    'Карта майстрів у Києві: сантехнік, ремонт квартири, майстер додому. Знайдіть виконавця поруч — безкоштовно, без комісії, напряму до майстра.',
   keywords:
     'майстер додому, сантехнік Київ, ремонт, майстер Київ, карта послуг, сантехнік, електрик, ремонт квартири, Mapfix',
 };
@@ -573,19 +574,407 @@ function seoForCategory(catKey, catName, areaKey, subKey, subName) {
   };
 }
 
-function seoForLocation(loc, catName) {
+/** Nominative business type for a subcategory. Unknown keys fall back to the catalog name. */
+const KIND_BY_SUB = {
+  dentistry: 'Стоматологічна клініка',
+  therapy: 'Медичний кабінет',
+  diagnostics: 'Діагностичний центр',
+  physiotherapy: 'Кабінет фізіотерапії',
+  psychology: 'Психолог',
+  medical_massage: 'Кабінет лікувального масажу',
+  aesthetic_medicine: 'Клініка естетичної медицини',
+  ophthalmology: 'Офтальмологія',
+  ent: 'ЛОР-кабінет',
+  pediatrics: 'Педіатр',
+  dermatology: 'Дерматолог',
+  wellness: 'Велнес і SPA',
+  nails: 'Майстерня манікюру',
+  barber: 'Барбершоп',
+  hair: 'Перукарня',
+  brows: 'Майстер брів і вій',
+  massage: 'Масажний кабінет',
+  cosmetology: 'Кабінет косметолога',
+  makeup: 'Майстер макіяжу',
+  depilation: 'Кабінет депіляції',
+  permanent_makeup: 'Майстер перманентного макіяжу',
+  tyres: 'Шиномонтаж',
+  wash: 'Автомийка',
+  maintenance: 'СТО',
+  auto_repair: 'Автосервіс',
+  auto_electric: 'Автоелектрик',
+  auto_ac: 'Сервіс автокондиціонерів',
+  auto_glass: 'Автоскло',
+  body_paint: 'Кузовний сервіс',
+  tow: 'Евакуатор',
+  shoes: 'Майстерня ремонту взуття',
+  atelier: 'Ательє',
+  keys: 'Виготовлення ключів',
+  phones: 'Ремонт телефонів',
+  computers: 'Ремонт компʼютерів',
+  appliances: 'Ремонт побутової техніки',
+  watches_jewelry: 'Ремонт годинників',
+  grooming: 'Грумінг',
+  vet: 'Ветеринарна клініка',
+  pet_hotel: 'Готель для тварин',
+  training: 'Дресирування',
+  electrician: 'Електрик',
+  plumber: 'Сантехнік',
+  handyman: 'Майстер на годину',
+  cleaning: 'Клінінг',
+  ac_climate: 'Майстер з кондиціонерів',
+  renovation: 'Ремонт квартир',
+  locksmith: 'Майстер із замків',
+  languages: 'Мовні курси',
+  kids_clubs: 'Дитячий клуб',
+  creative: 'Творча студія',
+  tutoring: 'Репетитор',
+  it_courses: 'IT-курси',
+  driving: 'Автошкола',
+  dance: 'Студія танців',
+  rent: 'Оренда майданчика',
+  fitness: 'Фітнес-зал',
+  sections: 'Спортивна секція',
+  martial: 'Єдиноборства',
+  swimming: 'Басейн',
+  outdoor: 'Активний відпочинок',
+  housing: 'Оренда житла',
+  tools: 'Оренда інструменту',
+  equipment: 'Оренда обладнання',
+  vehicles: 'Оренда авто',
+  spaces: 'Оренда приміщення',
+  events: 'Оренда для свят',
+  photo_video: 'Оренда фото і відео',
+  construction: 'Оренда будівельної техніки',
+  cakes: 'Торти на замовлення',
+  bakery: 'Випічка на замовлення',
+  catering: 'Кейтеринг',
+  custom_furniture: 'Меблі на замовлення',
+  assembly: 'Збирання меблів',
+  kitchen: 'Кухні на замовлення',
+  wardrobes: 'Шафи на замовлення',
+  upholstery: 'Перетяжка меблів',
+  restoration: 'Реставрація меблів',
+  installation: 'Монтаж меблів',
+  office: 'Офісні меблі',
+  mattress_soft: 'Мʼякі меблі',
+  delivery: 'Доставка меблів',
+};
+
+const CARD_DAY_ORDER = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+const CARD_DAY_SHORT = {
+  Monday: 'пн',
+  Tuesday: 'вт',
+  Wednesday: 'ср',
+  Thursday: 'чт',
+  Friday: 'пт',
+  Saturday: 'сб',
+  Sunday: 'нд',
+};
+
+function normalizeCardText(text) {
+  return String(text || '')
+    .replace(/\u00a0/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+/** Empty text and machine import stubs. A sentence written by a master is not a stub. */
+function isImportTemplateText(text) {
+  const s = normalizeCardText(text);
+  if (!s) return true;
+  if (/^імпортовано з google maps(?:\s*\([^)]{0,80}\))?[.!?]?$/i.test(s)) return true;
+  if (/^знайдено на google maps[.!?]?$/i.test(s)) return true;
+  if (/^імпортовано з google places(?:\s*\([^)]{0,80}\))?[.!?]?$/i.test(s)) return true;
+  if (/^імпортовано з openstreetmap(?:\s*\([^)]{0,80}\))?[.!?]?$/i.test(s)) return true;
+  if (/^знайдено в openstreetmap(?:\s*\([^)]{0,80}\))?[.!?]?$/i.test(s)) return true;
+  if (/^імпортовано з csv[.!?]?$/i.test(s)) return true;
+  if (/^тип:\s*[a-z0-9_]+(?:\s*,\s*[a-z0-9_]+){0,12}[.!?]?$/i.test(s)) return true;
+  return false;
+}
+
+function stableIdHash(value) {
+  const s = String(value || '');
+  let h = 2166136261;
+  for (let i = 0; i < s.length; i += 1) {
+    h ^= s.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return h >>> 0;
+}
+
+function lowerFirstUk(value) {
+  const s = String(value || '');
+  if (!s) return s;
+  const second = s.charAt(1);
+  if (second && second !== second.toLocaleLowerCase('uk-UA') && second === second.toLocaleUpperCase('uk-UA')) {
+    return s;
+  }
+  return s.charAt(0).toLocaleLowerCase('uk-UA') + s.slice(1);
+}
+
+function upperFirstUk(value) {
+  const s = String(value || '');
+  if (!s) return s;
+  return s.charAt(0).toLocaleUpperCase('uk-UA') + s.slice(1);
+}
+
+function cleanKindLabel(label) {
+  let s = stripHeadingDecor(String(label || ''));
+  if (s.includes('/')) s = s.split('/').pop().trim();
+  s = s
+    .replace(/\s*\([^)]*\)\s*/g, ' ')
+    .replace(/^послуги\s+/i, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+  return s;
+}
+
+function businessKind(loc, catalog) {
+  const subs = Array.isArray(loc?.subcats) ? loc.subcats : [];
+  const first = String(subs[0] || '');
+  if (first && KIND_BY_SUB[first]) return KIND_BY_SUB[first];
+  if (first) {
+    const cleaned = cleanKindLabel(subcatLabel(catalog, loc?.cat, first));
+    if (cleaned && cleaned.toLocaleLowerCase('uk-UA') !== first.toLocaleLowerCase('uk-UA')) return cleaned;
+  }
+  const cat = cleanKindLabel(categoryLabelOf(catalog, loc?.cat));
+  if (cat && cat.toLocaleLowerCase('uk-UA') !== String(loc?.cat || '').toLocaleLowerCase('uk-UA')) return cat;
+  return 'Майстер';
+}
+
+function cardDisplayName(loc) {
+  const name = stripHeadingDecor(String(loc?.title || '').replace(/\s+/g, ' ').trim())
+    .replace(/^[«"“]+|[»"”]+$/g, '')
+    .replace(/[.!?…]+$/g, '')
+    .trim();
+  return name || 'Майстер';
+}
+
+function loosenStreetPart(part) {
+  return String(part || '').replace(/^(вул|ул|просп|пр-т|бул|б-р|пров|пл|наб)\.(?=\S)/i, '$1. ');
+}
+
+function streetAbbrev(kind) {
+  const key = String(kind || '').toLocaleLowerCase('uk-UA').replace(/\.$/, '');
+  if (key === 'вулиця' || key === 'вул' || key === 'улица' || key === 'ул' || key === 'street') return 'вул.';
+  if (key === 'проспект' || key === 'просп' || key === 'пр-т') return 'просп.';
+  if (key === 'бульвар' || key === 'бул' || key === 'б-р') return 'бульв.';
+  if (key === 'провулок' || key === 'пров') return 'пров.';
+  if (key === 'площа' || key === 'пл') return 'пл.';
+  if (key === 'шосе') return 'шосе';
+  if (key === 'набережна' || key === 'наб') return 'наб.';
+  return '';
+}
+
+function houseNumberPart(part) {
+  const s = String(part || '').trim();
+  if (!s || /київ|киев|kyiv|коцюб|область|україна/i.test(s)) return '';
+  if (/^\d{5}$/.test(s)) return '';
+  if (/^\d+[0-9a-zа-яіїєґ\-\/]*$/i.test(s)) return s;
+  if (/^\d+[a-zа-яіїєґ]?(?:\s*к\s*\d+)?$/i.test(s)) return s;
+  return '';
+}
+
+function parseStreetPart(part) {
+  const compact = loosenStreetPart(part).replace(/\s+/g, ' ').trim();
+  if (!compact) return '';
+  let match = compact.match(
+    /^(вулиця|вул\.?|улица|ул\.?|проспект|просп\.?|пр-т|бульвар|бул\.?|б-р|провулок|пров\.?|площа|пл\.?|шосе|набережна|наб\.?)\s+(.+)$/i
+  );
+  if (match) {
+    const abbr = streetAbbrev(match[1]);
+    const name = match[2].trim();
+    if (abbr && name && !/^\d{5}$/.test(name)) return `${abbr} ${name}`;
+  }
+  match = compact.match(/^(.+?)\s+(вулиця|проспект|бульвар|провулок|площа|шосе|набережна|street)$/i);
+  if (match) {
+    const abbr = streetAbbrev(match[2]);
+    const name = match[1].trim();
+    if (abbr && name) return `${abbr} ${name}`;
+  }
+  return '';
+}
+
+function streetFromAddress(address) {
+  const parts = String(address || '')
+    .split(',')
+    .map((part) => part.replace(/\s+/g, ' ').trim())
+    .filter(Boolean);
+  for (let i = 0; i < parts.length; i += 1) {
+    const street = parseStreetPart(parts[i]);
+    if (!street) continue;
+    const house = houseNumberPart(parts[i + 1]);
+    return house ? `${street}, ${house}` : street;
+  }
+  return '';
+}
+
+function localityLabel(loc) {
+  const key = primaryDistrict(loc);
+  if (key && key !== 'kyiv' && SEO_AREAS[key]) return SEO_AREAS[key].name;
+  const address = String(loc?.address || '');
+  if (/коцюбин/i.test(address)) return 'Коцюбинське';
+  if (key === 'kyiv' || /київ|киев|\bkyiv\b/i.test(address)) return 'Київ';
+  return '';
+}
+
+function shortAddressFallback(address, locality) {
+  const parts = String(address || '')
+    .split(',')
+    .map((part) => part.replace(/\s+/g, ' ').trim())
+    .filter((part) => part && !/^\d{5}$/.test(part) && !/^(україна|київська область)$/i.test(part));
+  const meaningful = parts.filter((part) => !/^(м\.?\s*)?(київ|киев|kyiv|коцюбинське|коцюбинское)$/i.test(part));
+  if (!meaningful.length) return '';
+  let text = meaningful.slice(0, 2).join(', ');
+  if (text.length > 72) text = text.slice(0, 71).replace(/\s+\S*$/, '').trim();
+  if (locality && !text.toLocaleLowerCase('uk-UA').includes(locality.toLocaleLowerCase('uk-UA'))) {
+    text = `${text}, ${locality}`;
+  }
+  return text;
+}
+
+function placeClause(loc) {
+  const street = streetFromAddress(loc?.address);
+  const locality = localityLabel(loc);
+  if (street && locality && !street.toLocaleLowerCase('uk-UA').includes(locality.toLocaleLowerCase('uk-UA'))) {
+    return `на ${street}, ${locality}`;
+  }
+  if (street) return `на ${street}`;
+  const raw = shortAddressFallback(loc?.address, locality);
+  if (raw) return `за адресою ${raw}`;
+  if (locality === 'Коцюбинське') return 'у Коцюбинському';
+  if (locality === 'Київ') return 'у Києві';
+  if (locality) {
+    const on = SEO_AREAS[primaryDistrict(loc)]?.on;
+    if (on) return `на ${on}`;
+  }
+  return '';
+}
+
+function formatHourMinute(value) {
+  const match = String(value || '').match(/^(\d{1,2}):(\d{2})$/);
+  if (!match) return '';
+  return `${Number(match[1])}:${match[2]}`;
+}
+
+function hoursSummary(loc) {
+  const byDay = new Map();
+  for (const spec of openingHoursSpecification(loc)) {
+    const opens = formatHourMinute(spec.opens);
+    const closes = formatHourMinute(spec.closes);
+    if (!opens || !closes || !CARD_DAY_SHORT[spec.dayOfWeek]) continue;
+    const label = `${opens}–${closes}`;
+    const prev = byDay.get(spec.dayOfWeek) || [];
+    if (!prev.includes(label)) prev.push(label);
+    byDay.set(spec.dayOfWeek, prev);
+  }
+  if (!byDay.size) {
+    const raw = `${loc?.workingHours || ''} ${Object.values(loc?.schedule || {}).join(' ')}`;
+    if (/цілодобово|24\s*години|24\s*\/\s*7/i.test(raw)) return 'цілодобово';
+    return '';
+  }
+  const groups = [];
+  for (const day of CARD_DAY_ORDER) {
+    if (!byDay.has(day)) continue;
+    const hours = byDay.get(day).join(', ');
+    const last = groups[groups.length - 1];
+    const prevIndex = last ? CARD_DAY_ORDER.indexOf(last.end) : -2;
+    if (last && last.hours === hours && CARD_DAY_ORDER.indexOf(day) === prevIndex + 1) last.end = day;
+    else groups.push({ start: day, end: day, hours });
+  }
+  return groups
+    .slice(0, 3)
+    .map((group) =>
+      group.start === group.end
+        ? `${CARD_DAY_SHORT[group.start]} ${group.hours}`
+        : `${CARD_DAY_SHORT[group.start]}–${CARD_DAY_SHORT[group.end]} ${group.hours}`
+    )
+    .join(', ');
+}
+
+function hasPublicPhone(loc) {
+  return String(loc?.phone || '').replace(/\D/g, '').length >= 9;
+}
+
+function extraServiceNames(loc, catalog, kind) {
+  const subs = Array.isArray(loc?.subcats) ? loc.subcats : [];
+  const names = [];
+  const seen = new Set([String(kind || '').toLocaleLowerCase('uk-UA')]);
+  function add(raw) {
+    const name = cleanKindLabel(raw);
+    if (!name) return;
+    const key = name.toLocaleLowerCase('uk-UA');
+    if (seen.has(key)) return;
+    seen.add(key);
+    names.push(name);
+  }
+  for (const sub of subs.slice(1)) add(subcatLabel(catalog, loc?.cat, sub));
+  const prices = loc?.prices && typeof loc.prices === 'object' && !Array.isArray(loc.prices) ? Object.keys(loc.prices) : [];
+  for (const name of prices) {
+    if (names.length >= 3) break;
+    add(name);
+  }
+  return names.slice(0, 3);
+}
+
+/**
+ * Ukrainian card paragraph from fields already shown on the card.
+ * Wording is one of four templates chosen by a stable hash of the id.
+ * No reviews, ratings, or prices are invented.
+ */
+function generatedCardParagraph(loc, catalog) {
+  const kind = upperFirstUk(businessKind(loc, catalog));
+  const name = cardDisplayName(loc);
+  const place = placeClause(loc);
+  const hours = hoursSummary(loc);
+  const phone = hasPublicPhone(loc);
+  const services = extraServiceNames(loc, catalog, kind);
+  const n = stableIdHash(loc?.id) % 4;
+  const where = place ? ` ${place}` : '';
+  const hoursWork = hours ? `Працює ${hours}.` : '';
+  const hoursGraph = hours ? `Графік: ${hours}.` : '';
+  const servicesBit = services.length ? `Послуги: ${services.join(', ')}.` : '';
+  const phoneLines = phone
+    ? [
+        'Телефонуйте напряму, без посередників і комісій.',
+        'Дзвоніть напряму, без комісії і посередників.',
+        'Телефон є на картці — звʼяжіться напряму, без комісії.',
+        'Зателефонуйте напряму, без посередників і комісій.',
+      ]
+    : [
+        'Без посередників і комісій.',
+        'Без комісії посередника.',
+        'Mapfix не бере комісії.',
+        'Домовляйтесь напряму, без комісії.',
+      ];
+  const tail = phoneLines[n];
+  let text = '';
+  if (n === 1) text = `«${name}» — ${lowerFirstUk(kind)}${where}. ${hoursWork} ${tail}`;
+  else if (n === 2) text = `${kind} «${name}»${where}. ${servicesBit} ${hoursWork} ${tail}`;
+  else if (n === 3) text = `${kind} «${name}»${where}. ${hoursGraph} ${tail}`;
+  else text = `${kind} «${name}»${where}. ${hoursWork} ${tail}`;
+  return text.replace(/\s+/g, ' ').replace(/\s+\./g, '.').trim();
+}
+
+/**
+ * Description shown on the public card and in meta.
+ * Master-written text is kept. Empty values and import stubs are replaced here, not in the database.
+ */
+function publicCardText(loc, catalog) {
+  const collapsed = normalizeCardText(loc?.text);
+  if (!isImportTemplateText(collapsed)) return collapsed;
+  return generatedCardParagraph(loc, catalog);
+}
+
+function seoForLocation(loc, catName, catalog) {
   const rawTitle = stripHeadingDecor(String(loc?.title || 'Майстер').trim()) || 'Майстер';
   const title = clipMeta(rawTitle, 58);
   const cat = stripHeadingDecor(catName) || 'майстер';
-  const address = String(loc?.address || 'Київ').trim() || 'Київ';
   const url = canonicalUrl({ loc: loc?.id || '' });
   return {
     h1: rawTitle,
     title: `${title} — ${clipMeta(cat, 28)} | Mapfix`,
-    description: clipMeta(
-      `${rawTitle}: ${address}. Телефон, маршрут і відгуки на карті Mapfix. Без комісії посередника.`,
-      160
-    ),
+    description: clipMeta(publicCardText(loc, catalog), 160),
     keywords: `${clipMeta(rawTitle, 40)}, ${cat}, майстер додому, Київ, Mapfix`,
     url,
     image: siteBaseUrl() + '/icon-512.png',
@@ -598,7 +987,7 @@ function buildSeo(landing, data) {
   if (landing.loc) {
     const loc = (data?.mockLocations || []).find((l) => l && l.id === landing.loc);
     if (loc) {
-      seo = seoForLocation(loc, catalog[loc.cat]?.name || loc.cat);
+      seo = seoForLocation(loc, catalog[loc.cat]?.name || loc.cat, catalog);
     }
   }
   if (!seo && landing.cat && catalog[landing.cat]) {
@@ -782,6 +1171,8 @@ function jsonLdGraph(seo, landing, data) {
         },
       };
       if (loc.phone) node.telephone = loc.phone;
+      const about = clipMeta(publicCardText(loc, catalog), 300);
+      if (about) node.description = about;
       const photo = businessPhotoUrl(loc);
       if (photo) node.image = photo;
       const hours = openingHoursSpecification(loc);
@@ -1769,7 +2160,7 @@ function cardCrawlerHtml(seo, loc, catalog, locations) {
   }
   const prices = Object.entries(loc.prices || {}).filter(([name, value]) => String(name || '').trim() && String(value || '').trim());
   const schedule = Object.entries(loc.schedule || {}).filter(([day, hours]) => String(day || '').trim() && String(hours || '').trim());
-  const description = String(loc.text || '').replace(/\s+/g, ' ').trim();
+  const description = publicCardText(loc, catalog);
   const phone = String(loc.phone || '').trim();
   const tel = phoneHref(phone);
   const areas = locationAreaKeys(loc).filter((key) =>
@@ -2304,6 +2695,8 @@ module.exports = {
   seoForHome,
   seoForCategory,
   seoForLocation,
+  isImportTemplateText,
+  publicCardText,
   buildSeo,
   jsonLdGraph,
   crawlerHtml,
