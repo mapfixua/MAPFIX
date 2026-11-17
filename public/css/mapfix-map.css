@@ -1677,12 +1677,17 @@
             font-weight: 800;
             font-size: 12px;
             line-height: 1.25;
-            padding: 5px 10px;
+            padding: 4px 10px;
             border-radius: 999px;
             box-shadow: 0 2px 8px rgba(0,0,0,0.16);
             white-space: nowrap;
             text-align: center;
             max-width: none;
+        }
+        .mapfix-marker-name.is-selected {
+            transform: none;
+            animation: none;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.16);
         }
         .mapfix-marker-price::after {
             content: '';
@@ -2277,10 +2282,6 @@
             #app-shell.sheet-interacting #map,
             #app-shell.sheet-interacting .leaflet-container {
                 pointer-events: none;
-            }
-            .pin-link-svg,
-            .pin-poster {
-                display: none !important;
             }
             #geo-btn, #kyiv-btn {
                 bottom: calc(var(--sheet-visible, 32vh) + 14px);

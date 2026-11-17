@@ -1,5 +1,5 @@
 /* Mapfix offline shell — network first, never hijack sitemap/API. */
-const CACHE = 'mapfix-shell-v12';
+const CACHE = 'mapfix-shell-v13';
 const ASSETS = [
   '/',
   '/manifest.json',

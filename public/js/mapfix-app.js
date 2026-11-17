@@ -2685,6 +2685,7 @@
                 const hostRect = host.getBoundingClientRect();
                 const x = mapRect.left - hostRect.left + pt.x;
                 const y = mapRect.top - hostRect.top + pt.y;
+                placePin(x, y);
                 const iconEl = loc.markerInstance && loc.markerInstance._icon;
                 const inner = iconEl && iconEl.querySelector('.mapfix-marker-category, .mapfix-marker-price, .mapfix-marker-name');
                 if (inner) inner.classList.add('is-selected');
@@ -2696,10 +2697,15 @@
                         detail.style.width = '';
                         detail.style.maxHeight = '';
                     }
-                    hidePinPoster();
+                    const sheet = document.getElementById('sidebar')?.getBoundingClientRect();
+                    if (!sheet) return;
+                    const endY = sheet.top - hostRect.top + 1;
+                    const inset = 18;
+                    const leftX = sheet.left + inset - hostRect.left;
+                    const rightX = sheet.right - inset - hostRect.left;
+                    setThreads(hangThread(x, y, leftX, endY), hangThread(x, y, rightX, endY));
                     return;
                 }
-                placePin(x, y);
                 appShell.classList.add('poster-anchored');
                 const corners = positionDesktopPoster(x, y);
                 if (!corners) return;
@@ -4213,17 +4219,28 @@
                 renderRecentViewed();
             }
 
+            function shortMarkerName(loc) {
+                const raw = String(cardHeadingParts(loc).heading || loc.title || 'Майстер')
+                    .replace(/\s+/g, ' ')
+                    .trim();
+                if (raw.length <= 28) return raw;
+                const cut = raw.slice(0, 26);
+                const space = cut.lastIndexOf(' ');
+                return (space > 8 ? cut.slice(0, space) : cut).trim();
+            }
+
             function buildLocationIcon(loc) {
                 const selected = State.selectedLocation?.id === loc.id;
                 const selectedClass = selected ? ' is-selected' : '';
                 if (isMobileLayout() && selected) {
-                    const name = String(cardHeadingParts(loc).heading || loc.title || '').replace(/\s+/g, ' ').trim();
+                    const name = shortMarkerName(loc);
                     const width = Math.max(36, Math.round(name.length * 7.2 + 20));
+                    const height = 28;
                     return L.divIcon({
                         className: 'mapfix-marker-wrap',
                         html: `<div class="mapfix-marker-name${selectedClass}">${escapeHtml(name)}</div>`,
-                        iconSize: [width, 32],
-                        iconAnchor: [width / 2, 32],
+                        iconSize: [width, height],
+                        iconAnchor: [width / 2, height + 56],
                     });
                 }
                 if (State.service) {
