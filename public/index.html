@@ -39,7 +39,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;600;700;800&display=swap" rel="stylesheet" media="print" onload="this.media='all'">
     <noscript><link href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;600;700;800&display=swap" rel="stylesheet"></noscript>
     
-    <link rel="stylesheet" href="/css/mapfix-map.css?v=9">
+    <link rel="stylesheet" href="/css/mapfix-map.css?v=13">
 </head>
 <body>
     <!--MAPFIX_CRAWL-->
@@ -156,12 +156,22 @@
                     <div class="recent-viewed-list" id="recentViewedList"></div>
                 </div>
                 <div class="sidebar-header">
-                    <button type="button" class="back-btn" id="navBackBtn" style="display:none" aria-label="Назад">
-                        <i class="fa-solid fa-chevron-left" aria-hidden="true"></i>
-                        <span id="navBackLabel">Назад</span>
-                    </button>
-                    <h1 class="nav-title" id="navTitle">Майстри та ремонт у Києві</h1>
-                    <p class="listing-count" id="listingCount" hidden></p>
+                    <div class="sheet-head-row">
+                        <button type="button" class="back-btn" id="navBackBtn" style="display:none" aria-label="Назад">
+                            <i class="fa-solid fa-arrow-left" aria-hidden="true"></i>
+                            <span id="navBackLabel" class="sheet-back-label">Назад</span>
+                        </button>
+                        <div class="sheet-head-copy">
+                            <h1 class="nav-title" id="navTitle">Майстри та ремонт у Києві</h1>
+                            <p class="listing-count" id="listingCount" hidden></p>
+                        </div>
+                    </div>
+                    <div class="sheet-chip-row" id="sheetChipRow">
+                        <button type="button" class="sheet-chip" id="radiusChip" aria-expanded="false" aria-controls="radiusMenu">Радіус: усі</button>
+                        <button type="button" class="sheet-chip" id="sortChip" aria-expanded="false" aria-controls="sortMenu">Сортування: відстань</button>
+                        <div class="sheet-chip-menu" id="radiusMenu" hidden role="listbox"></div>
+                        <div class="sheet-chip-menu" id="sortMenu" hidden role="listbox"></div>
+                    </div>
                     <div id="sortPanelWrap" style="display:none">
                         <div class="sort-panel">
                             <div class="sort-label"><i class="fa-solid fa-sliders"></i> Сортування виконавців</div>
@@ -226,6 +236,6 @@
     <script src="/mapfix-sync.js" defer></script>
     <script src="/mf-analytics.js" defer></script>
 
-    <script src="/js/mapfix-app.js?v=15"></script>
+    <script src="/js/mapfix-app.js?v=19"></script>
 <script>window.va=window.va||function(){(window.vaq=window.vaq||[]).push(arguments)};</script><script defer src="/_vercel/insights/script.js"></script>
 </body></html>
