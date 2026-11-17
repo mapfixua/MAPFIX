@@ -168,6 +168,7 @@
                 onlyPrice: false,
                 onlyRated: false,
                 sortType: 'distance',
+                radiusKm: null,
                 nearMe: false,
                 formRatingScore: 5,
                 currentUser: null,
@@ -1346,6 +1347,7 @@
                 if (typeof map !== 'undefined' && map && map.invalidateSize) {
                     map.invalidateSize();
                 }
+                if (typeof window.__mapfixRelayoutSheet === 'function') window.__mapfixRelayoutSheet();
                 if (typeof positionPinLink === 'function' && State.selectedLocation) positionPinLink();
             });
             window.visualViewport?.addEventListener('scroll', syncMobileViewport);
@@ -1407,6 +1409,302 @@
                 }
             }
 
+            let sheetHistoryLock = false;
+            let skipSheetReveal = false;
+
+            function revealMobileSheet(snap) {
+                if (skipSheetReveal) return;
+                if (typeof window.__mapfixSetSheetSnap === 'function') {
+                    window.__mapfixSetSheetSnap(snap, { nav: true, animate: true });
+                }
+            }
+
+            function sheetHistorySnapshot(depth) {
+                return {
+                    mfSheet: 1,
+                    mfDepth: depth,
+                    area: State.area || null,
+                    category: State.category || null,
+                    subcategory: State.subcategory || null,
+                    service: State.service ? { name: State.service.name, price: State.service.price } : null,
+                    loc: State.selectedLocation ? State.selectedLocation.id : null,
+                    q: State.locationSearchQuery || '',
+                    detailMode: State.detailMode || null,
+                    sheetSnap: (typeof window.__mapfixGetSheetSnap === 'function' && window.__mapfixGetSheetSnap()) || 'peek',
+                };
+            }
+
+            function sameSheetSnapshot(a, b) {
+                if (!a || !b) return false;
+                return a.area === b.area
+                    && a.category === b.category
+                    && a.subcategory === b.subcategory
+                    && (a.service && a.service.name) === (b.service && b.service.name)
+                    && (a.loc || null) === (b.loc || null)
+                    && (a.q || '') === (b.q || '');
+            }
+
+            function commitSheetNavigation() {
+                if (sheetHistoryLock || skipSheetReveal || !isMobileLayout()) return;
+                const depth = (history.state && history.state.mfDepth) || 0;
+                const snap = sheetHistorySnapshot(depth + 1);
+                if (history.state && history.state.mfSheet && sameSheetSnapshot(history.state, snap)) return;
+                history.pushState(snap, '', sharePathFromState());
+            }
+
+            function replaceSheetHistory() {
+                if (!isMobileLayout()) return;
+                const depth = (history.state && history.state.mfDepth) || 0;
+                history.replaceState(sheetHistorySnapshot(depth), '', sharePathFromState());
+            }
+
+            function ensureSheetHistory() {
+                if (!isMobileLayout()) return;
+                if (history.state && history.state.mfSheet) return;
+                history.replaceState(sheetHistorySnapshot(0), '', window.location.pathname + window.location.search);
+            }
+
+            function initMobileSheet() {
+                const sidebar = document.getElementById('sidebar');
+                if (!sidebar || window.__mapfixSheetReady) return;
+                window.__mapfixSheetReady = true;
+                let snap = 'peek';
+                let userAdjusted = false;
+                let dragging = false;
+                let pointerId = null;
+                let mode = null;
+                let startY = 0;
+                let startX = 0;
+                let startTranslate = 0;
+                let gestureOrigin = 0;
+                let translate = 0;
+                let scroller = null;
+                let raf = 0;
+                const samples = [];
+                const shell = appShell;
+
+                function viewH() {
+                    return shell.clientHeight || window.innerHeight;
+                }
+                function snapY(name) {
+                    const h = viewH();
+                    const visible = name === 'full' ? 0.92 : name === 'half' ? 0.55 : 0.30;
+                    return Math.max(0, Math.round(h * 0.92 - h * visible));
+                }
+                function paint(y, animate) {
+                    translate = y;
+                    sidebar.style.transition = animate ? 'transform 0.3s cubic-bezier(0.32, 0.72, 0, 1)' : 'none';
+                    sidebar.style.transform = 'translate3d(0,' + Math.round(y) + 'px,0)';
+                    const visible = Math.max(0, Math.round(viewH() * 0.92 - y));
+                    shell.style.setProperty('--sheet-visible', visible + 'px');
+                    shell.classList.remove('sheet-snap-peek', 'sheet-snap-half', 'sheet-snap-full');
+                    shell.classList.add('sheet-snap-' + snap);
+                }
+                function finishSnap(name, animate) {
+                    if (!isMobileLayout()) {
+                        sidebar.style.transform = '';
+                        sidebar.style.transition = '';
+                        shell.style.removeProperty('--sheet-visible');
+                        return;
+                    }
+                    snap = name;
+                    const y = snapY(name);
+                    const motion = animate && !reducedMotion();
+                    paint(y, motion);
+                    let fired = false;
+                    const done = () => {
+                        if (fired) return;
+                        fired = true;
+                        sidebar.removeEventListener('transitionend', done);
+                        if (map && map.invalidateSize) map.invalidateSize({ animate: false });
+                    };
+                    if (motion) {
+                        sidebar.addEventListener('transitionend', done);
+                        setTimeout(done, 360);
+                    } else done();
+                }
+                window.__mapfixGetSheetSnap = () => snap;
+                window.__mapfixSetSheetSnap = (name, opts = {}) => {
+                    if (!isMobileLayout()) return;
+                    if (opts.fromUser) userAdjusted = true;
+                    if (opts.auto && userAdjusted) return;
+                    if (opts.nav) userAdjusted = false;
+                    finishSnap(name, opts.animate !== false);
+                };
+                window.__mapfixCycleSheet = () => {
+                    const order = ['peek', 'half', 'full'];
+                    const next = order[Math.min(order.indexOf(snap) + 1, order.length - 1)];
+                    window.__mapfixSetSheetSnap(next, { fromUser: true, animate: true });
+                };
+                window.__mapfixRelayoutSheet = () => {
+                    if (!isMobileLayout()) {
+                        sidebar.style.transform = '';
+                        sidebar.style.transition = '';
+                        return;
+                    }
+                    paint(snapY(snap), false);
+                };
+
+                function setMapTouch(on) {
+                    if (!map || !map.dragging) return;
+                    if (on) {
+                        if (!map.dragging.enabled()) map.dragging.enable();
+                        if (map.touchZoom && !map.touchZoom.enabled()) map.touchZoom.enable();
+                        if (map.doubleClickZoom && !map.doubleClickZoom.enabled()) map.doubleClickZoom.enable();
+                    } else {
+                        if (map.dragging.enabled()) map.dragging.disable();
+                        if (map.touchZoom && map.touchZoom.enabled()) map.touchZoom.disable();
+                        if (map.doubleClickZoom && map.doubleClickZoom.enabled()) map.doubleClickZoom.disable();
+                    }
+                }
+                function pickScroller(target) {
+                    if (target && target.closest) {
+                        const direct = target.closest('.sidebar-content, .detail-scroll-body, #detailHeaderContent');
+                        if (direct && direct.scrollHeight > direct.clientHeight + 2) return direct;
+                    }
+                    if (State.selectedLocation) {
+                        const body = document.getElementById('detailBodyContent');
+                        if (body && body.scrollHeight > body.clientHeight + 2) return body;
+                        return document.getElementById('detailHeaderContent');
+                    }
+                    if (sidebarContent && sidebarContent.style.display !== 'none') return sidebarContent;
+                    return catalogNav;
+                }
+                function nearest(y, vel, travel) {
+                    const points = [['full', snapY('full')], ['half', snapY('half')], ['peek', snapY('peek')]];
+                    const capped = Math.abs(travel) < 28 ? 0 : Math.max(-0.85, Math.min(0.85, vel));
+                    const projected = y + capped * 150;
+                    let best = 'peek';
+                    let dist = Infinity;
+                    points.forEach(([name, ty]) => {
+                        const d = Math.abs(ty - projected);
+                        if (d < dist) { dist = d; best = name; }
+                    });
+                    return best;
+                }
+                function onDown(e) {
+                    if (!isMobileLayout() || (e.pointerType === 'mouse' && e.button !== 0)) return;
+                    if (!sidebar.contains(e.target)) return;
+                    pointerId = e.pointerId;
+                    dragging = true;
+                    mode = null;
+                    startY = e.clientY;
+                    startX = e.clientX;
+                    startTranslate = translate;
+                    gestureOrigin = translate;
+                    samples.length = 0;
+                    samples.push({ y: e.clientY, t: performance.now() });
+                    scroller = pickScroller(e.target);
+                    setMapTouch(false);
+                    shell.classList.add('sheet-interacting');
+                    if (e.target.closest('a, button, input, textarea, select, label, .sheet-chip-menu')) {
+                        mode = 'ui';
+                    }
+                    window.addEventListener('pointermove', onMove);
+                    window.addEventListener('pointerup', onUp);
+                    window.addEventListener('pointercancel', onUp);
+                }
+                function onMove(e) {
+                    if (!dragging || e.pointerId !== pointerId) return;
+                    const now = performance.now();
+                    samples.push({ y: e.clientY, t: now });
+                    while (samples.length && now - samples[0].t > 90) samples.shift();
+                    const dy = e.clientY - startY;
+                    const dx = e.clientX - startX;
+                    if (mode === 'ui') return;
+                    const fromChrome = !!(e.target && e.target.closest && e.target.closest('#sheetHandle, .sheet-head-row'));
+                    const atTop = !scroller || scroller.scrollTop <= 1;
+                    const canScroll = scroller && scroller.scrollHeight > scroller.clientHeight + 4;
+                    if (mode === null) {
+                        if (Math.abs(dy) < 2 && Math.abs(dx) < 2) return;
+                        const horizontal = e.target && e.target.closest && e.target.closest('.category-strip, .sheet-chip-row, .hotline-filter-bar');
+                        if (horizontal && Math.abs(dx) > Math.abs(dy)) {
+                            mode = 'ui';
+                            return;
+                        }
+                        if (fromChrome || (dy > 0 && atTop) || !canScroll) mode = 'sheet';
+                        else mode = 'scroll';
+                        if (mode === 'sheet') {
+                            try { sidebar.setPointerCapture(e.pointerId); } catch (_) {}
+                            sidebar.style.touchAction = 'none';
+                        }
+                    }
+                    if (mode === 'scroll') {
+                        const prevY = samples.length >= 2 ? samples[samples.length - 2].y : e.clientY;
+                        if (atTop && e.clientY - prevY > 0.5) {
+                            mode = 'sheet';
+                            startY = e.clientY;
+                            startTranslate = translate;
+                            try { sidebar.setPointerCapture(e.pointerId); } catch (_) {}
+                            sidebar.style.touchAction = 'none';
+                            if (scroller) scroller.style.overflowY = 'hidden';
+                        } else {
+                            return;
+                        }
+                    }
+                    if (mode !== 'sheet') return;
+                    if (snap === 'full' && atTop && canScroll && dy < -2 && translate <= snapY('full') + 1) {
+                        mode = 'scroll';
+                        if (scroller) {
+                            scroller.style.overflowY = '';
+                            scroller.scrollTop += 8;
+                        }
+                        try { sidebar.releasePointerCapture(e.pointerId); } catch (_) {}
+                        return;
+                    }
+                    if (e.cancelable) e.preventDefault();
+                    e.stopPropagation();
+                    const minY = snapY('full');
+                    const peek = snapY('peek');
+                    let next = startTranslate + (e.clientY - startY);
+                    if (next < minY) next = minY;
+                    if (next > peek) next = peek + (next - peek) * 0.28;
+                    if (raf) cancelAnimationFrame(raf);
+                    const y = next;
+                    raf = requestAnimationFrame(() => {
+                        raf = 0;
+                        paint(y, false);
+                    });
+                }
+                function onUp(e) {
+                    if (pointerId != null && e && e.pointerId != null && e.pointerId !== pointerId) return;
+                    window.removeEventListener('pointermove', onMove);
+                    window.removeEventListener('pointerup', onUp);
+                    window.removeEventListener('pointercancel', onUp);
+                    const wasSheet = mode === 'sheet';
+                    dragging = false;
+                    pointerId = null;
+                    mode = null;
+                    sidebar.style.touchAction = '';
+                    if (scroller) scroller.style.overflowY = '';
+                    shell.classList.remove('sheet-interacting');
+                    setMapTouch(true);
+                    if (raf) cancelAnimationFrame(raf);
+                    raf = 0;
+                    if (!wasSheet || !isMobileLayout()) return;
+                    suppressSheetClick = true;
+                    suppressMapClose = true;
+                    setTimeout(() => { suppressMapClose = false; }, 400);
+                    let vel = 0;
+                    if (samples.length >= 2) {
+                        const a = samples[0];
+                        const b = samples[samples.length - 1];
+                        if (b.t - a.t >= 16) vel = (b.y - a.y) / (b.t - a.t);
+                    }
+                    userAdjusted = true;
+                    finishSnap(nearest(translate, vel, translate - gestureOrigin), true);
+                }
+                sidebar.addEventListener('pointerdown', onDown);
+                sidebar.addEventListener('touchmove', (e) => {
+                    if (mode === 'sheet') {
+                        if (e.cancelable) e.preventDefault();
+                        e.stopPropagation();
+                    }
+                }, { passive: false });
+                window.addEventListener('resize', () => window.__mapfixRelayoutSheet());
+                if (isMobileLayout()) finishSnap('peek', false);
+            }
+
             function updateNavBackButton() {
                 const labelEl = document.getElementById('navBackLabel');
                 if (!labelEl) return;
@@ -1428,6 +1726,7 @@
                 if (isMobileLayout()) {
                     appShell.classList.add('sheet-expanded', 'sheet-dive');
                     appShell.classList.remove('sheet-browse', 'sheet-peek');
+                    revealMobileSheet('full');
                 }
                 setTimeout(() => {
                     const body = document.getElementById('detailBodyContent');
@@ -1444,6 +1743,7 @@
                 detailView.classList.remove('mode-dive');
                 appShell.classList.add('showing-location', 'sheet-peek');
                 appShell.classList.remove('sheet-dive', 'sheet-browse');
+                if (isMobileLayout()) revealMobileSheet('peek');
                 setTimeout(() => map.invalidateSize(), 80);
                 setTimeout(() => map.invalidateSize(), 420);
             }
@@ -1488,7 +1788,7 @@
                 );
             }
             function beginCardDrag(e) {
-                if (!isMobileLayout() || !cardSheetIsOpen()) return;
+                if (!isMobileLayout() || window.__mapfixSheetReady || !cardSheetIsOpen()) return;
                 if (e.pointerType === 'mouse' && e.button !== 0) return;
                 if (e.target.closest('a, button, input, textarea, select, label, .map-preview-claimbox, #previewClaimSlot')) return;
                 const scroller = document.querySelector('#app-shell.showing-location .sheet-body-host');
@@ -1786,7 +2086,8 @@
                 State.selectedLocation = null;
                 State.detailMode = null;
                 closeMasterDetail();
-                browseBottomSheet();
+                revealMobileSheet('half');
+                commitSheetNavigation();
                 syncUI();
             }
 
@@ -1819,7 +2120,70 @@
                 }
             }
 
-            document.getElementById('sortSelect').addEventListener('change', (e) => { State.sortType = e.target.value; renderLocationList(); });
+            document.getElementById('sortSelect').addEventListener('change', (e) => { State.sortType = e.target.value; renderLocationList(); syncSheetChrome(); });
+
+            (function initSheetMenus() {
+                const radiusMenu = document.getElementById('radiusMenu');
+                const sortMenu = document.getElementById('sortMenu');
+                const radiusChip = document.getElementById('radiusChip');
+                const sortChip = document.getElementById('sortChip');
+                if (!radiusMenu || !sortMenu || radiusMenu.childElementCount) return;
+                [['', 'Усі'], ['0.5', '500 м'], ['1', '1 км'], ['3', '3 км'], ['5', '5 км']].forEach(([value, label]) => {
+                    const btn = document.createElement('button');
+                    btn.type = 'button';
+                    btn.setAttribute('data-radius', value);
+                    btn.textContent = label;
+                    btn.addEventListener('click', () => {
+                        State.radiusKm = value ? Number(value) : null;
+                        radiusMenu.hidden = true;
+                        radiusChip.setAttribute('aria-expanded', 'false');
+                        syncUI();
+                    });
+                    radiusMenu.appendChild(btn);
+                });
+                [['distance', 'За відстанню'], ['rating', 'За рейтингом'], ['price', 'За ціною']].forEach(([value, label]) => {
+                    const btn = document.createElement('button');
+                    btn.type = 'button';
+                    btn.setAttribute('data-sort', value);
+                    btn.textContent = label;
+                    btn.addEventListener('click', () => {
+                        State.sortType = value;
+                        const select = document.getElementById('sortSelect');
+                        if (select) select.value = value;
+                        sortMenu.hidden = true;
+                        sortChip.setAttribute('aria-expanded', 'false');
+                        syncUI();
+                    });
+                    sortMenu.appendChild(btn);
+                });
+                function toggleMenu(chip, menu, other) {
+                    const open = menu.hidden;
+                    radiusMenu.hidden = true;
+                    sortMenu.hidden = true;
+                    radiusChip.setAttribute('aria-expanded', 'false');
+                    sortChip.setAttribute('aria-expanded', 'false');
+                    if (other) other.hidden = true;
+                    menu.hidden = !open;
+                    chip.setAttribute('aria-expanded', menu.hidden ? 'false' : 'true');
+                    chip.classList.toggle('is-open', !menu.hidden);
+                }
+                radiusChip.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    toggleMenu(radiusChip, radiusMenu, sortMenu);
+                });
+                sortChip.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    toggleMenu(sortChip, sortMenu, radiusMenu);
+                });
+                document.addEventListener('pointerdown', (e) => {
+                    if (!e.target.closest('#sheetChipRow')) {
+                        radiusMenu.hidden = true;
+                        sortMenu.hidden = true;
+                        radiusChip.classList.remove('is-open');
+                        sortChip.classList.remove('is-open');
+                    }
+                });
+            })();
             document.getElementById('onlyOpenCheckbox').addEventListener('change', (e) => { State.onlyOpen = e.target.checked; syncUI(); });
             document.getElementById('onlyPhoneCheckbox')?.addEventListener('change', (e) => { State.onlyPhone = e.target.checked; syncUI(); });
             document.getElementById('onlyPriceCheckbox')?.addEventListener('change', (e) => { State.onlyPrice = e.target.checked; syncUI(); });
@@ -1904,6 +2268,15 @@
                         return false;
                     }
                 }
+                if (State.radiusKm) {
+                    const lat = Number(loc.lat);
+                    const lng = Number(loc.lng);
+                    if (!Number.isFinite(lat) || !Number.isFinite(lng)) return false;
+                    const center = State.geoReady
+                        ? State.userCoords
+                        : { lat: map.getCenter().lat, lng: map.getCenter().lng };
+                    if (calculateDistance(center.lat, center.lng, lat, lng) > State.radiusKm) return false;
+                }
                 return true;
             }
 
@@ -1916,7 +2289,6 @@
                 sortPanelWrap.style.display = 'none';
 
                 if (State.locationSearchQuery) {
-                    browseBottomSheet();
                     navBackBtn.style.display = 'flex';
                     updateNavBackButton();
                     navTitle.textContent = `Результати: ${State.locationSearchQuery}`;
@@ -1929,7 +2301,6 @@
                 }
 
                 if (State.service) {
-                    browseBottomSheet();
                     navBackBtn.style.display = 'flex';
                     updateNavBackButton();
                     navTitle.textContent = State.service.name;
@@ -1945,7 +2316,6 @@
                 }
 
                 if (!State.category) {
-                    collapseBottomSheet();
                     navBackBtn.style.display = 'none';
                     updateNavBackButton();
                     navTitle.textContent = 'Майстри та ремонт' + cityScopeTitle();
@@ -1982,7 +2352,6 @@
                     return;
                 }
 
-                browseBottomSheet();
                 navBackBtn.style.display = 'flex';
                 updateNavBackButton();
                 const catData = window.masterCatalog[State.category];
@@ -2057,6 +2426,10 @@
 
             function handleNavBack() {
                 seoListingTouched = true;
+                if (isMobileLayout() && history.state && history.state.mfDepth > 0) {
+                    history.back();
+                    return;
+                }
                 if (State.locationSearchQuery) {
                     State.locationSearchQuery = '';
                     searchInput.value = '';
@@ -2071,6 +2444,10 @@
                     collapseBottomSheet();
                 }
                 closeMasterDetail();
+                if (isMobileLayout()) {
+                    revealMobileSheet(State.category || State.locationSearchQuery ? 'half' : 'peek');
+                    replaceSheetHistory();
+                }
                 syncUI();
             }
 
@@ -2705,7 +3082,9 @@
                         enterDetailPreview();
                         anchorPosterToMarker(loc, { animateCard: true });
                         queueLocationDetail(loc, opts);
+                        if (!opts.fromHistory) commitSheetNavigation();
                     }
+                    syncSheetChrome();
                     return;
                 }
                 if (!opts.keepServerSeo) seoListingTouched = true;
@@ -2746,7 +3125,9 @@
                     refreshClaimButton(loc);
                     applyPageSeoFromState();
                     queueLocationDetail(loc, opts);
+                    if (!opts.fromHistory) commitSheetNavigation();
                 }
+                syncSheetChrome();
             };
 
             function claimBannerHtmlFor(loc, opts = {}) {
@@ -3243,22 +3624,19 @@
                 State.detailMode = null;
                 seoListingTouched = true;
                 highlightSelectedMarker(null);
-                if (!opts.fromSwipe && (State.service || State.subcategory || State.category || State.locationSearchQuery)) {
-                    if (isMobileLayout()) browseBottomSheet();
-                }
                 if (State.service) {
                     renderLocationList();
                     syncMapMarkers();
                 }
                 applyPageSeoFromState();
                 renderRecentViewed();
+                syncSheetChrome();
             };
 
             window.panToMaster = function(lat, lng) {
                 map.setView([lat, lng], 15);
                 if (isMobileLayout()) {
-                    appShell.classList.remove('sheet-dive', 'sheet-browse');
-                    appShell.classList.add('sheet-expanded');
+                    revealMobileSheet('peek');
                     setTimeout(() => map.invalidateSize(), 400);
                 }
             };
@@ -3283,6 +3661,60 @@
                 trackLocationClick(locId, 'directions');
                 window.open(url, '_blank', 'noopener,noreferrer');
             };
+
+            function formatSheetDistance(km) {
+                if (!Number.isFinite(km)) return '';
+                if (km < 1) return Math.max(50, Math.round(km * 1000 / 50) * 50) + ' м';
+                return km.toFixed(1).replace('.', ',') + ' км';
+            }
+
+            function providerPriceLabel(loc) {
+                if (State.service) {
+                    return formatDisplayPrice(findServicePrice(loc, State.service.name)) || 'ціну уточнюйте';
+                }
+                const amounts = Object.values(loc.prices || {})
+                    .map((value) => parseInt(String(value).replace(/[^\d]/g, ''), 10))
+                    .filter((n) => Number.isFinite(n) && n > 0)
+                    .sort((a, b) => a - b);
+                if (!amounts.length) return '';
+                return 'від ' + amounts[0].toLocaleString('uk-UA') + ' грн';
+            }
+
+            function bindProviderCard(card, loc) {
+                card.addEventListener('click', () => {
+                    openMasterDetail(loc.id, { mode: isMobileLayout() ? 'preview' : 'dive' });
+                });
+                card.querySelectorAll('a, button').forEach((el) => {
+                    el.addEventListener('click', (event) => event.stopPropagation());
+                });
+            }
+
+            function buildProviderCard(loc) {
+                const card = document.createElement('div');
+                card.className = 'provider-card' + (State.selectedLocation?.id === loc.id ? ' active' : '');
+                const catName = categoryLabel(window.masterCatalog?.[loc.cat]?.name || '');
+                const dist = formatSheetDistance(loc.currentDistance);
+                const bits = [catName, dist].filter(Boolean).join(' · ');
+                const open = loc.openStatus === 'open';
+                const price = providerPriceLabel(loc);
+                const phone = String(loc.phone || '').trim();
+                const tel = phone ? 'tel:' + phone.replace(/[^\d+]/g, '') : '';
+                card.innerHTML = `
+                    <div class="provider-main">
+                        <h2 class="provider-title">${escapeHtml(loc.title)}</h2>
+                        ${bits ? `<p class="provider-sub">${escapeHtml(bits)}</p>` : ''}
+                        <div class="provider-meta">
+                            <span class="rating-block"><span class="star-icon">★</span><span>${Number(loc.rating || 0).toFixed(1)}</span></span>
+                            <span class="status-badge ${open ? 'open' : 'closed'}">${open ? 'Зараз працює' : 'Зачинено'}</span>
+                        </div>
+                    </div>
+                    <div class="provider-side">
+                        ${price ? `<span class="provider-card-price">${escapeHtml(price)}</span>` : ''}
+                        ${tel ? `<a class="provider-call" href="${escapeHtml(tel)}">Подзвонити</a>` : ''}
+                    </div>`;
+                bindProviderCard(card, loc);
+                return card;
+            }
 
             function renderLocationList() {
                 const contentContainer = sidebarContent;
@@ -3314,32 +3746,7 @@
                     return;
                 }
 
-                filtered.forEach(loc => {
-                    const card = document.createElement('div');
-                    card.className = `provider-card ${State.selectedLocation?.id === loc.id ? 'active' : ''}`;
-                    const priceCount = Object.keys(loc.prices || {}).length;
-                    let priceText = State.service
-                        ? (formatDisplayPrice(findServicePrice(loc, State.service.name)) || 'ціну уточнюйте')
-                        : (priceCount ? 'Прайс-лист' : 'Без прайсу');
-
-                    card.innerHTML = `
-                        <div class="provider-top">
-                            <h2 class="provider-title">${loc.title}</h2>
-                            <div class="rating-block"><span class="star-icon">★</span><span>${loc.rating.toFixed(1)}</span><span class="reviews-count">(${loc.reviewsCount})</span></div>
-                        </div>
-                        <div class="provider-desc">${loc.text}</div>
-                        <div class="provider-meta">
-                            <span class="status-badge ${loc.openStatus}">${loc.openStatus === 'open' ? 'Відкрито' : 'Зачинено'}</span>
-                            <span class="distance-badge">📍 ${loc.currentDistance.toFixed(1)} км</span>
-                        </div>
-                        <div class="provider-price-row">
-                            <span class="provider-badge">${State.service ? 'Послуга' : 'Послуг: ' + priceCount}</span>
-                            <span class="provider-card-price">${priceText}</span>
-                        </div>`;
-
-                    card.onclick = () => openMasterDetail(loc.id);
-                    contentContainer.appendChild(card);
-                });
+                filtered.forEach((loc) => contentContainer.appendChild(buildProviderCard(loc)));
             }
 
             function normalizeLocationSearch(value) {
@@ -3368,10 +3775,18 @@
             }
 
             function getLocationSearchResults(query = State.locationSearchQuery) {
-                return window.mockLocations.filter((loc) =>
-                    locationMatchesSearch(loc, query) &&
-                    (!State.onlyOpen || loc.openStatus === 'open')
-                );
+                return window.mockLocations.filter((loc) => {
+                    if (!locationMatchesSearch(loc, query)) return false;
+                    if (State.onlyOpen && loc.openStatus !== 'open') return false;
+                    if (!State.radiusKm) return true;
+                    const lat = Number(loc.lat);
+                    const lng = Number(loc.lng);
+                    if (!Number.isFinite(lat) || !Number.isFinite(lng)) return false;
+                    const center = State.geoReady
+                        ? State.userCoords
+                        : { lat: map.getCenter().lat, lng: map.getCenter().lng };
+                    return calculateDistance(center.lat, center.lng, lat, lng) <= State.radiusKm;
+                });
             }
 
             function renderLocationSearchResults() {
@@ -3393,24 +3808,7 @@
                 });
                 results.sort((a, b) => a.currentDistance - b.currentDistance);
 
-                results.forEach((loc) => {
-                    const providerName = getProviderName(loc);
-                    const card = document.createElement('div');
-                    card.className = `provider-card ${State.selectedLocation?.id === loc.id ? 'active' : ''}`;
-                    card.innerHTML = `
-                        <div class="provider-top">
-                            <h2 class="provider-title">${escapeHtml(loc.title)}</h2>
-                            <div class="rating-block"><span class="star-icon">★</span><span>${Number(loc.rating || 0).toFixed(1)}</span></div>
-                        </div>
-                        ${providerName ? `<div class="provider-desc">Майстер: ${escapeHtml(providerName)}</div>` : ''}
-                        ${loc.address ? `<div class="provider-desc">📍 ${escapeHtml(loc.address)}</div>` : ''}
-                        <div class="provider-meta">
-                            <span class="status-badge ${loc.openStatus}">${loc.openStatus === 'open' ? 'Відкрито' : 'Зачинено'}</span>
-                            <span class="distance-badge">${loc.currentDistance.toFixed(1)} км</span>
-                        </div>`;
-                    card.onclick = () => openMasterDetail(loc.id);
-                    sidebarContent.appendChild(card);
-                });
+                results.forEach((loc) => sidebarContent.appendChild(buildProviderCard(loc)));
             }
 
             function setSeoMeta(attr, key, content) {
@@ -3642,7 +4040,7 @@
                     const page = (serverHead.path.match(/[?&]page=(\d+)/) || [])[1];
                     if (page && page !== '1') target.searchParams.set('page', page);
                     const next = target.pathname + target.search;
-                    if (cur.pathname + cur.search !== next) history.replaceState(null, '', next);
+                    if (cur.pathname + cur.search !== next) history.replaceState(history.state, '', next);
                 } catch (_) {}
             }
             function clientListingSeo() {
@@ -3739,13 +4137,80 @@
                     const cur = new URLSearchParams(window.location.search);
                     if (cur.get('claim') === '1') return;
                     const parsed = new URL(url, window.location.origin);
-                    history.replaceState(null, '', parsed.pathname + parsed.search);
+                    history.replaceState(history.state, '', parsed.pathname + parsed.search);
                 } catch (_) {}
+            }
+
+            function syncSheetChrome() {
+                if (!isMobileLayout()) return;
+                const showBack = Boolean(
+                    State.selectedLocation ||
+                    State.category ||
+                    State.subcategory ||
+                    State.service ||
+                    State.locationSearchQuery
+                );
+                if (navBackBtn) navBackBtn.style.display = showBack ? 'flex' : 'none';
+                updateNavBackButton();
+                if (navTitle) navTitle.textContent = sheetHeading();
+                const chips = document.getElementById('sheetChipRow');
+                if (chips) chips.hidden = Boolean(State.selectedLocation);
+                const countEl = document.getElementById('listingCount');
+                if (countEl && State.selectedLocation) countEl.hidden = true;
+                else if (countEl && countEl.textContent && (State.category || State.service || State.locationSearchQuery)) {
+                    countEl.hidden = false;
+                }
+                const radiusChip = document.getElementById('radiusChip');
+                const sortChip = document.getElementById('sortChip');
+                if (radiusChip) {
+                    radiusChip.textContent = !State.radiusKm
+                        ? 'Радіус: усі'
+                        : State.radiusKm < 1
+                          ? 'Радіус: 500 м'
+                          : 'Радіус: ' + String(State.radiusKm).replace('.', ',') + ' км';
+                }
+                if (sortChip) {
+                    const labels = {
+                        distance: 'Сортування: відстань',
+                        rating: 'Сортування: рейтинг',
+                        price: 'Сортування: ціна',
+                        alphabet: 'Сортування: алфавіт',
+                    };
+                    sortChip.textContent = labels[State.sortType] || labels.distance;
+                }
+                document.querySelectorAll('#radiusMenu [data-radius]').forEach((btn) => {
+                    const km = btn.getAttribute('data-radius') ? Number(btn.getAttribute('data-radius')) : 0;
+                    btn.classList.toggle('is-active', (km || 0) === (State.radiusKm || 0));
+                });
+                document.querySelectorAll('#sortMenu [data-sort]').forEach((btn) => {
+                    const key = btn.getAttribute('data-sort');
+                    btn.hidden = key === 'price' && !State.service;
+                    btn.classList.toggle('is-active', key === State.sortType);
+                });
+            }
+
+            function sheetHeading() {
+                if (State.selectedLocation) {
+                    const parts = cardHeadingParts(State.selectedLocation);
+                    return parts.heading || State.selectedLocation.title || 'Майстер';
+                }
+                if (State.locationSearchQuery) return 'Результати: ' + State.locationSearchQuery;
+                if (State.service) return State.service.name;
+                if (State.category && State.subcategory) {
+                    const sub = window.masterCatalog?.[State.category]?.subcats?.[State.subcategory];
+                    return categoryLabel(sub?.name || State.subcategory);
+                }
+                if (State.category) {
+                    return categoryLabel(window.masterCatalog?.[State.category]?.name || State.category);
+                }
+                return 'Майстри та ремонт у Києві';
             }
 
             function syncUI() {
                 renderCatalogNav();
                 applyPageSeoFromState();
+                if (isMobileLayout() && navTitle) navTitle.textContent = sheetHeading();
+                if (isMobileLayout()) syncSheetChrome();
                 renderRecentViewed();
             }
 
@@ -3837,14 +4302,16 @@
                 const el = document.getElementById('listingCount');
                 if (!el) return;
                 const area = MAPFIX_AREAS[State.area];
-                if (!area || !State.category) {
+                if (State.selectedLocation || (!State.category && !State.locationSearchQuery && !State.service)) {
                     el.hidden = true;
                     el.textContent = '';
                     return;
                 }
                 const n = Number(markerCount) || 0;
                 el.hidden = false;
-                el.textContent = `${n} ${placesWordUa(n)} на ${area.on || area.name}`;
+                el.textContent = area
+                    ? `Майстри поруч (${n}) · ${area.name}`
+                    : `Майстри поруч (${n})`;
             }
 
             function openPopupForLocation(loc) {
@@ -3891,7 +4358,9 @@
                     if (el) el.checked = false;
                 });
                 closeMasterDetail();
+                revealMobileSheet('peek');
                 collapseBottomSheet();
+                if (isMobileLayout()) commitSheetNavigation();
                 syncUI();
             }
 
@@ -3913,7 +4382,8 @@
                 State.selectedLocation = null;
                 State.detailMode = null;
                 closeMasterDetail();
-                browseBottomSheet();
+                revealMobileSheet('half');
+                commitSheetNavigation();
                 syncUI();
             }
 
@@ -3927,7 +4397,8 @@
                 State.subcategory = subId;
                 State.service = null;
                 State.selectedLocation = null;
-                expandBottomSheet();
+                revealMobileSheet('half');
+                commitSheetNavigation();
                 syncUI();
             }
 
@@ -3941,7 +4412,8 @@
                 });
                 State.service = { name: srv.name, price: srv.price };
                 State.selectedLocation = null;
-                expandBottomSheet();
+                revealMobileSheet('full');
+                commitSheetNavigation();
                 syncUI();
             }
 
@@ -4001,7 +4473,8 @@
                 }
 
                 closeMasterDetail();
-                browseBottomSheet();
+                revealMobileSheet(State.service ? 'full' : 'half');
+                commitSheetNavigation();
                 syncUI();
             }
 
@@ -4233,7 +4706,8 @@
                     State.aiSuggestions = [];
                     State.selectedLocation = null;
                     closeMasterDetail();
-                    browseBottomSheet();
+                    revealMobileSheet('half');
+                    commitSheetNavigation();
                     syncUI();
                     return;
                 }
@@ -4333,6 +4807,10 @@
                     return;
                 }
                 if (!isMobileLayout() || sheetDragging) return;
+                if (window.__mapfixCycleSheet) {
+                    window.__mapfixCycleSheet();
+                    return;
+                }
                 raiseSheetLevel();
             });
 
@@ -4344,18 +4822,22 @@
             });
 
             sheetHandle.addEventListener('touchstart', (e) => {
-                if (!isMobileLayout()) return;
+                if (window.__mapfixSheetReady || !isMobileLayout()) return;
                 sheetDragging = false;
                 sheetDragStartY = e.touches[0].clientY;
             }, { passive: true });
 
             sheetHandle.addEventListener('touchmove', (e) => {
-                if (!isMobileLayout()) return;
+                if (window.__mapfixSheetReady || !isMobileLayout()) return;
                 const dy = e.touches[0].clientY - sheetDragStartY;
                 if (Math.abs(dy) >= SHEET_DRAG_THRESHOLD) sheetDragging = true;
             }, { passive: true });
 
             function endListSheetTouch(e, cancelled) {
+                if (window.__mapfixSheetReady) {
+                    resetSheetGestureFlags();
+                    return;
+                }
                 const touch = e.changedTouches && e.changedTouches[0];
                 const diff = touch ? touch.clientY - sheetDragStartY : 0;
                 const dragged = sheetDragging || Math.abs(diff) >= SHEET_DRAG_THRESHOLD;
@@ -4392,12 +4874,48 @@
                     if (landing.sub && window.masterCatalog[landing.cat]?.subcats?.[landing.sub]) {
                         State.subcategory = landing.sub;
                     }
-                    browseBottomSheet();
                 }
             })();
 
-            window.addEventListener('popstate', () => {
+            function applySheetSnapshot(s) {
+                State.area = s.area || null;
+                State.category = s.category && window.masterCatalog?.[s.category] ? s.category : null;
+                State.subcategory = State.category && s.subcategory && window.masterCatalog[State.category]?.subcats?.[s.subcategory]
+                    ? s.subcategory
+                    : null;
+                State.service = s.service && s.service.name ? { name: s.service.name, price: s.service.price } : null;
+                State.locationSearchQuery = s.q || '';
+                State.aiSuggestions = [];
+                const searchField = document.getElementById('searchInput');
+                if (searchField) searchField.value = State.locationSearchQuery;
+                if (s.area) {
+                    const area = resolveMapArea(s.area);
+                    if (area) applyMapArea(area);
+                }
+                skipSheetReveal = true;
+                if (s.loc) {
+                    openMasterDetail(s.loc, {
+                        mode: s.detailMode === 'preview' ? 'preview' : 'dive',
+                        forceMode: true,
+                        fromHistory: true,
+                        keepServerSeo: true,
+                    });
+                } else if (State.selectedLocation) {
+                    closeMasterDetail({ fromHistory: true });
+                }
+                skipSheetReveal = false;
+            }
+
+            window.addEventListener('popstate', (event) => {
+                sheetHistoryLock = true;
                 seoListingTouched = true;
+                const snap = event.state && event.state.mfSheet ? event.state : null;
+                if (snap) {
+                    applySheetSnapshot(snap);
+                    syncUI();
+                    sheetHistoryLock = false;
+                    return;
+                }
                 const landing = parseClientLanding();
                 State.area = landing.area || null;
                 State.category = landing.cat && window.masterCatalog?.[landing.cat] ? landing.cat : null;
@@ -4405,20 +4923,31 @@
                     ? landing.sub
                     : null;
                 State.service = null;
+                State.locationSearchQuery = '';
                 if (landing.area) {
                     const area = resolveMapArea(landing.area);
                     if (area) applyMapArea(area);
                 }
+                skipSheetReveal = true;
                 if (landing.loc) {
-                    openMasterDetail(landing.loc, { mode: 'dive', forceMode: true });
-                    return;
+                    openMasterDetail(landing.loc, { mode: 'dive', forceMode: true, fromHistory: true });
+                } else if (State.selectedLocation) {
+                    closeMasterDetail({ fromHistory: true });
                 }
-                closeMasterDetail();
-                if (State.category) browseBottomSheet();
+                skipSheetReveal = false;
                 syncUI();
+                sheetHistoryLock = false;
             });
 
+            initMobileSheet();
             syncUI();
+            if (isMobileLayout()) {
+                if (State.selectedLocation) revealMobileSheet(State.detailMode === 'preview' ? 'peek' : 'full');
+                else if (State.service) revealMobileSheet('full');
+                else if (State.category || State.subcategory || State.locationSearchQuery) revealMobileSheet('half');
+                else revealMobileSheet('peek');
+                ensureSheetHistory();
+            }
             setTimeout(() => map.invalidateSize(), 300);
 
             window.__mapfixRefreshMap = refreshMapData;

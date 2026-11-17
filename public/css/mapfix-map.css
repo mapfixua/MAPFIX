@@ -286,6 +286,9 @@
         }
 
         .nav-title { font-size: 15px; font-weight: 800; color: var(--dark); margin: 0; line-height: 1.3; }
+        .sheet-head-row, .sheet-head-copy { display: contents; }
+        .sheet-chip-row { display: none; }
+        .sheet-chip-menu { display: none; }
         .listing-count {
             margin: 0;
             font-size: 13px;
@@ -393,9 +396,29 @@
             cursor: pointer;
             transition: background 0.15s, border-color 0.15s;
             display: flex;
-            flex-direction: column;
-            gap: 5px;
+            flex-direction: row;
+            align-items: center;
+            justify-content: space-between;
+            gap: 10px;
         }
+        .provider-main { min-width: 0; flex: 1; display: flex; flex-direction: column; gap: 3px; }
+        .provider-side { display: flex; flex-direction: column; align-items: flex-end; gap: 6px; flex-shrink: 0; }
+        .provider-sub { margin: 0; font-size: 12px; font-weight: 600; color: var(--muted); line-height: 1.3; }
+        .provider-call {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            height: 36px;
+            padding: 0 12px;
+            border-radius: 999px;
+            background: var(--ink);
+            color: #fff;
+            font-size: 13px;
+            font-weight: 800;
+            text-decoration: none;
+            white-space: nowrap;
+        }
+        .provider-call:active { transform: scale(0.98); }
         .provider-card:hover { background: #f8fafc; border-color: #cbd5e1; }
         .provider-card.active { background: var(--primary-light); border-color: var(--primary); }
         .provider-top { display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; margin: 0; }
@@ -405,7 +428,7 @@
         .reviews-count { color: #94a3b8; font-weight: 500; }
         .provider-desc { font-size: 12px; color: #64748b; margin: 0; line-height: 1.3; }
         .provider-meta { display: flex; align-items: center; gap: 6px; font-size: 11px; margin: 0; }
-        .status-badge { padding: 2px 6px; border-radius: 4px; font-weight: 700; font-size: 9px; text-transform: uppercase; margin: 0; }
+        .status-badge { padding: 3px 8px; border-radius: 999px; font-weight: 800; font-size: 11px; margin: 0; }
         .status-badge.open { background: #dcfce7; color: #166534; }
         .status-badge.closed { background: #fee2e2; color: #991b1b; }
         .distance-badge { background: #f1f5f9; color: #475569; padding: 2px 6px; border-radius: 4px; font-weight: 600; margin: 0; }
@@ -2192,6 +2215,253 @@
             .rating-block { font-size: 12px; }
             .provider-meta { font-size: 12px; }
             .provider-card-price { font-size: 15px; }
+        }
+
+        @media (max-width: 768px) {
+            /* Overlay sheet: map stays full-screen, the sheet slides with transform. */
+            #app-shell { overflow: hidden; }
+            #map-container,
+            #app-shell.sheet-expanded #map-container,
+            #app-shell.sheet-browse #map-container,
+            #app-shell.sheet-dive #map-container,
+            #app-shell.sheet-peek #map-container,
+            #app-shell.showing-location #map-container,
+            #app-shell.showing-location.sheet-peek #map-container {
+                position: absolute;
+                inset: 0;
+                width: 100%;
+                height: 100% !important;
+                min-height: 0 !important;
+                flex: none;
+                border-radius: 0;
+                z-index: 1;
+                transition: none;
+            }
+            #map-container #map { border-radius: 0; }
+            #sidebar,
+            #app-shell.showing-location #sidebar,
+            #app-shell.showing-location.sheet-peek #sidebar,
+            #app-shell.sheet-dive #sidebar {
+                position: absolute;
+                left: 0;
+                right: 0;
+                bottom: 0;
+                top: auto;
+                height: 92%;
+                max-height: 92%;
+                min-height: 0;
+                z-index: 30;
+                border-radius: 22px 22px 0 0;
+                will-change: transform;
+                touch-action: pan-y;
+                box-shadow: 0 -12px 40px rgba(11, 13, 16, 0.16);
+                transform: translate3d(0, 67%, 0);
+                transition: transform 0.3s cubic-bezier(0.32, 0.72, 0, 1);
+                padding-bottom: var(--sheet-pad-bottom);
+            }
+            #app-shell.sheet-interacting #map,
+            #app-shell.sheet-interacting .leaflet-container {
+                pointer-events: none;
+            }
+            #geo-btn, #kyiv-btn {
+                bottom: calc(var(--sheet-visible, 32vh) + 14px);
+                transition: bottom 0.3s cubic-bezier(0.32, 0.72, 0, 1), opacity 0.2s ease;
+                z-index: 5;
+            }
+            #app-shell.sheet-interacting #geo-btn,
+            #app-shell.sheet-interacting #kyiv-btn { transition: none; }
+            #app-shell.sheet-snap-full #geo-btn,
+            #app-shell.sheet-snap-full #kyiv-btn {
+                opacity: 0;
+                pointer-events: none;
+            }
+            .sheet-drag-handle { height: 22px; touch-action: none; }
+            .sheet-drag-handle::before {
+                width: 48px;
+                height: 5px;
+                background: #cbd5e1;
+            }
+            .sheet-drag-handle::after,
+            #app-shell.sheet-expanded .sheet-drag-handle::after,
+            #app-shell.sheet-browse .sheet-drag-handle::after,
+            #app-shell.sheet-dive .sheet-drag-handle::after,
+            #app-shell.showing-location .sheet-drag-handle::after {
+                content: none;
+                display: none;
+            }
+            .sheet-head-row {
+                display: flex;
+                align-items: center;
+                gap: 8px;
+                min-width: 0;
+                touch-action: none;
+            }
+            .sheet-head-copy { display: flex; flex-direction: column; min-width: 0; flex: 1; gap: 1px; }
+            .sheet-back-label {
+                position: absolute;
+                width: 1px;
+                height: 1px;
+                padding: 0;
+                margin: -1px;
+                overflow: hidden;
+                clip: rect(0, 0, 0, 0);
+                white-space: nowrap;
+                border: 0;
+            }
+            #app-shell:not(.sheet-expanded):not(.sheet-browse):not(.showing-location) .sidebar-header,
+            #app-shell .sidebar-header {
+                display: flex !important;
+                flex-direction: column;
+                position: relative;
+                z-index: 6;
+                background: #fff;
+                flex-shrink: 0;
+            }
+            #app-shell.sheet-snap-half .site-footer,
+            #app-shell.sheet-snap-full .site-footer {
+                display: block !important;
+            }
+            .sidebar-header .back-btn {
+                width: 40px;
+                min-width: 40px;
+                height: 40px;
+                min-height: 40px;
+                padding: 0;
+                border: none;
+                border-radius: 999px;
+                background: #f3f4f6;
+                color: var(--ink);
+                justify-content: center;
+            }
+            .sidebar-header .nav-title {
+                font-size: 17px;
+                white-space: nowrap;
+                overflow: hidden;
+                text-overflow: ellipsis;
+            }
+            .sheet-chip-row {
+                display: flex;
+                gap: 8px;
+                overflow-x: auto;
+                overscroll-behavior: contain;
+                padding: 2px 0 0;
+                position: relative;
+                scrollbar-width: none;
+            }
+            .sheet-chip-row[hidden] { display: none !important; }
+            .sheet-chip-row::-webkit-scrollbar { display: none; }
+            .sheet-chip {
+                flex: 0 0 auto;
+                height: 36px;
+                padding: 0 12px;
+                border-radius: 999px;
+                border: 1px solid var(--border);
+                background: #fff;
+                color: var(--ink);
+                font: inherit;
+                font-size: 13px;
+                font-weight: 800;
+                touch-action: manipulation;
+            }
+            .sheet-chip.is-open, .sheet-chip.is-on { background: var(--primary-light); border-color: var(--ink); }
+            .sheet-chip-menu {
+                display: flex;
+                flex-direction: column;
+                position: absolute;
+                left: 0;
+                top: calc(100% + 6px);
+                z-index: 8;
+                min-width: 180px;
+                padding: 6px;
+                background: #fff;
+                border-radius: 14px;
+                border: 1px solid var(--border);
+                box-shadow: 0 12px 32px rgba(15, 23, 42, 0.16);
+            }
+            .sheet-chip-menu[hidden] { display: none !important; }
+            .sheet-chip-menu button {
+                border: 0;
+                background: transparent;
+                text-align: left;
+                font: inherit;
+                font-size: 14px;
+                font-weight: 700;
+                padding: 10px 12px;
+                border-radius: 10px;
+                color: var(--ink);
+            }
+            .sheet-chip-menu button.is-active { background: var(--primary-light); }
+            .sort-panel { display: none; }
+            .sheet-body-host {
+                display: flex;
+                flex-direction: column;
+                overflow: hidden;
+            }
+            #sidebar-list-view {
+                flex: 1 1 auto;
+                min-height: 0;
+                height: auto;
+            }
+            #sidebar-list-view .sidebar-header { order: -1; }
+            #app-shell.showing-location #sheetChipRow,
+            #app-shell.showing-location #sortPanelWrap {
+                display: none !important;
+            }
+            #app-shell.showing-location #sidebar-list-view {
+                display: flex !important;
+                flex: 0 0 auto;
+                height: auto;
+            }
+            #app-shell.showing-location #sidebar-list-view > :not(.sidebar-header) {
+                display: none !important;
+            }
+            #sidebar-detail-view {
+                transform: none;
+                opacity: 1;
+                background: #fff;
+                visibility: hidden;
+            }
+            #sidebar-detail-view.show {
+                transform: none;
+                opacity: 1;
+                visibility: visible;
+            }
+            #app-shell.showing-location #sidebar-detail-view,
+            #app-shell.showing-location #sidebar-detail-view.show {
+                position: relative;
+                inset: auto;
+                flex: 1 1 auto;
+                min-height: 0;
+                height: auto;
+                max-height: none;
+                transform: none;
+                display: flex;
+                background: #fff;
+            }
+            #app-shell.showing-location .sheet-body-host { overflow: hidden; }
+            #app-shell.showing-location #sidebar-detail-view.mode-dive .detail-scroll-body,
+            #sidebar-detail-view.mode-dive .detail-scroll-body {
+                display: flex;
+                flex: 1 1 auto;
+                min-height: 0;
+                overflow-x: hidden;
+                overflow-y: auto;
+                overscroll-behavior: contain;
+            }
+            #sidebar-detail-view.mode-preview .detail-header {
+                overflow-x: hidden;
+                overflow-y: auto;
+                overscroll-behavior: contain;
+            }
+            #sidebar-detail-view .detail-header > .back-btn { display: none; }
+            .provider-card {
+                border: none;
+                border-bottom: 1px solid var(--border);
+                border-radius: 0;
+                padding: 14px 14px;
+            }
+            .provider-title { font-size: 16px; }
+            .provider-card-price { font-size: 14px; }
         }
 
         @media (max-width: 380px) {
