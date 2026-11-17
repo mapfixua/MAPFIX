@@ -2453,9 +2453,14 @@
 
             function highlightSelectedMarker(locId) {
                 window.mockLocations.forEach((loc) => {
-                    const iconEl = loc.markerInstance && loc.markerInstance._icon;
+                    if (!loc.markerInstance) return;
+                    if (isMobileLayout() && loc.markerInstance.setIcon) {
+                        const showsName = loc.markerInstance._icon && loc.markerInstance._icon.querySelector('.mapfix-marker-name');
+                        if (loc.id === locId || showsName) loc.markerInstance.setIcon(buildLocationIcon(loc));
+                    }
+                    const iconEl = loc.markerInstance._icon;
                     if (!iconEl) return;
-                    const inner = iconEl.querySelector('.mapfix-marker-category, .mapfix-marker-price');
+                    const inner = iconEl.querySelector('.mapfix-marker-category, .mapfix-marker-price, .mapfix-marker-name');
                     if (inner) inner.classList.toggle('is-selected', loc.id === locId);
                     if (loc.markerInstance.setZIndexOffset) {
                         loc.markerInstance.setZIndexOffset(loc.id === locId ? 1200 : 0);
@@ -2680,9 +2685,8 @@
                 const hostRect = host.getBoundingClientRect();
                 const x = mapRect.left - hostRect.left + pt.x;
                 const y = mapRect.top - hostRect.top + pt.y;
-                placePin(x, y);
                 const iconEl = loc.markerInstance && loc.markerInstance._icon;
-                const inner = iconEl && iconEl.querySelector('.mapfix-marker-category, .mapfix-marker-price');
+                const inner = iconEl && iconEl.querySelector('.mapfix-marker-category, .mapfix-marker-price, .mapfix-marker-name');
                 if (inner) inner.classList.add('is-selected');
                 if (isMobileLayout()) {
                     appShell.classList.remove('poster-anchored');
@@ -2692,15 +2696,10 @@
                         detail.style.width = '';
                         detail.style.maxHeight = '';
                     }
-                    const sheet = document.getElementById('sidebar')?.getBoundingClientRect();
-                    if (!sheet) return;
-                    const endY = sheet.top - hostRect.top + 1;
-                    const inset = 18;
-                    const leftX = sheet.left + inset - hostRect.left;
-                    const rightX = sheet.right - inset - hostRect.left;
-                    setThreads(hangThread(x, y, leftX, endY), hangThread(x, y, rightX, endY));
+                    hidePinPoster();
                     return;
                 }
+                placePin(x, y);
                 appShell.classList.add('poster-anchored');
                 const corners = positionDesktopPoster(x, y);
                 if (!corners) return;
@@ -4217,6 +4216,16 @@
             function buildLocationIcon(loc) {
                 const selected = State.selectedLocation?.id === loc.id;
                 const selectedClass = selected ? ' is-selected' : '';
+                if (isMobileLayout() && selected) {
+                    const name = String(cardHeadingParts(loc).heading || loc.title || '').replace(/\s+/g, ' ').trim();
+                    const width = Math.max(36, Math.round(name.length * 7.2 + 20));
+                    return L.divIcon({
+                        className: 'mapfix-marker-wrap',
+                        html: `<div class="mapfix-marker-name${selectedClass}">${escapeHtml(name)}</div>`,
+                        iconSize: [width, 32],
+                        iconAnchor: [width / 2, 32],
+                    });
+                }
                 if (State.service) {
                     const raw = findServicePrice(loc, State.service.name);
                     const price = formatDisplayPrice(raw) || 'уточн.';

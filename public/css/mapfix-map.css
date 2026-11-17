@@ -1643,7 +1643,8 @@
         }
         .mapfix-marker-category i { line-height: 1; }
         .mapfix-marker-category.is-selected,
-        .mapfix-marker-price.is-selected {
+        .mapfix-marker-price.is-selected,
+        .mapfix-marker-name.is-selected {
             transform: scale(1.28);
             box-shadow: 0 0 0 3px var(--primary), 0 4px 14px rgba(11, 13, 16, 0.28);
             z-index: 2;
@@ -1668,6 +1669,20 @@
             line-height: 1.2;
             min-width: 2.5rem;
             text-align: center;
+        }
+        .mapfix-marker-name {
+            background: #fff;
+            border: 2px solid var(--ink);
+            color: var(--dark);
+            font-weight: 800;
+            font-size: 12px;
+            line-height: 1.25;
+            padding: 5px 10px;
+            border-radius: 999px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.16);
+            white-space: nowrap;
+            text-align: center;
+            max-width: none;
         }
         .mapfix-marker-price::after {
             content: '';
@@ -2262,6 +2277,10 @@
             #app-shell.sheet-interacting #map,
             #app-shell.sheet-interacting .leaflet-container {
                 pointer-events: none;
+            }
+            .pin-link-svg,
+            .pin-poster {
+                display: none !important;
             }
             #geo-btn, #kyiv-btn {
                 bottom: calc(var(--sheet-visible, 32vh) + 14px);
