@@ -206,6 +206,7 @@
             min-height: 0;
             position: relative;
             overflow: hidden;
+            overscroll-behavior: contain;
             background: #f8fafc;
         }
         #sidebar-list-view { position: relative; z-index: 2; }
@@ -273,6 +274,7 @@
             flex-grow: 1;
             min-height: 0;
             overflow-y: auto;
+            overscroll-behavior: contain;
             -webkit-overflow-scrolling: touch;
             scroll-behavior: smooth;
             padding: 0 12px 12px;
@@ -462,6 +464,7 @@
             flex: 1 1 auto;
             min-height: 0;
             overflow: hidden;
+            overscroll-behavior: contain;
             padding: 8px 12px 8px;
             background: #f8fafc;
             display: flex;
@@ -1110,6 +1113,7 @@
             flex: 1 1 auto;
             min-height: 0;
             overflow-y: auto;
+            overscroll-behavior: contain;
             -webkit-overflow-scrolling: touch;
             padding: 0 10px 26px;
             display: flex;
@@ -1865,7 +1869,7 @@
                 flex: 0 0 auto;
                 height: auto;
                 max-height: 46vh;
-                touch-action: none;
+                touch-action: pan-y;
             }
             #app-shell.showing-location.sheet-dive #sidebar {
                 touch-action: pan-y;
@@ -2074,13 +2078,21 @@
                 display: flex;
                 flex-wrap: nowrap;
                 overflow-x: auto;
+                overscroll-behavior: contain;
                 gap: 8px;
                 padding: 6px 12px 8px;
                 margin: 0;
             }
             #sidebar-detail-view .profile-more {
                 flex: 0 1 auto;
-                max-height: 148px;
+                max-height: none;
+            }
+            #sidebar-detail-view .profile-more-body {
+                overflow: visible;
+                max-height: none;
+            }
+            #sidebar-detail-view.mode-preview .detail-header {
+                overflow: visible;
             }
             #sidebar-detail-view .profile-more-head {
                 font-size: 12px;

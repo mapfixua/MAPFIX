@@ -1458,10 +1458,19 @@
             const sidebarEl = document.getElementById('sidebar');
             const sheetHandleEl = document.getElementById('sheetHandle');
             let suppressDetailClick = false;
+            let suppressSheetClick = false;
             let cardDragStartY = 0;
             let cardDragArmed = false;
             let cardDragMoved = false;
             let cardPointerId = null;
+            const SHEET_DRAG_THRESHOLD = 16;
+
+            function resetSheetGestureFlags() {
+                cardDragMoved = false;
+                cardDragArmed = false;
+                cardPointerId = null;
+                if (typeof sheetDragging !== 'undefined') sheetDragging = false;
+            }
             detailViewEl.addEventListener('click', (e) => {
                 if (suppressDetailClick) {
                     suppressDetailClick = false;
@@ -1504,13 +1513,18 @@
                 positionPinLink();
             }
             function finishCardDrag(e) {
-                if (!cardDragArmed || (e && e.pointerId !== cardPointerId)) return;
-                const dy = (e ? e.clientY : cardDragStartY) - cardDragStartY;
-                cardDragArmed = false;
-                cardPointerId = null;
+                if (!cardDragArmed || (e && e.pointerId != null && e.pointerId !== cardPointerId)) return;
+                const dy = (e && typeof e.clientY === 'number' ? e.clientY : cardDragStartY) - cardDragStartY;
+                const moved = cardDragMoved || dy > 10;
+                const releaseEl = e && e.currentTarget;
+                const releaseId = e && e.pointerId;
+                resetSheetGestureFlags();
+                if (moved) suppressSheetClick = true;
+                if (releaseEl && releaseEl.releasePointerCapture && releaseId != null) {
+                    try { releaseEl.releasePointerCapture(releaseId); } catch (_) {}
+                }
                 if (dy > 64) {
                     suppressDetailClick = true;
-                    sheetDragging = true;
                     sidebarEl.style.transition = 'transform 0.18s ease';
                     sidebarEl.style.transform = 'translateY(110%)';
                     const followSheet = (frames) => {
@@ -1529,7 +1543,9 @@
                 sidebarEl.style.transform = '';
                 positionPinLink();
             }
-            [sheetHandleEl, document.getElementById('detailHeaderContent'), detailViewEl].forEach((el) => {
+            // One capture target per gesture. Header sits inside the detail view,
+            // so a second listener there stole setPointerCapture and dropped pointerup.
+            [sheetHandleEl, detailViewEl].forEach((el) => {
                 if (!el) return;
                 el.addEventListener('pointerdown', beginCardDrag);
                 el.addEventListener('pointermove', moveCardDrag);
@@ -4312,6 +4328,10 @@
             let sheetDragging = false;
 
             sheetHandle.addEventListener('click', () => {
+                if (suppressSheetClick) {
+                    suppressSheetClick = false;
+                    return;
+                }
                 if (!isMobileLayout() || sheetDragging) return;
                 raiseSheetLevel();
             });
@@ -4332,16 +4352,26 @@
             sheetHandle.addEventListener('touchmove', (e) => {
                 if (!isMobileLayout()) return;
                 const dy = e.touches[0].clientY - sheetDragStartY;
-                if (Math.abs(dy) > 12) sheetDragging = true;
+                if (Math.abs(dy) >= SHEET_DRAG_THRESHOLD) sheetDragging = true;
             }, { passive: true });
 
-            sheetHandle.addEventListener('touchend', (e) => {
-                if (!isMobileLayout() || cardSheetIsOpen() || cardDragMoved) return;
-                const diff = e.changedTouches[0].clientY - sheetDragStartY;
-                if (Math.abs(diff) < 36) return;
+            function endListSheetTouch(e, cancelled) {
+                const touch = e.changedTouches && e.changedTouches[0];
+                const diff = touch ? touch.clientY - sheetDragStartY : 0;
+                const dragged = sheetDragging || Math.abs(diff) >= SHEET_DRAG_THRESHOLD;
+                const cardOpen = cardSheetIsOpen();
+                resetSheetGestureFlags();
+                if (!isMobileLayout() || cancelled || cardOpen || !dragged) {
+                    if (dragged) suppressSheetClick = true;
+                    return;
+                }
+                suppressSheetClick = true;
                 if (diff < 0) raiseSheetLevel();
                 else lowerSheetLevel();
-            }, { passive: true });
+            }
+
+            sheetHandle.addEventListener('touchend', (e) => endListSheetTouch(e, false), { passive: true });
+            sheetHandle.addEventListener('touchcancel', (e) => endListSheetTouch(e, true), { passive: true });
 
             window.addEventListener('resize', () => {
                 syncMobileViewport();
