@@ -336,7 +336,7 @@
         if (Object.keys(meta).length) body.meta = meta;
         post('/api/analytics/page', body);
       },
-      search: function (query, source, matched, resultCount) {
+      search: function (query, source, matched, resultCount, extra) {
         var ctx = context();
         var body = {
           query: query,
@@ -353,6 +353,11 @@
             body.result_count = Math.min(32767, Math.round(n));
             body.matched = body.result_count > 0;
           }
+        }
+        if (extra && typeof extra === 'object') {
+          ['service', 'subcategory', 'area', 'router', 'engine'].forEach(function (key) {
+            if (extra[key]) body[key] = String(extra[key]).slice(0, 140);
+          });
         }
         post('/api/analytics/search', body);
       },

@@ -171,7 +171,10 @@ function stalePhoneDedupeKey(sessionHash, locationId) {
   return `${sid}|${loc.slice(0, 80)}`;
 }
 
-function buildSearchMeta({ query, source, resultCount, matched, engine } = {}) {
+const SEARCH_ROUTERS = new Set(['local', 'gemini', 'cache']);
+const SEARCH_AREAS = new Set(['sviatoshyn', 'borshchahivka', 'akademmistechko', 'kotsiubynske']);
+
+function buildSearchMeta({ query, source, resultCount, matched, engine, service, subcategory, area, router } = {}) {
   const q = clip(query, 80);
   const src = normalizeSearchSource(source);
   const count = parseResultCount(resultCount);
@@ -182,9 +185,19 @@ function buildSearchMeta({ query, source, resultCount, matched, engine } = {}) {
     meta.result_count = count;
     if (count === 0) meta.zero = 1;
   }
+  const route = String(router || '').trim().toLowerCase();
+  if (SEARCH_ROUTERS.has(route)) meta.router = route;
+  const areaKey = String(area || '').trim().toLowerCase();
+  if (SEARCH_AREAS.has(areaKey)) meta.area = areaKey;
+  const subKey = clip(subcategory, 40);
+  if (subKey) meta.subcategory = subKey;
+  const serviceName = clip(service, 120);
+  if (serviceName) meta.service = serviceName;
   if (src === 'ai') {
     const kind = String(engine || '').trim().toLowerCase();
     if (kind === 'gemini' || kind === 'catalog') meta.engine = kind;
+    else if (route === 'gemini') meta.engine = 'gemini';
+    else if (route === 'local') meta.engine = 'catalog';
   }
   return { meta, resultCount: count, source: src };
 }
@@ -294,7 +307,7 @@ function safeMeta(meta) {
   const out = {};
   // Search rows need q/source/matched/zero/result_count plus click_net.
   for (const [k, v] of Object.entries(meta)) {
-    if (Object.keys(out).length >= 12) break;
+    if (Object.keys(out).length >= 16) break;
     const key = String(k).slice(0, 32);
     if (!key || META_DROP.has(key)) continue;
     if (v == null) continue;

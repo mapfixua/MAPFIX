@@ -36,6 +36,7 @@
           "routes/**",
           "catalog-data.js",
           "search-ai.js",
+          "public/js/search-area.js",
           "app-state-store.js",
           "kv-store.js",
           "rate-limit.js",
