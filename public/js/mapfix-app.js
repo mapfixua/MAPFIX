@@ -1935,16 +1935,21 @@
             }
 
             const searchLogKeys = [];
-            function logAnalyticsSearch(query, source, resultCount) {
+            function logAnalyticsSearch(query, source, resultCount, extra) {
                 const q = String(query || '').trim();
                 if (q.length < 2 || typeof window.MapfixAnalytics?.search !== 'function') return;
                 const n = Math.max(0, Math.min(32767, Math.round(Number(resultCount) || 0)));
                 const src = String(source || 'catalog');
-                const key = src + '\n' + q.toLocaleLowerCase('uk-UA') + '\n' + n;
+                const route = extra && extra.router ? String(extra.router) : '';
+                const key = src + '\n' + q.toLocaleLowerCase('uk-UA') + '\n' + n + '\n' + route;
                 if (searchLogKeys.includes(key)) return;
                 searchLogKeys.push(key);
                 if (searchLogKeys.length > 300) searchLogKeys.splice(0, 100);
-                window.MapfixAnalytics.search(q, src, n > 0, n);
+                window.MapfixAnalytics.search(q, src, n > 0, n, extra || null);
+            }
+
+            function countVisibleMatches() {
+                return (window.mockLocations || []).filter((loc) => locationMatchesMapFilter(loc)).length;
             }
 
             function countCatalogMatches(category, subcategory, service) {
@@ -4497,6 +4502,10 @@
                     const srv = items.find((i) => i.name === service);
                     if (srv) State.service = { name: srv.name, price: srv.price };
                 }
+                if (opts.relaxEmptyService && State.service) {
+                    const priced = (window.mockLocations || []).some((loc) => locationOffersService(loc, State.service.name));
+                    if (!priced) State.service = null;
+                }
 
                 closeMasterDetail();
                 revealMobileSheet(State.service ? 'full' : 'half');
@@ -4532,37 +4541,100 @@
                 }
             }
 
+            function applyDetectedArea(areaKey) {
+                const area = resolveMapArea(areaKey);
+                if (area) applyMapArea(area);
+                return area;
+            }
+
+            function searchRouter(data) {
+                const router = String(data?.router || '').toLowerCase();
+                if (router === 'local' || router === 'gemini' || router === 'cache') return router;
+                return data?.source === 'gemini' ? 'gemini' : 'local';
+            }
+
             async function runAiSearch(transcript) {
                 setVoiceUI('processing', 'Gemini аналізує запит...');
                 searchInput.value = transcript;
+                // District is removed before /api/search-ai. Enter/submit only — not per keystroke.
+                const detected = window.MapfixSearchArea && typeof window.MapfixSearchArea.extractSearchArea === 'function'
+                    ? window.MapfixSearchArea.extractSearchArea(transcript)
+                    : { area: null, rest: transcript };
 
+                if (detected.area && !String(detected.rest || '').trim()) {
+                    applyDetectedArea(detected.area);
+                    State.locationSearchQuery = '';
+                    State.category = null;
+                    State.subcategory = null;
+                    State.service = null;
+                    State.aiSuggestions = [];
+                    State.selectedLocation = null;
+                    closeMasterDetail();
+                    revealMobileSheet('half');
+                    commitSheetNavigation();
+                    syncUI();
+                    logAnalyticsSearch(transcript, 'ai', countVisibleMatches(), {
+                        area: State.area,
+                        router: 'local',
+                        engine: 'catalog',
+                    });
+                    const areaName = areaPlaceName() || detected.area;
+                    setVoiceUI('listening', 'Район: ' + areaName);
+                    setTimeout(() => setVoiceUI('idle'), 1800);
+                    return;
+                }
+
+                const searchText = String(detected.rest || '').trim() || transcript;
                 const res = await fetch('/api/search-ai', {
                     method: 'POST',
                     credentials: 'same-origin',
                     cache: 'no-store',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(Object.assign(
-                        { text: transcript, deferSearchLog: typeof window.MapfixAnalytics?.search === 'function' },
+                        { text: searchText, deferSearchLog: typeof window.MapfixAnalytics?.search === 'function' },
                         analyticsBody()
                     )),
                 });
                 const data = await res.json();
                 if (!res.ok) throw new Error(data.error || 'Помилка AI-пошуку');
 
+                if (detected.area) applyDetectedArea(detected.area);
+                else if (data.area) applyDetectedArea(data.area);
+
                 State.aiSuggestions = Array.isArray(data.suggestions) ? data.suggestions : [];
 
                 if (data.category) {
-                    applyCatalogSearchFilter(data, { keepSuggestions: true });
-                    logAnalyticsSearch(
-                        transcript,
-                        'ai',
-                        countCatalogMatches(data.category, data.subcategory, data.service)
-                    );
+                    applyCatalogSearchFilter(data, { keepSuggestions: true, relaxEmptyService: true });
+                    logAnalyticsSearch(transcript, 'ai', countVisibleMatches(), {
+                        service: State.service?.name || undefined,
+                        subcategory: State.subcategory || undefined,
+                        area: State.area || undefined,
+                        router: searchRouter(data),
+                        engine: data.source === 'gemini' ? 'gemini' : 'catalog',
+                    });
                     const top = State.aiSuggestions[0];
-                    const label = top?.label || data.service || data.subcategory || data.category;
+                    const label = top?.label || State.service?.name || data.service || data.subcategory || data.category;
                     const src = data.source === 'gemini' ? 'Gemini' : 'каталог';
                     setVoiceUI('listening', `${src}: ${label}`);
                     setTimeout(() => setVoiceUI('idle'), 2200);
+                    return;
+                }
+
+                if (data.areaOnly || detected.area || data.area) {
+                    State.locationSearchQuery = '';
+                    State.category = null;
+                    State.subcategory = null;
+                    State.service = null;
+                    State.selectedLocation = null;
+                    closeMasterDetail();
+                    syncUI();
+                    logAnalyticsSearch(transcript, 'ai', countVisibleMatches(), {
+                        area: State.area || data.area || undefined,
+                        router: searchRouter(data),
+                        engine: data.source === 'gemini' ? 'gemini' : 'catalog',
+                    });
+                    setVoiceUI('listening', 'Район: ' + (areaPlaceName() || data.area || ''));
+                    setTimeout(() => setVoiceUI('idle'), 1800);
                     return;
                 }
 

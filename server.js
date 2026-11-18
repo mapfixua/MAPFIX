@@ -6,7 +6,13 @@ const fs = require('fs');
 const fsPromises = require('fs').promises;
 const crypto = require('crypto');
 const { validateCatalogHierarchy } = require('./catalog-data.js');
-const { parseVoiceSearch, suggestCatalogForPlace, classifyPlacesForImport } = require('./search-ai.js');
+const {
+  parseVoiceSearch,
+  suggestCatalogForPlace,
+  classifyPlacesForImport,
+  countSearchMatches,
+  relaxUnpricedService,
+} = require('./search-ai.js');
 const {
   parseTelegramAdsPayload,
   buildTelegramImportCandidates,
@@ -1694,6 +1700,11 @@ app.post('/api/analytics/search', async (req, res) => {
       source: req.body?.source,
       resultCount: req.body?.result_count ?? req.body?.resultCount,
       matched: req.body?.matched,
+      engine: req.body?.engine,
+      service: req.body?.service,
+      subcategory: req.body?.subcategory,
+      area: req.body?.area,
+      router: req.body?.router,
     });
     if (!built.meta.q || built.meta.q.length < 2) {
       return res.json({ ok: true, skipped: true });
@@ -2024,17 +2035,29 @@ app.post('/api/search-ai', searchRateLimit, async (req, res) => {
     }
 
     const data = await readData();
-    const result = await parseVoiceSearch(text, data.masterCatalog, {
+    const parsed = await parseVoiceSearch(text, data.masterCatalog, {
       geminiApiKey: GEMINI_API_KEY || undefined,
+    });
+    const visibleLocations = publicLocations(data.mockLocations);
+    const result = relaxUnpricedService(parsed, visibleLocations);
+    const visibleCount = countSearchMatches(visibleLocations, data.masterCatalog, {
+      category: result.category,
+      subcategory: result.subcategory,
+      service: result.service,
+      area: result.area,
     });
 
     if (req.body?.deferSearchLog !== true) {
       const built = analyticsEvents.buildSearchMeta({
         query: text,
         source: 'ai',
-        resultCount: req.body?.result_count ?? req.body?.resultCount,
-        matched: Boolean(result.category),
+        resultCount: req.body?.result_count ?? req.body?.resultCount ?? visibleCount,
+        matched: Boolean(result.category || result.areaOnly),
         engine: result.source === 'gemini' ? 'gemini' : 'catalog',
+        service: result.service,
+        subcategory: result.subcategory,
+        area: result.area,
+        router: result.router,
       });
       if (countsPublicKpi(req)) {
         analytics
@@ -2056,11 +2079,13 @@ app.post('/api/search-ai', searchRateLimit, async (req, res) => {
       });
     }
 
-    if (!result.category) {
+    if (!result.category && !result.areaOnly) {
       return res.status(404).json({
         error: 'Не вдалося визначити категорію. Спробуйте інший запит.',
         query: text,
         source: result.source,
+        area: result.area || null,
+        router: result.router || null,
       });
     }
 
@@ -2073,8 +2098,17 @@ app.post('/api/search-ai', searchRateLimit, async (req, res) => {
       source: result.source,
       confidence: result.confidence,
       query: text,
-      suggestions: Array.isArray(result.suggestions) ? result.suggestions : [],
+      suggestions: (Array.isArray(result.suggestions) ? result.suggestions : []).map((item) => {
+        if (!item || typeof item !== 'object') return item;
+        const copy = { ...item };
+        delete copy.exact;
+        return copy;
+      }),
       gemini: Boolean(GEMINI_API_KEY),
+      area: result.area || null,
+      areaOnly: Boolean(result.areaOnly),
+      router: result.router || (result.source === 'gemini' ? 'gemini' : 'local'),
+      result_count: visibleCount,
     });
   } catch (err) {
     console.error('[POST /api/search-ai]', err);
