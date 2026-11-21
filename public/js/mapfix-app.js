@@ -2224,12 +2224,53 @@
                 return items.some((srv) => srv?.name && locationOffersService(loc, srv.name));
             }
 
-            /** Exact price match, or same subcategory (imported masters often lack filled prices). */
+            const SERVICE_FALLBACK_NOTE = 'Точної послуги в картках немає, ось майстри цієї категорії поруч';
+
+            /** Exact price, or any card of this subcategory (imported masters often have an empty price list). */
             function locationMatchesSelectedService(loc) {
-                if (!State.service) return true;
+                if (!State.service || State.serviceFallback) return true;
                 if (locationOffersService(loc, State.service.name)) return true;
-                if (State.subcategory && getLocSubcats(loc).includes(State.subcategory)) return true;
+                if (State.subcategory && locationInSubcategory(loc, State.category, State.subcategory)) return true;
                 return false;
+            }
+
+            /**
+             * No card in this area prices the chosen service.
+             * branch — keep the subcategory. category — subcategory is empty, keep the category.
+             */
+            function resolveServiceFallback() {
+                State.serviceFallback = null;
+                if (!State.service || !Array.isArray(window.mockLocations)) {
+                    if (!State.service) State.searchNote = '';
+                    return;
+                }
+                const inAreaCategory = (loc) => {
+                    if (State.area && !locationMatchesArea(loc, State.area)) return false;
+                    if (State.category && loc.cat !== State.category) return false;
+                    return true;
+                };
+                const branch = window.mockLocations.filter(
+                    (loc) =>
+                        inAreaCategory(loc) &&
+                        (!State.subcategory || locationInSubcategory(loc, State.category, State.subcategory))
+                );
+                const priced = branch.filter((loc) => locationOffersService(loc, State.service.name));
+                if (priced.length > 0) {
+                    State.searchNote = '';
+                    return;
+                }
+                if (branch.length > 0) {
+                    State.serviceFallback = 'branch';
+                    State.searchNote = SERVICE_FALLBACK_NOTE;
+                    return;
+                }
+                const categoryHits = window.mockLocations.filter(inAreaCategory);
+                if (State.subcategory && State.category && categoryHits.length > 0) {
+                    State.serviceFallback = 'category';
+                    State.searchNote = SERVICE_FALLBACK_NOTE;
+                    return;
+                }
+                State.searchNote = '';
             }
 
             function locationMatchesArea(loc, areaKey) {
@@ -2257,7 +2298,11 @@
                 if (State.area && !locationMatchesArea(loc, State.area)) return false;
                 if (State.locationSearchQuery && !locationMatchesSearch(loc)) return false;
                 if (State.category && loc.cat !== State.category) return false;
-                if (State.subcategory && !locationInSubcategory(loc, State.category, State.subcategory)) {
+                if (
+                    State.serviceFallback !== 'category' &&
+                    State.subcategory &&
+                    !locationInSubcategory(loc, State.category, State.subcategory)
+                ) {
                     return false;
                 }
                 if (State.service && !locationMatchesSelectedService(loc)) return false;
@@ -3731,7 +3776,9 @@
                 contentContainer.innerHTML = '';
 
                 if (!State.service && !State.subcategory && !State.category) return;
+                if (!Array.isArray(window.mockLocations)) return;
 
+                resolveServiceFallback();
                 let filtered = window.mockLocations.filter((loc) => locationMatchesMapFilter(loc));
 
                 filtered.forEach(loc => { loc.currentDistance = calculateDistance(State.userCoords.lat, State.userCoords.lng, loc.lat, loc.lng); });
@@ -3746,14 +3793,29 @@
                     );
                 }
 
+                const label = State.service?.name
+                    || (State.subcategory && (window.masterCatalog?.[State.category]?.subcats?.[State.subcategory]?.name || State.subcategory))
+                    || (State.category && (window.masterCatalog?.[State.category]?.name || State.category))
+                    || '';
+                if (State.service && catalogServiceLog) {
+                    logAnalyticsSearch(label, 'catalog', filtered.length, {
+                        service: State.service.name,
+                        subcategory: State.serviceFallback === 'category' ? undefined : State.subcategory || undefined,
+                        area: State.area || undefined,
+                    });
+                }
+
                 if (filtered.length === 0) {
-                    const label = State.service?.name
-                        || (State.subcategory && (window.masterCatalog?.[State.category]?.subcats?.[State.subcategory]?.name || State.subcategory))
-                        || (State.category && (window.masterCatalog?.[State.category]?.name || State.category))
-                        || '';
-                    logAnalyticsSearch(label, 'catalog', 0);
                     contentContainer.innerHTML = '<div style="color:#64748b; font-size:12px; text-align:center; padding:20px;">Нічого не знайдено.</div>';
                     return;
+                }
+
+                if (State.searchNote && State.serviceFallback) {
+                    const note = document.createElement('div');
+                    note.className = 'search-fallback-note';
+                    note.style.cssText = 'color:#64748b;font-size:12px;text-align:center;padding:8px 16px 0;line-height:1.4';
+                    note.textContent = State.searchNote;
+                    contentContainer.appendChild(note);
                 }
 
                 filtered.forEach((loc) => contentContainer.appendChild(buildProviderCard(loc)));
@@ -4274,6 +4336,7 @@
                     loc.markerInstance = null;
                 });
 
+                resolveServiceFallback();
                 const visible = [];
                 const batch = [];
                 window.mockLocations.forEach((loc) => {
@@ -4433,6 +4496,7 @@
                 syncUI();
             }
 
+            let catalogServiceLog = false;
             function handleL3Click(srv) {
                 seoListingTouched = true;
                 trackCatalogClick({
@@ -4442,10 +4506,16 @@
                     serviceName: srv.name,
                 });
                 State.service = { name: srv.name, price: srv.price };
+                State.serviceFallback = null;
                 State.selectedLocation = null;
                 revealMobileSheet('full');
                 commitSheetNavigation();
-                syncUI();
+                catalogServiceLog = true;
+                try {
+                    syncUI();
+                } finally {
+                    catalogServiceLog = false;
+                }
             }
 
             function isActiveSuggestion(s) {
@@ -4497,14 +4567,21 @@
                 State.selectedLocation = null;
                 State.detailMode = null;
 
+                State.searchNote = result?.note || '';
                 if (service && State.subcategory) {
                     const items = window.masterCatalog[category]?.subcats?.[State.subcategory]?.items || [];
                     const srv = items.find((i) => i.name === service);
                     if (srv) State.service = { name: srv.name, price: srv.price };
                 }
-                if (opts.relaxEmptyService && State.service) {
+                if (!State.service && result?.relaxedService && State.subcategory) {
+                    State.service = { name: result.relaxedService, price: '' };
+                }
+                if (opts.relaxEmptyService && State.service && !result?.relaxedService) {
                     const priced = (window.mockLocations || []).some((loc) => locationOffersService(loc, State.service.name));
-                    if (!priced) State.service = null;
+                    if (!priced) {
+                        State.searchNote = State.searchNote || SERVICE_FALLBACK_NOTE;
+                        State.serviceFallback = 'branch';
+                    }
                 }
 
                 closeMasterDetail();
