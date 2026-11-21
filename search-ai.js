@@ -576,6 +576,7 @@ ${JSON.stringify(catalog)}
 - score — релевантність 1–10
 - confidence — впевненість від 0 до 1 саме для цього match; не став 1 без сильного збігу
 - синоніми: масло/масла/заміна масла → заміна мастила (auto/maintenance); ТО/техобслуговування → планове ТО (auto/maintenance); резина/покришки/продаж шин → шини (auto/tyres); постригтись → перукарня/стрижка
+- радіус шин R13–R22 («R19», «р19», «r 19», «205/55 R16», «шини 19») → auto/tyres (шиномонтаж). Не привʼязуй до конкретної послуги, якщо її назва не збігається з запитом дослівно
 - якщо нічого не підходить — {"matches":[]}`;
 
   const parsed = await geminiGenerateJson(apiKey, {
@@ -804,23 +805,110 @@ function countSearchMatches(locations, catalog, selection = {}) {
   }).length;
 }
 
-function countPricedService(locations, serviceName) {
-  if (!serviceName) return 0;
-  return (locations || []).filter((loc) => loc && !loc.deletedAt && locationOffersPrice(loc, serviceName)).length;
+const SERVICE_FALLBACK_NOTE = 'Точної послуги в картках немає, ось майстри цієї категорії поруч';
+const TYRE_RADIUS = '(?:1[3-9]|2[0-2])';
+
+/**
+ * R13–R22, including «р19», «r 19», «205/55 R16» and «шини 19».
+ * The slash in a metric size is already turned into a space by normalizeText.
+ */
+function hasTyreSizeToken(text) {
+  const s = normalizeText(text);
+  if (!s) return false;
+  const rim = new RegExp(`(?:^|\\s)[rр]\\s*${TYRE_RADIUS}(?!\\d)`, 'u');
+  if (rim.test(s)) return true;
+  const metric = new RegExp(`\\d{3}\\s+\\d{2}\\s+[rр]\\s*${TYRE_RADIUS}(?!\\d)`, 'u');
+  if (metric.test(s)) return true;
+  const named = new RegExp(
+    `(?:^|\\s)(?:шини|шина|шину|резина|покришки|покришка)\\s+(?:[rр]\\s*)?${TYRE_RADIUS}(?!\\d)`,
+    'u'
+  );
+  return named.test(s);
 }
 
-/** A service nobody priced should not narrow the list; the subcategory still has cards. */
-function relaxUnpricedService(result, locations) {
-  if (!result?.service) return result;
-  if (countPricedService(locations, result.service) > 0) return result;
+function tyreBranchResult(masterCatalog) {
+  const label = masterCatalog?.auto?.subcats?.tyres?.name || 'Шиномонтаж';
+  return {
+    category: 'auto',
+    subcategory: 'tyres',
+    service: null,
+    confidence: 12,
+    source: 'local',
+    suggestions: [
+      {
+        type: 'subcategory',
+        category: 'auto',
+        subcategory: 'tyres',
+        service: null,
+        score: 12,
+        source: 'local',
+        label,
+      },
+    ],
+  };
+}
+
+function countPricedService(locations, serviceName, area) {
+  if (!serviceName) return 0;
+  return (locations || []).filter((loc) => {
+    if (!loc || loc.deletedAt) return false;
+    if (area && !locationInSearchArea(loc, area)) return false;
+    return locationOffersPrice(loc, serviceName);
+  }).length;
+}
+
+function countBranchLocations(locations, { category, subcategory, area } = {}) {
+  return (locations || []).filter((loc) => {
+    if (!loc || loc.deletedAt) return false;
+    if (area && !locationInSearchArea(loc, area)) return false;
+    if (category && loc.cat !== category) return false;
+    if (subcategory) {
+      const subs = Array.isArray(loc.subcats) ? loc.subcats : [];
+      if (!subs.includes(subcategory)) return false;
+    }
+    return true;
+  }).length;
+}
+
+function withoutService(result, serviceName) {
   return {
     ...result,
     service: null,
+    relaxedService: serviceName,
+    note: SERVICE_FALLBACK_NOTE,
     suggestions: (result.suggestions || []).map((item) => {
-      if (item?.service !== result.service) return item;
+      if (item?.service !== serviceName) return item;
       return { ...item, service: null, type: item.subcategory ? 'subcategory' : item.type };
     }),
   };
+}
+
+/**
+ * A service with no price in this area should not hide the subcategory.
+ * When that subcategory is empty too, the category in the same area stays.
+ */
+function relaxUnpricedService(result, locations, catalog) {
+  if (!result?.service) return result;
+  const area = result.area || null;
+  if (countPricedService(locations, result.service, area) > 0) return result;
+  const branch = countBranchLocations(locations, {
+    category: result.category,
+    subcategory: result.subcategory,
+    area,
+  });
+  if (branch > 0) return withoutService(result, result.service);
+  if (result.subcategory && result.category) {
+    const categoryCount = countBranchLocations(locations, { category: result.category, area });
+    const knownSub = catalog?.[result.category]?.subcats?.[result.subcategory];
+    if (categoryCount > 0 && knownSub) {
+      return {
+        ...withoutService(result, result.service),
+        subcategory: null,
+        relaxedSubcategory: result.subcategory,
+      };
+    }
+  }
+  return result;
 }
 
 async function parseVoiceSearch(text, masterCatalog, options = {}) {
@@ -859,6 +947,16 @@ async function parseVoiceSearch(text, masterCatalog, options = {}) {
   }
 
   const mode = options.routing === 'legacy' ? 'legacy' : 'ai-first';
+  // Size tokens are шиномонтаж even when the local score is too weak for AI-first.
+  // An exact catalogue name («Сезонний комплекс R19») still wins and stays local.
+  if (mode === 'ai-first' && hasTyreSizeToken(queryText) && masterCatalog?.auto?.subcats?.tyres) {
+    const localTyre = localResultFrom(queryText, masterCatalog);
+    const tyreConfident = localRouteIsConfident(localTyre.suggestions);
+    if (tyreConfident && localTyre.category === 'auto' && localTyre.subcategory === 'tyres') {
+      return withArea(localTyre, area, trimmed, 'local');
+    }
+    if (!tyreConfident) return withArea(tyreBranchResult(masterCatalog), area, trimmed, 'local');
+  }
   const cacheOn = options.cache !== false;
   const key = searchCacheKey(queryText, mode);
   if (cacheOn) {
@@ -1118,8 +1216,10 @@ module.exports = {
   extractSearchArea,
   countSearchMatches,
   relaxUnpricedService,
+  hasTyreSizeToken,
   clearSearchCache,
   stemUk,
+  SERVICE_FALLBACK_NOTE,
   GEMINI_MODELS,
   modelConfidence,
   geminiGenerateJson,

@@ -2039,7 +2039,7 @@ app.post('/api/search-ai', searchRateLimit, async (req, res) => {
       geminiApiKey: GEMINI_API_KEY || undefined,
     });
     const visibleLocations = publicLocations(data.mockLocations);
-    const result = relaxUnpricedService(parsed, visibleLocations);
+    const result = relaxUnpricedService(parsed, visibleLocations, data.masterCatalog);
     const visibleCount = countSearchMatches(visibleLocations, data.masterCatalog, {
       category: result.category,
       subcategory: result.subcategory,
@@ -2109,6 +2109,8 @@ app.post('/api/search-ai', searchRateLimit, async (req, res) => {
       areaOnly: Boolean(result.areaOnly),
       router: result.router || (result.source === 'gemini' ? 'gemini' : 'local'),
       result_count: visibleCount,
+      note: result.note || null,
+      relaxedService: result.relaxedService || null,
     });
   } catch (err) {
     console.error('[POST /api/search-ai]', err);

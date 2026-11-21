@@ -165,7 +165,14 @@ test('the map wires focus, search counts, and catalog clicks without storing raw
   assert.match(app, /logAnalyticsSearch\(item\.label, 'suggest', 1\)/);
   assert.match(app, /logAnalyticsSearch\(item\.label, 'suggest', countCatalogMatches/);
   assert.match(app, /logAnalyticsSearch\(\s*transcript,\s*'ai'/);
-  assert.match(app, /logAnalyticsSearch\(label, 'catalog', 0\)/);
+  const listFn = app.slice(app.indexOf('function renderLocationList'), app.indexOf('function normalizeLocationSearch'));
+  // Catalog search logs the cards actually shown. An empty list still sends 0
+  // because the call uses filtered.length and runs before the empty-state return.
+  assert.match(listFn, /logAnalyticsSearch\(label, 'catalog', filtered\.length/);
+  const catalogLogAt = listFn.indexOf("logAnalyticsSearch(label, 'catalog', filtered.length");
+  const emptyAt = listFn.indexOf('if (filtered.length === 0)');
+  assert.ok(catalogLogAt >= 0 && emptyAt > catalogLogAt, 'a truly empty catalog list still logs 0');
+  assert.doesNotMatch(listFn, /if\s*\(\s*filtered\.length\s*>\s*0\s*\)[\s\S]{0,240}logAnalyticsSearch\(label, 'catalog'/);
   assert.match(app, /deferSearchLog/);
   assert.equal(app.includes("trackLocationClick(locationId, 'report')"), false);
   assert.match(client, /result_count/);

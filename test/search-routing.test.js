@@ -14,8 +14,10 @@ const {
   extractSearchArea,
   countSearchMatches,
   relaxUnpricedService,
+  hasTyreSizeToken,
   clearSearchCache,
   stemUk,
+  SERVICE_FALLBACK_NOTE,
 } = require('../search-ai.js');
 
 const catalog = loadMasterCatalog();
@@ -218,4 +220,101 @@ test('search analytics stores the visible count plus service, subcategory, area 
   assert.match(app, /function countVisibleMatches\(\)[\s\S]*locationMatchesMapFilter/);
   const inputFn = app.slice(app.indexOf("searchInput.addEventListener('input'"), app.indexOf("searchInput.addEventListener('blur'"));
   assert.doesNotMatch(inputFn, /runAiSearch/);
+
+  const listFn = app.slice(app.indexOf('function renderLocationList'), app.indexOf('function normalizeLocationSearch'));
+  assert.match(app, /Точної послуги в картках немає, ось майстри цієї категорії поруч/);
+  assert.match(listFn, /filtered\.length/);
+  assert.match(listFn, /State\.searchNote/);
+  assert.doesNotMatch(listFn, /logAnalyticsSearch\(label, 'catalog', 0\)/);
+  assert.match(listFn, /resolveServiceFallback\(\)/);
+});
+
+test('tyre size tokens route to шиномонтаж and an unpriced catalog service falls back', async () => {
+  clearSearchCache();
+  assert.equal(hasTyreSizeToken('R19'), true);
+  assert.equal(hasTyreSizeToken('р19'), true);
+  assert.equal(hasTyreSizeToken('r 19'), true);
+  assert.equal(hasTyreSizeToken('205/55 R16'), true);
+  assert.equal(hasTyreSizeToken('шини 19'), true);
+  assert.equal(hasTyreSizeToken('заміна масла'), false);
+  assert.equal(hasTyreSizeToken('Святошин'), false);
+  assert.equal(hasTyreSizeToken('піца'), false);
+
+  let calls = 0;
+  const fetchImpl = async () => {
+    calls += 1;
+    throw new Error('tyre size must stay on the local router');
+  };
+  const sizeQueries = ['R19', 'р19', 'r 19', '205/55 R16', 'шини 19'];
+  for (const query of sizeQueries) {
+    clearSearchCache();
+    calls = 0;
+    const parsed = await parseVoiceSearch(query, catalog, { geminiApiKey: 'test-key', fetchImpl });
+    assert.equal(parsed.category, 'auto', query);
+    assert.equal(parsed.subcategory, 'tyres', query);
+    assert.equal(parsed.router, 'local', query);
+    assert.equal(calls, 0, query);
+    const relaxed = relaxUnpricedService(parsed, locations, catalog);
+    const shown = visibleCount({
+      category: relaxed.category,
+      subcategory: relaxed.subcategory,
+      service: relaxed.service,
+      area: 'kotsiubynske',
+    });
+    assert.ok(shown > 0, query + ' should list шиномонтаж in Коцюбинське');
+    assert.equal(
+      shown,
+      visibleCount({ category: 'auto', subcategory: 'tyres', area: 'kotsiubynske' }),
+      query
+    );
+  }
+
+  clearSearchCache();
+  const exact = await parseVoiceSearch('Сезонний комплекс R19', catalog, {});
+  assert.equal(exact.category, 'auto');
+  assert.equal(exact.subcategory, 'tyres');
+  assert.equal(exact.service, 'Сезонний комплекс R19');
+  assert.equal(exact.router, 'local');
+  const outside = {
+    id: 'priced-elsewhere',
+    cat: 'auto',
+    subcats: ['tyres'],
+    prices: { 'Сезонний комплекс R19': '1 300 грн' },
+    lat: 50.45,
+    lng: 30.52,
+    address: 'м. Київ, вул. Хрещатик, 1',
+    deletedAt: null,
+  };
+  const inTown = relaxUnpricedService(
+    { ...exact, area: 'kotsiubynske', suggestions: exact.suggestions || [] },
+    locations.concat(outside),
+    catalog
+  );
+  assert.equal(inTown.service, null);
+  assert.equal(inTown.relaxedService, 'Сезонний комплекс R19');
+  assert.equal(inTown.subcategory, 'tyres');
+  assert.equal(inTown.note, SERVICE_FALLBACK_NOTE);
+  const catalogShown = visibleCount({
+    category: 'auto',
+    subcategory: 'tyres',
+    service: null,
+    area: 'kotsiubynske',
+  });
+  assert.ok(catalogShown > 0);
+  const keptGlobal = relaxUnpricedService(
+    { ...exact, area: null, suggestions: [] },
+    locations.concat(outside),
+    catalog
+  );
+  assert.equal(keptGlobal.service, 'Сезонний комплекс R19');
+
+  clearSearchCache();
+  const oil = await parseVoiceSearch('заміна масла', catalog, {});
+  assert.equal(oil.category, 'auto');
+  assert.equal(oil.subcategory, 'maintenance');
+  const pizza = await parseVoiceSearch('піца', catalog, {});
+  assert.equal(pizza.category, null);
+  const district = await parseVoiceSearch('Святошин', catalog, {});
+  assert.equal(district.area, 'sviatoshyn');
+  assert.equal(district.category, null);
 });
