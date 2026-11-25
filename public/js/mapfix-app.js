@@ -2121,7 +2121,13 @@
 
                 const activeChip = categoryStrip.querySelector('.category-chip.active');
                 if (activeChip) {
-                    activeChip.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
+                    // Only the chip row may scroll. Element.scrollIntoView walks every
+                    // ancestor, and on mobile that sets #app-shell.scrollLeft when the
+                    // header is a few pixels wider than the viewport — the whole sheet
+                    // and the map buttons shift left. inline/block nearest keeps a chip
+                    // that is already visible from moving, and overflow-x:clip on
+                    // html/body/#app-shell/#sidebar stops those from scrolling at all.
+                    activeChip.scrollIntoView({ inline: 'nearest', block: 'nearest' });
                 }
             }
 
